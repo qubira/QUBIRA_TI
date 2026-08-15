@@ -1,6 +1,6 @@
 import { api }                                         from '../api.js';
 import { toast, showModal, pageHeader,
-         projectStatusBadge, priorityBadge, progressBar,
+         projectStatusBadge, priorityBadge, projectTypeBadge, progressBar,
          spinner, icon, fmtDateTime, isOverdue, overdueBadge } from '../utils.js';
 
 let _projects = [], _filter = { status: '', search: '' };
@@ -116,6 +116,7 @@ function projectCard(p) {
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       ${projectStatusBadge(p.status)}
       ${priorityBadge(p.priority)}
+      ${projectTypeBadge(p.project_type)}
       ${overdue ? overdueBadge() : ''}
     </div>
     <div class="mb-3">

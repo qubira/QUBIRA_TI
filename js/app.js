@@ -71,14 +71,14 @@ function renderSidebar(currentHash) {
   const collapsed = sidebarCollapsed;
 
   sc.innerHTML = `
-  <aside id="sidebar" class="flex flex-col bg-white border-r border-gray-200 transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
+  <aside id="sidebar" class="flex flex-col h-full bg-white border-r border-gray-200 transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
     <!-- Logo -->
     <div class="flex items-center justify-between px-4 py-4 border-b border-gray-200 min-h-[64px]">
       <div class="flex items-center gap-2 ${collapsed ? 'mx-auto' : ''}">
         <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
           <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain">
         </div>
-        ${!collapsed ? '<span class="font-bold text-gray-900 text-lg">Qubira</span>' : ''}
+        ${!collapsed ? '<span class="font-bold text-gray-900 text-lg">Qubira TI</span>' : ''}
       </div>
       ${!collapsed ? `<button id="sb-toggle" class="p-1 rounded-lg hover:bg-gray-100 text-gray-500">${icon('chevron_left', 20)}</button>` : ''}
     </div>

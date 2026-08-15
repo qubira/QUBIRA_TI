@@ -79,6 +79,17 @@ function badge(map, key) {
 export const projectStatusBadge  = k => badge(PS, k);
 export const priorityBadge       = k => badge(PR, k);
 
+const PT = {
+  web:     ['Web',                     'language'],
+  mobile:  ['Aplicativo Móvil',        'smartphone'],
+  desktop: ['Aplicativo de Escritorio','desktop_windows'],
+};
+export function projectTypeBadge(k) {
+  if (!k || !PT[k]) return '';
+  const [label, iconName] = PT[k];
+  return `<span class="badge bg-indigo-100 text-indigo-700 inline-flex items-center gap-1">${icon(iconName, 12)}${label}</span>`;
+}
+
 // ─── Vencimiento ──────────────────────────────────────────────────────────────
 export function isOverdue(p) {
   if (!p.end_date || p.status === 'completed' || p.status === 'cancelled') return false;
