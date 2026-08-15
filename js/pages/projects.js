@@ -266,24 +266,18 @@ function openModal(editing = null) {
       <!-- Columna 3: Requerimientos -->
       <div>
         ${sectionTitle('Requerimientos')}
-        ${editing ? `
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Funcionales</p>
-          <div id="req-list-functional" class="space-y-2 mb-2">${spinnerSmall()}</div>
-          <div class="flex gap-2 mb-5">
-            <input id="req-desc-functional" class="input text-xs flex-1" placeholder="Nuevo requerimiento...">
-            <button type="button" id="req-add-functional" class="btn-secondary text-xs px-3">${icon('add',16)}</button>
-          </div>
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">No Funcionales</p>
-          <div id="req-list-nonfunctional" class="space-y-2 mb-2"></div>
-          <div class="flex gap-2">
-            <input id="req-desc-nonfunctional" class="input text-xs flex-1" placeholder="Nuevo requerimiento...">
-            <button type="button" id="req-add-nonfunctional" class="btn-secondary text-xs px-3">${icon('add',16)}</button>
-          </div>
-        ` : `
-          <div class="text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg p-4 text-center">
-            Guarda el proyecto primero para poder agregar los requerimientos.
-          </div>
-        `}
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Funcionales</p>
+        <div id="req-list-functional" class="space-y-2 mb-2 max-h-40 overflow-y-auto pr-1">${editing ? spinnerSmall() : ''}</div>
+        <div class="flex gap-2 mb-5">
+          <input id="req-desc-functional" class="input text-xs flex-1" placeholder="Nuevo requerimiento...">
+          <button type="button" id="req-add-functional" class="btn-secondary text-xs px-3">${icon('add',16)}</button>
+        </div>
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">No Funcionales</p>
+        <div id="req-list-nonfunctional" class="space-y-2 mb-2 max-h-40 overflow-y-auto pr-1"></div>
+        <div class="flex gap-2">
+          <input id="req-desc-nonfunctional" class="input text-xs flex-1" placeholder="Nuevo requerimiento...">
+          <button type="button" id="req-add-nonfunctional" class="btn-secondary text-xs px-3">${icon('add',16)}</button>
+        </div>
       </div>
     </div>
   </form>`, '2xl', `
@@ -338,15 +332,19 @@ function openModal(editing = null) {
 
   if (editing) {
     loadRequirements(editing.id);
-    document.getElementById('req-add-functional').addEventListener('click', () => addRequirement('functional'));
-    document.getElementById('req-desc-functional').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); addRequirement('functional'); }
-    });
-    document.getElementById('req-add-nonfunctional').addEventListener('click', () => addRequirement('non_functional'));
-    document.getElementById('req-desc-nonfunctional').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); addRequirement('non_functional'); }
-    });
+  } else {
+    _reqProjectId = null;
+    _reqs = [];
+    renderRequirementsList();
   }
+  document.getElementById('req-add-functional').addEventListener('click', () => addRequirement('functional'));
+  document.getElementById('req-desc-functional').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addRequirement('functional'); }
+  });
+  document.getElementById('req-add-nonfunctional').addEventListener('click', () => addRequirement('non_functional'));
+  document.getElementById('req-desc-nonfunctional').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addRequirement('non_functional'); }
+  });
 
   document.getElementById('project-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -356,7 +354,10 @@ function openModal(editing = null) {
         await api.put(`/projects/${editing.id}`, fd);
         toast('Proyecto actualizado');
       } else {
-        await api.post('/projects', fd);
+        const created = await api.post('/projects', fd);
+        for (const r of _reqs) {
+          await api.post('/requirements', { project_id: created.id, type: r.type, description: r.description });
+        }
         toast('Proyecto creado');
       }
       closeModal();
@@ -386,19 +387,13 @@ function renderRequirementsList() {
     ? '<p class="text-xs text-gray-400 text-center py-2">Sin requerimientos</p>'
     : nonFunctional.map(reqRow).join('');
 
-  document.querySelectorAll('.req-progress-input').forEach(inp => {
-    inp.addEventListener('change', async () => {
-      const value = Math.max(0, Math.min(100, parseInt(inp.value) || 0));
-      inp.value = value;
-      await api.put(`/requirements/${inp.dataset.id}`, { progress: value });
-      const r = _reqs.find(x => x.id === inp.dataset.id);
-      if (r) r.progress = value;
-    });
-  });
   document.querySelectorAll('.req-del').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await api.delete(`/requirements/${btn.dataset.id}`);
-      _reqs = _reqs.filter(x => x.id !== btn.dataset.id);
+      const key = btn.dataset.id;
+      if (_reqProjectId) {
+        try { await api.delete(`/requirements/${key}`); } catch (err) { toast(err.message || 'Error', 'error'); return; }
+      }
+      _reqs = _reqs.filter(x => String(x.id ?? x._localId) !== key);
       renderRequirementsList();
     });
   });
@@ -408,22 +403,25 @@ function reqRow(r) {
   return `
   <div class="flex items-center gap-2 p-2 rounded-lg border border-gray-100 bg-white">
     <p class="flex-1 text-xs text-gray-700 truncate" title="${esc(r.description)}">${esc(r.description)}</p>
-    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center" style="width:52px;padding:2px 4px" data-id="${r.id}">
-    <span class="text-xs text-gray-400">%</span>
-    <button class="req-del text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',14)}</button>
+    <button type="button" class="req-del text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id ?? r._localId}">${icon('delete',14)}</button>
   </div>`;
 }
 
+let _localReqSeq = 0;
 async function addRequirement(type) {
   const input = document.getElementById(type === 'non_functional' ? 'req-desc-nonfunctional' : 'req-desc-functional');
   const description = input.value.trim();
-  if (!description || !_reqProjectId) return;
-  try {
-    const r = await api.post('/requirements', { project_id: _reqProjectId, type, description });
-    _reqs.push({ id: r.id, project_id: _reqProjectId, type, description, progress: 0 });
-    input.value = '';
-    renderRequirementsList();
-  } catch (err) { toast(err.message || 'Error', 'error'); }
+  if (!description) return;
+  if (_reqProjectId) {
+    try {
+      const r = await api.post('/requirements', { project_id: _reqProjectId, type, description });
+      _reqs.push({ id: r.id, project_id: _reqProjectId, type, description });
+    } catch (err) { toast(err.message || 'Error', 'error'); return; }
+  } else {
+    _reqs.push({ _localId: `local-${++_localReqSeq}`, type, description });
+  }
+  input.value = '';
+  renderRequirementsList();
 }
 
 function spinnerSmall() {

@@ -83,8 +83,8 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','contracts','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen',`Contratos (${_contracts.length})`,`Documentos (${_documents.length})`,
+      ${['overview','requirements','contracts','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen',`Requisitos (${_requirements.length})`,`Contratos (${_contracts.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -119,9 +119,6 @@ function renderTabContent() {
   const p = _project;
 
   if (_tab === 'overview') {
-    const functional    = _requirements.filter(r => r.type !== 'non_functional');
-    const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
-
     c.innerHTML = `
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
       <!-- Empresa -->
@@ -152,7 +149,7 @@ function renderTabContent() {
         </dl>
         ${p.description ? `<div class="mt-4 pt-4 border-t border-gray-100">
           <dt class="text-xs text-gray-400 uppercase tracking-wide mb-1">Descripción</dt>
-          <p class="text-sm text-gray-700 whitespace-pre-wrap">${esc(p.description)}</p>
+          <p class="text-sm text-gray-700 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">${esc(p.description)}</p>
         </div>` : ''}
       </div>
 
@@ -160,25 +157,11 @@ function renderTabContent() {
       <div class="card p-5">
         <h3 class="font-semibold text-gray-900 mb-4">Resumen de Contenido</h3>
         <div class="space-y-3">
+          ${contentSummaryBtn('checklist','text-amber-600','Requisitos',_requirements.length,'requirements')}
           ${contentSummaryBtn('description','text-blue-600','Contratos y Proformas',_contracts.length,'contracts')}
           ${contentSummaryBtn('article','text-green-600','Documentos',_documents.length,'documents')}
           ${contentSummaryBtn('chat','text-emerald-600','Mensajes WhatsApp',_messages.length,'whatsapp')}
           ${contentSummaryBtn('email','text-purple-600','Correos Electrónicos',_emails.length,'emails')}
-        </div>
-      </div>
-    </div>
-
-    <!-- Requerimientos -->
-    <div class="card p-5 mb-5">
-      <h3 class="font-semibold text-gray-900 mb-4">Requerimientos</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Funcionales</p>
-          ${requirementsList(functional)}
-        </div>
-        <div>
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">No Funcionales</p>
-          ${requirementsList(nonFunctional)}
         </div>
       </div>
     </div>
@@ -203,6 +186,17 @@ function renderTabContent() {
         renderTabContent();
       });
     });
+  }
+
+  if (_tab === 'requirements') {
+    const functional    = _requirements.filter(r => r.type !== 'non_functional');
+    const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
+    c.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      ${requirementsColumn('Funcionales', functional, 'functional')}
+      ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
+    </div>`;
+    wireRequirementsTab();
   }
 
   if (_tab === 'contracts') {
@@ -458,18 +452,76 @@ function historyTimeline(items) {
   </div>`;
 }
 
-function requirementsList(items) {
-  if (items.length === 0) return '<p class="text-xs text-gray-400 py-2">Sin requerimientos registrados</p>';
-  return `<div class="space-y-2">
-    ${items.map(r => `
-      <div class="flex items-center gap-3 p-2 rounded-lg border border-gray-100">
-        <p class="flex-1 text-sm text-gray-700 truncate" title="${esc(r.description)}">${esc(r.description)}</p>
-        <div class="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden shrink-0">
-          <div class="h-full bg-primary-500 rounded-full" style="width:${r.progress||0}%"></div>
-        </div>
-        <span class="text-xs text-gray-500 w-9 text-right shrink-0">${r.progress||0}%</span>
-      </div>`).join('')}
+function requirementsColumn(label, items, type) {
+  return `
+  <div class="card p-5">
+    <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
+    <div class="space-y-2 max-h-96 overflow-y-auto pr-1 mb-3" id="req-col-${type}">
+      ${items.length === 0
+        ? '<p class="text-xs text-gray-400 py-2 text-center">Sin requerimientos registrados</p>'
+        : items.map(requirementRow).join('')}
+    </div>
+    <div class="flex gap-2">
+      <input id="req-new-${type}" class="input text-sm flex-1" placeholder="Nuevo requerimiento...">
+      <button type="button" class="btn-secondary req-add-btn" data-type="${type}">${icon('add',18)}</button>
+    </div>
   </div>`;
+}
+
+function requirementRow(r) {
+  return `
+  <div class="flex items-center gap-2 p-2.5 rounded-lg border border-gray-100">
+    <p class="flex-1 text-sm text-gray-700 truncate" title="${esc(r.description)}">${esc(r.description)}</p>
+    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center" style="width:56px;padding:3px 4px" data-id="${r.id}">
+    <span class="text-xs text-gray-400">%</span>
+    <button class="req-del-btn text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',16)}</button>
+  </div>`;
+}
+
+function wireRequirementsTab() {
+  document.querySelectorAll('.req-add-btn').forEach(btn => {
+    const type = btn.dataset.type;
+    const input = document.getElementById(`req-new-${type}`);
+    const submit = async () => {
+      const description = input.value.trim();
+      if (!description) return;
+      try {
+        await api.post('/requirements', { project_id: _id, type, description });
+        _requirements = await api.get('/requirements', { project_id: _id });
+        renderTabContent();
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
+        });
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    };
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  });
+
+  document.querySelectorAll('.req-progress-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const value = Math.max(0, Math.min(100, parseInt(inp.value) || 0));
+      inp.value = value;
+      try {
+        await api.put(`/requirements/${inp.dataset.id}`, { progress: value });
+        const r = _requirements.find(x => x.id === inp.dataset.id);
+        if (r) r.progress = value;
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
+
+  document.querySelectorAll('.req-del-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.delete(`/requirements/${btn.dataset.id}`);
+        _requirements = _requirements.filter(x => x.id !== btn.dataset.id);
+        renderTabContent();
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
+        });
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
 }
 
 function contentSummaryBtn(iconName, colorCls, label, count, tabKey) {
