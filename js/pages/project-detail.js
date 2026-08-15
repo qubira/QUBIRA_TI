@@ -9,7 +9,8 @@ import { toast, showModal, closeModal,
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
 
-const DOC_TYPE_LABEL = { dni:'DNI', ce:'CE', pasaporte:'Pasaporte' };
+const DOC_TYPE_LABEL = { dni:'DNI', ce:'CE', pasaporte:'Pasaporte', ruc:'RUC' };
+const PROJECT_TYPE_LABEL = { web:'Web', mobile:'Aplicativo Móvil', desktop:'Aplicativo de Escritorio' };
 const STATUS_LABEL_ES   = { pending:'Pendiente', active:'Activo', paused:'Pausado', completed:'Completado', cancelled:'Cancelado' };
 const PRIORITY_LABEL_ES = { low:'Baja', medium:'Media', high:'Alta', urgent:'Urgente' };
 
@@ -64,6 +65,7 @@ function renderPage() {
       <p class="text-gray-500 mt-1">${esc(p.code)} · ${esc(p.client)}</p>
     </div>
     <button id="export-pdf-btn" class="btn-secondary">${icon('picture_as_pdf', 16)} Exportar PDF</button>
+    ${p.website_url ? `<a href="${esc(p.website_url)}" target="_blank" rel="noopener" class="btn-secondary">${icon('open_in_new', 16)} Ver página</a>` : ''}
     ${p.status === 'pending' ? `
       <button id="claim-btn" class="btn-primary">${icon('add_task', 16)} Reclamar para TI</button>
     ` : p.status === 'completed' ? `
@@ -155,6 +157,7 @@ function renderTabContent() {
           ${infoRow('Nombre Empresa', p.company_name)}
           ${infoRow('Tipo Documento', DOC_TYPE_LABEL[p.id_document_type] || p.id_document_type)}
           ${infoRow('Número Documento', p.id_document_number)}
+          ${infoRow('Tipo de Proyecto', PROJECT_TYPE_LABEL[p.project_type] || p.project_type)}
         </dl>
       </div>
 
@@ -169,6 +172,10 @@ function renderTabContent() {
           ${infoRow('Inicio', fmtDate(p.start_date))}
           ${infoRow('Entrega', fmtDate(p.end_date))}
         </dl>
+        ${(p.github_url || p.website_url) ? `<div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
+          ${p.github_url ? `<a href="${esc(p.github_url)}" target="_blank" rel="noopener" class="flex items-center gap-2 text-sm text-primary-600 hover:underline">${icon('code', 16)} GitHub</a>` : ''}
+          ${p.website_url ? `<a href="${esc(p.website_url)}" target="_blank" rel="noopener" class="flex items-center gap-2 text-sm text-primary-600 hover:underline">${icon('language', 16)} Ver página</a>` : ''}
+        </div>` : ''}
         ${p.description ? `<div class="mt-4 pt-4 border-t border-gray-100">
           <dt class="text-xs text-gray-400 uppercase tracking-wide mb-1">Descripción</dt>
           <p class="text-sm text-gray-700 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">${esc(p.description)}</p>
@@ -409,6 +416,14 @@ function openEditModal() {
         <label class="label">Descripción</label>
         <textarea class="input resize-none" name="description" rows="3">${esc(p.description||'')}</textarea>
       </div>
+      <div>
+        <label class="label">Link de GitHub</label>
+        <input class="input" type="url" name="github_url" value="${esc(p.github_url||'')}" placeholder="https://github.com/...">
+      </div>
+      <div>
+        <label class="label">Link de la Página</label>
+        <input class="input" type="url" name="website_url" value="${esc(p.website_url||'')}" placeholder="https://...">
+      </div>
     </div>
     <div class="flex gap-3 pt-2">
       <button type="submit" class="btn-primary flex-1 justify-center">Guardar Cambios</button>
@@ -470,10 +485,10 @@ function requirementsColumn(label, items, type) {
 
 function requirementRow(r) {
   return `
-  <div class="flex items-center gap-2 p-2.5 rounded-lg border border-gray-100">
-    <p class="flex-1 text-sm text-gray-700 truncate" title="${esc(r.description)}">${esc(r.description)}</p>
-    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center" style="width:56px;padding:3px 4px" data-id="${r.id}">
-    <span class="text-xs text-gray-400">%</span>
+  <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
+    <p class="flex-1 text-sm text-gray-700 whitespace-pre-wrap break-words">${esc(r.description)}</p>
+    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">
+    <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
     <button class="req-del-btn text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',16)}</button>
   </div>`;
 }
