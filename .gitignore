@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.db
+*.db-shm
+*.db-wal
+backups/
+uploads/contracts/*
+uploads/documents/*
+!uploads/contracts/.gitkeep
+!uploads/documents/.gitkeep
+npm-debug.log*
+.DS_Store

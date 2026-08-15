@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qubira CRM</title>
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: "#eff6ff",
+                100: "#dbeafe",
+                200: "#bfdbfe",
+                300: "#93c5fd",
+                400: "#60a5fa",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                800: "#1e40af",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <!-- Conversión de documentos a HTML en el navegador, para la vista previa -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  </head>
+  <body class="bg-gray-50 text-gray-900">
+    <div id="app" class="flex h-screen overflow-hidden">
+      <div id="sidebar-container"></div>
+      <main id="main" class="flex-1 overflow-y-auto"></main>
+    </div>
+    <div
+      id="toast-container"
+      class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+    ></div>
+    <div id="modal-container"></div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>
