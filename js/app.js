@@ -56,7 +56,7 @@ function navLink({ path, iconName, label, exact }, currentHash) {
   const active = isActive(path, currentHash, exact);
   const cls = active
     ? 'bg-primary-600 text-white'
-    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900';
+    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200';
   return `<a href="#${path}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${cls}" title="${sidebarCollapsed ? label : ''}">
     ${icon(iconName, 20)}
     ${!sidebarCollapsed ? `<span>${label}</span>` : ''}
@@ -71,43 +71,43 @@ function renderSidebar(currentHash) {
   const collapsed = sidebarCollapsed;
 
   sc.innerHTML = `
-  <aside id="sidebar" class="flex flex-col h-full bg-white border-r border-gray-200 transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
+  <aside id="sidebar" class="flex flex-col h-full bg-gray-900 transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
     <!-- Logo -->
-    <div class="flex items-center justify-between px-4 py-4 border-b border-gray-200 min-h-[64px]">
+    <div class="flex items-center justify-between px-4 py-4 border-b border-gray-800 min-h-[64px]">
       <div class="flex items-center gap-2 ${collapsed ? 'mx-auto' : ''}">
         <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
           <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain">
         </div>
-        ${!collapsed ? '<span class="font-bold text-gray-900 text-lg">Qubira TI</span>' : ''}
+        ${!collapsed ? '<span class="font-bold text-white text-lg">Qubira TI</span>' : ''}
       </div>
-      ${!collapsed ? `<button id="sb-toggle" class="p-1 rounded-lg hover:bg-gray-100 text-gray-500">${icon('chevron_left', 20)}</button>` : ''}
+      ${!collapsed ? `<button id="sb-toggle" class="p-1 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_left', 20)}</button>` : ''}
     </div>
 
     <!-- Nav -->
     <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-      ${!collapsed ? '<p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">Principal</p>' : ''}
+      ${!collapsed ? '<p class="text-xs font-semibold text-gray-600 uppercase tracking-wider px-3 mb-2">Principal</p>' : ''}
       ${NAV.map(n => navLink(n, currentHash)).join('')}
     </nav>
 
     <!-- User -->
-    <div class="border-t border-gray-200 p-2">
+    <div class="border-t border-gray-800 p-2">
       ${!collapsed ? `
       <div class="flex items-center gap-3 px-2 py-2">
         <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
           <span class="text-primary-700 font-semibold text-sm">${user.name?.[0]?.toUpperCase()}</span>
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-900 truncate">${user.name}</p>
-          <p class="text-xs text-gray-500 capitalize">${user.role}</p>
+          <p class="text-sm font-medium text-white truncate">${user.name}</p>
+          <p class="text-xs text-gray-400 capitalize">${user.role}</p>
         </div>
-        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600" title="Cerrar sesión">${icon('logout', 18)}</button>
+        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400" title="Cerrar sesión">${icon('logout', 18)}</button>
       </div>` : `
       <div class="flex flex-col items-center gap-2 py-2">
         <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
           <span class="text-primary-700 font-semibold text-sm">${user.name?.[0]?.toUpperCase()}</span>
         </div>
-        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600">${icon('logout', 18)}</button>
-        <button id="sb-toggle" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">${icon('chevron_right', 18)}</button>
+        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400">${icon('logout', 18)}</button>
+        <button id="sb-toggle" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_right', 18)}</button>
       </div>`}
     </div>
   </aside>`;

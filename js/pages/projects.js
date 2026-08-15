@@ -4,6 +4,7 @@ import { toast, showModal, pageHeader,
          spinner, icon, fmtDateTime, isOverdue, overdueBadge } from '../utils.js';
 
 let _projects = [], _families = [], _filter = { status: '', search: '', family: '' };
+let _groupByFamily = false;
 
 export function render() {
   const main = document.getElementById('main');
@@ -47,16 +48,12 @@ function renderPage() {
         <option value="">Todas las familias</option>
         ${_families.map(f => `<option value="${esc(f.family)}" ${_filter.family===f.family?'selected':''}>${esc(f.family)} (${f.count})</option>`).join('')}
       </select>
+      <button id="group-family-btn" class="btn-secondary ${_groupByFamily ? 'bg-primary-50 text-primary-700 border-primary-200' : ''}">
+        ${icon('workspaces', 18)} Agrupar por familia
+      </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="projects-grid">
-      ${_projects.length === 0
-        ? `<div class="col-span-3 card p-12 text-center">
-             <span class="material-icons text-gray-300" style="font-size:48px">folder</span>
-             <p class="text-gray-500 mt-3">No hay proyectos para mostrar</p>
-           </div>`
-        : _projects.map(projectCard).join('')}
-    </div>`;
+    ${renderProjectsSection()}`;
 
   document.getElementById('search-input').addEventListener('input', e => {
     _filter.search = e.target.value;
@@ -69,6 +66,10 @@ function renderPage() {
   document.getElementById('family-filter').addEventListener('change', e => {
     _filter.family = e.target.value;
     load();
+  });
+  document.getElementById('group-family-btn').addEventListener('click', () => {
+    _groupByFamily = !_groupByFamily;
+    renderPage();
   });
 
   document.querySelectorAll('.history-btn').forEach(btn => {
@@ -91,6 +92,57 @@ function renderPage() {
       } catch (err) { toast(err.message || 'Error al reclamar', 'error'); }
     });
   });
+}
+
+function emptyState() {
+  return `<div class="card p-12 text-center">
+    <span class="material-icons text-gray-300" style="font-size:48px">folder</span>
+    <p class="text-gray-500 mt-3">No hay proyectos para mostrar</p>
+  </div>`;
+}
+
+function projectGrid(items) {
+  return `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${items.map(projectCard).join('')}</div>`;
+}
+
+function renderProjectsSection() {
+  if (_projects.length === 0) return `<div id="projects-grid">${emptyState()}</div>`;
+
+  if (!_groupByFamily) {
+    return `<div id="projects-grid">${projectGrid(_projects)}</div>`;
+  }
+
+  const groups = new Map();
+  const noFamily = [];
+  for (const p of _projects) {
+    if (p.family) {
+      if (!groups.has(p.family)) groups.set(p.family, []);
+      groups.get(p.family).push(p);
+    } else {
+      noFamily.push(p);
+    }
+  }
+
+  let html = '<div id="projects-grid">';
+  for (const fam of [...groups.keys()].sort()) {
+    const items = groups.get(fam);
+    html += `
+    <div class="mb-6">
+      <h2 class="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+        ${icon('workspaces', 16)} ${esc(fam)} <span class="text-gray-400 font-normal normal-case">(${items.length})</span>
+      </h2>
+      ${projectGrid(items)}
+    </div>`;
+  }
+  if (noFamily.length > 0) {
+    html += `
+    <div class="mb-6">
+      <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3">Sin familia (${noFamily.length})</h2>
+      ${projectGrid(noFamily)}
+    </div>`;
+  }
+  html += '</div>';
+  return html;
 }
 
 function projectCard(p) {
