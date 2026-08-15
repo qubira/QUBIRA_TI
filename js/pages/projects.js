@@ -26,7 +26,7 @@ function renderPage() {
   if (!container) return;
 
   container.innerHTML = `
-    ${pageHeader('Proyectos', `${_projects.length} proyecto${_projects.length !== 1 ? 's' : ''} · los crea y aprueba ADG, acá se reclaman y se trabajan`)}
+    ${pageHeader('Proyectos', `${_projects.length} proyecto${_projects.length !== 1 ? 's' : ''}`)}
 
     <div class="flex flex-wrap gap-3 mb-5">
       <div class="relative flex-1 min-w-[200px]">
