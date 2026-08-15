@@ -1,6 +1,4 @@
 const router = require('express').Router();
-const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 const { authenticate, requireRole } = require('../middleware/auth');
 
@@ -12,22 +10,11 @@ router.get('/', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/', requireRole('admin'), async (req, res) => {
-  try {
-    const { name, username, password, role } = req.body;
-    if (!name || !username || !password) return res.status(400).json({ error: 'Nombre, usuario y contraseña requeridos' });
-
-    const exists = await db.queryOne('SELECT id FROM users WHERE username = $1', [username.toLowerCase().trim()]);
-    if (exists) return res.status(409).json({ error: 'El nombre de usuario ya está registrado' });
-
-    const id = uuidv4();
-    const hash = bcrypt.hashSync(password, 12);
-    await db.run(
-      'INSERT INTO users (id, name, username, password, role) VALUES ($1, $2, $3, $4, $5)',
-      [id, name, username.toLowerCase().trim(), hash, role || 'manager']
-    );
-    res.status(201).json({ id, name, username, role: role || 'manager' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+/* Las cuentas ya no se crean acá: se dan de alta en RRHH (con su cuenta
+   de acceso central) y quedan registradas en esta tabla automáticamente
+   la primera vez que esa persona inicia sesión en TI. */
+router.post('/', requireRole('admin'), (req, res) => {
+  res.status(400).json({ error: 'Las cuentas se crean desde RRHH. Al iniciar sesión acá por primera vez, la persona queda registrada automáticamente.' });
 });
 
 router.put('/:id', requireRole('admin'), async (req, res) => {

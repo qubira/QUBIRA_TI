@@ -47,11 +47,19 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-db.init()
-  .then(() => {
-    app.listen(PORT, () => console.log(`🚀  Qubira CRM Backend en http://localhost:${PORT}`));
-  })
-  .catch(err => {
-    console.error('❌  Error al conectar con la base de datos:', err.message);
-    process.exit(1);
-  });
+if (require.main === module) {
+  // Ejecución directa (Render, local con `node server.js`)
+  db.init()
+    .then(() => {
+      app.listen(PORT, () => console.log(`🚀  Qubira CRM Backend en http://localhost:${PORT}`));
+    })
+    .catch(err => {
+      console.error('❌  Error al conectar con la base de datos:', err.message);
+      process.exit(1);
+    });
+} else {
+  // Importado como función serverless (Vercel) — no bloquea el export esperando la DB
+  db.init().catch(err => console.error('❌  Error al conectar con la base de datos:', err.message));
+}
+
+module.exports = app;
