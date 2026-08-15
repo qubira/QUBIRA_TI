@@ -3,12 +3,13 @@ import { toast, showModal, pageHeader,
          projectStatusBadge, priorityBadge, projectTypeBadge, progressBar,
          spinner, icon, fmtDateTime, isOverdue, overdueBadge } from '../utils.js';
 
-let _projects = [], _filter = { status: '', search: '' };
+let _projects = [], _families = [], _filter = { status: '', search: '', family: '' };
 
 export function render() {
   const main = document.getElementById('main');
   main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="projects-page">${spinner()}</div>`;
   load();
+  api.get('/projects/families').then(f => { _families = f; }).catch(() => {});
 }
 
 function load() {
@@ -42,6 +43,10 @@ function renderPage() {
         <option value="completed"      ${_filter.status==='completed'     ?'selected':''}>Completados</option>
         <option value="cancelled"      ${_filter.status==='cancelled'     ?'selected':''}>Cancelados</option>
       </select>
+      <select id="family-filter" class="input w-auto">
+        <option value="">Todas las familias</option>
+        ${_families.map(f => `<option value="${esc(f.family)}" ${_filter.family===f.family?'selected':''}>${esc(f.family)} (${f.count})</option>`).join('')}
+      </select>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="projects-grid">
@@ -59,6 +64,10 @@ function renderPage() {
   });
   document.getElementById('status-filter').addEventListener('change', e => {
     _filter.status = e.target.value;
+    load();
+  });
+  document.getElementById('family-filter').addEventListener('change', e => {
+    _filter.family = e.target.value;
     load();
   });
 
@@ -119,6 +128,7 @@ function projectCard(p) {
       ${projectTypeBadge(p.project_type)}
       ${overdue ? overdueBadge() : ''}
     </div>
+    ${p.family ? `<div class="mb-3 -mt-1"><span class="badge bg-pink-50 text-pink-700 inline-flex items-center gap-1">${icon('workspaces', 12)} ${esc(p.family)}</span></div>` : ''}
     <div class="mb-3">
       <div class="flex justify-between text-xs text-gray-500 mb-1">
         <span>Avance</span><span>${p.progress}%</span>

@@ -194,6 +194,13 @@ function renderTabContent() {
       </div>
     </div>
 
+    ${p.family ? `
+    <!-- Proyectos relacionados (familia) -->
+    <div class="card p-5 mb-5" id="family-card">
+      <h3 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">${icon('workspaces', 18)} Familia: ${esc(p.family)}</h3>
+      <div id="family-list" class="flex justify-center py-3"><div class="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div></div>
+    </div>` : ''}
+
     <!-- Historial -->
     <div class="card p-5">
       <div class="flex items-center justify-between mb-4">
@@ -204,6 +211,7 @@ function renderTabContent() {
       </div>
       ${historyTimeline(_activities.slice(0, 8))}
     </div>`;
+    if (p.family) loadFamilyProjects(p.family);
     c.querySelectorAll('.tab-switch').forEach(btn => {
       btn.addEventListener('click', () => {
         _tab = btn.dataset.tab;
@@ -225,7 +233,9 @@ function renderTabContent() {
         <p class="text-xs text-gray-400 mt-1">Se agrega desde el botón "Editar"</p>
       </div>`;
     } else {
-      c.innerHTML = `<div class="card p-6" id="gh-preview">${spinner()}</div>`;
+      c.innerHTML = `
+      <div class="card p-6 mb-4" id="gh-preview">${spinner()}</div>
+      <div id="gh-browser"></div>`;
       loadGithubPreview(p.github_url);
     }
   }
@@ -481,6 +491,32 @@ function historyTimeline(items) {
   </div>`;
 }
 
+async function loadFamilyProjects(family) {
+  try {
+    const siblings = (await api.get('/projects', { family })).filter(x => x.id !== _id);
+    const c = document.getElementById('family-list');
+    if (!c) return;
+    c.innerHTML = siblings.length === 0
+      ? '<p class="text-center text-gray-400 py-2 text-sm">No hay otros proyectos en esta familia todavía</p>'
+      : `<div class="space-y-2">
+          ${siblings.map(s => `
+            <a href="#/projects/${s.id}" class="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
+              <div class="w-8 h-8 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                ${s.company_logo ? `<img src="${esc(s.company_logo)}" class="w-full h-full object-contain">` : icon('apartment', 16)}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">${esc(s.name)}</p>
+                <p class="text-xs text-gray-500">${PROJECT_TYPE_LABEL[s.project_type] || 'Sin tipo'} · ${esc(s.code)}</p>
+              </div>
+              ${projectStatusBadge(s.status)}
+            </a>`).join('')}
+        </div>`;
+  } catch {
+    const c = document.getElementById('family-list');
+    if (c) c.innerHTML = '<p class="text-center text-red-400 py-2 text-sm">Error al cargar proyectos relacionados</p>';
+  }
+}
+
 function parseGithubUrl(url) {
   try {
     const u = new URL(url);
@@ -520,6 +556,7 @@ async function loadGithubPreview(url) {
       </div>
       <a href="${esc(repo.html_url)}" target="_blank" rel="noopener" class="btn-primary shrink-0">${icon('open_in_new', 16)} Abrir</a>
     </div>`;
+    initGithubBrowser(parsed.owner, parsed.repo, repo.default_branch);
   } catch {
     const c = document.getElementById('gh-preview');
     if (c) c.innerHTML = githubFallback(url);
@@ -534,6 +571,99 @@ function githubFallback(url) {
     <p class="text-xs text-gray-400 mb-4">No se pudo cargar la vista previa (repositorio privado o no disponible)</p>
     <a href="${esc(url)}" target="_blank" rel="noopener" class="btn-primary inline-flex">${icon('open_in_new', 16)} Abrir repositorio</a>
   </div>`;
+}
+
+let _ghOwner = null, _ghRepo = null, _ghBranch = 'main', _ghPath = '';
+
+function initGithubBrowser(owner, repo, branch) {
+  _ghOwner = owner; _ghRepo = repo; _ghBranch = branch || 'main'; _ghPath = '';
+  loadGithubFiles();
+}
+
+async function loadGithubFiles() {
+  const container = document.getElementById('gh-browser');
+  if (!container) return;
+  container.innerHTML = `
+  <div class="card overflow-hidden">
+    <div class="px-4 py-2.5 border-b border-gray-100 bg-gray-50 text-sm flex items-center gap-1 flex-wrap" id="gh-breadcrumb"></div>
+    <div class="px-4 py-2.5 border-b border-gray-100 bg-gray-50/60 text-xs" id="gh-commit-bar"></div>
+    <div id="gh-file-table" class="divide-y divide-gray-50">
+      <div class="flex justify-center py-6"><div class="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div></div>
+    </div>
+  </div>`;
+  renderGhBreadcrumb();
+
+  const myOwner = _ghOwner, myRepo = _ghRepo, myPath = _ghPath;
+  try {
+    const [contentsRes, commitRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${myOwner}/${myRepo}/contents/${myPath}?ref=${_ghBranch}`),
+      fetch(`https://api.github.com/repos/${myOwner}/${myRepo}/commits?path=${encodeURIComponent(myPath)}&sha=${_ghBranch}&per_page=1`),
+    ]);
+    if (myPath !== _ghPath) return; // el usuario ya navegó a otra carpeta
+    if (!contentsRes.ok) throw new Error('not ok');
+    let items = await contentsRes.json();
+    if (!Array.isArray(items)) items = [items];
+    items.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
+
+    let lastCommit = null;
+    if (commitRes.ok) {
+      const commits = await commitRes.json();
+      lastCommit = Array.isArray(commits) ? commits[0] : null;
+    }
+
+    const t = document.getElementById('gh-file-table');
+    const bar = document.getElementById('gh-commit-bar');
+    if (!t) return;
+
+    if (bar) {
+      bar.innerHTML = lastCommit ? `
+        <div class="flex items-center gap-2 text-gray-600">
+          ${lastCommit.author?.avatar_url ? `<img src="${esc(lastCommit.author.avatar_url)}" class="w-5 h-5 rounded-full">` : ''}
+          <span class="font-medium text-gray-800">${esc(lastCommit.commit?.author?.name || 'commit')}</span>
+          <span class="truncate flex-1">${esc((lastCommit.commit?.message || '').split('\n')[0])}</span>
+          <span class="text-gray-400 shrink-0">${fmtRelative(lastCommit.commit?.author?.date)}</span>
+        </div>` : '';
+    }
+
+    t.innerHTML = items.length === 0
+      ? '<p class="text-center text-gray-400 py-6 text-sm">Carpeta vacía</p>'
+      : items.map(it => `
+        <div class="gh-item flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 cursor-pointer" data-type="${it.type}" data-path="${esc(it.path)}" data-url="${esc(it.html_url)}">
+          ${icon(it.type === 'dir' ? 'folder' : 'description', 16)}
+          <span class="text-gray-700">${esc(it.name)}</span>
+        </div>`).join('');
+
+    t.querySelectorAll('.gh-item').forEach(row => {
+      row.addEventListener('click', () => {
+        if (row.dataset.type === 'dir') {
+          _ghPath = row.dataset.path;
+          loadGithubFiles();
+        } else {
+          window.open(row.dataset.url, '_blank', 'noopener');
+        }
+      });
+    });
+  } catch {
+    if (myPath !== _ghPath) return;
+    const t = document.getElementById('gh-file-table');
+    if (t) t.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">No se pudo cargar el contenido del repositorio</p>';
+  }
+}
+
+function renderGhBreadcrumb() {
+  const bc = document.getElementById('gh-breadcrumb');
+  if (!bc) return;
+  const parts = _ghPath ? _ghPath.split('/') : [];
+  let accum = '';
+  const crumbs = [`<button class="gh-crumb font-semibold text-primary-600 hover:underline" data-path="">${esc(_ghRepo)}</button>`];
+  parts.forEach(seg => {
+    accum = accum ? `${accum}/${seg}` : seg;
+    crumbs.push(`<span class="text-gray-300">/</span><button class="gh-crumb text-primary-600 hover:underline" data-path="${esc(accum)}">${esc(seg)}</button>`);
+  });
+  bc.innerHTML = crumbs.join(' ');
+  bc.querySelectorAll('.gh-crumb').forEach(btn => {
+    btn.addEventListener('click', () => { _ghPath = btn.dataset.path; loadGithubFiles(); });
+  });
 }
 
 function requirementsColumn(label, items, type) {
