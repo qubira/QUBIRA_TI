@@ -172,7 +172,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const token = localStorage.getItem('token');
   if (token) {
     try {
-      const central = await api.get('/auth/me');
+      const { user: central } = await api.get('/auth/me');
       const user = normalizeUser(central);
       localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
