@@ -92,8 +92,8 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
+      ${['overview','github','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen','GitHub',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -214,6 +214,21 @@ function renderTabContent() {
         renderTabContent();
       });
     });
+  }
+
+  if (_tab === 'github') {
+    c.innerHTML = `
+    <div class="card p-8 text-center">
+      ${p.github_url ? `
+        <span class="text-gray-300">${icon('code', 48)}</span>
+        <p class="text-sm text-gray-500 mt-3 mb-4 break-all">${esc(p.github_url)}</p>
+        <a href="${esc(p.github_url)}" target="_blank" rel="noopener" class="btn-primary inline-flex">${icon('open_in_new', 16)} Abrir repositorio</a>
+      ` : `
+        <span class="text-gray-300">${icon('code', 48)}</span>
+        <p class="text-gray-400 mt-3">Todavía no se registró un repositorio de GitHub</p>
+        <p class="text-xs text-gray-400 mt-1">Se agrega desde el botón "Editar"</p>
+      `}
+    </div>`;
   }
 
   if (_tab === 'requirements') {
