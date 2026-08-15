@@ -217,18 +217,17 @@ function renderTabContent() {
   }
 
   if (_tab === 'github') {
-    c.innerHTML = `
-    <div class="card p-8 text-center">
-      ${p.github_url ? `
-        <span class="text-gray-300">${icon('code', 48)}</span>
-        <p class="text-sm text-gray-500 mt-3 mb-4 break-all">${esc(p.github_url)}</p>
-        <a href="${esc(p.github_url)}" target="_blank" rel="noopener" class="btn-primary inline-flex">${icon('open_in_new', 16)} Abrir repositorio</a>
-      ` : `
+    if (!p.github_url) {
+      c.innerHTML = `
+      <div class="card p-8 text-center">
         <span class="text-gray-300">${icon('code', 48)}</span>
         <p class="text-gray-400 mt-3">Todavía no se registró un repositorio de GitHub</p>
         <p class="text-xs text-gray-400 mt-1">Se agrega desde el botón "Editar"</p>
-      `}
-    </div>`;
+      </div>`;
+    } else {
+      c.innerHTML = `<div class="card p-6" id="gh-preview">${spinner()}</div>`;
+      loadGithubPreview(p.github_url);
+    }
   }
 
   if (_tab === 'requirements') {
@@ -479,6 +478,61 @@ function historyTimeline(items) {
           <p class="text-xs text-gray-400 mt-1">${fmtDateTime(a.created_at)}${a.user_name ? ` · ${esc(a.user_name)}` : ''}</p>
         </div>
       </div>`).join('')}
+  </div>`;
+}
+
+function parseGithubUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)github\.com$/i.test(u.hostname)) return null;
+    const parts = u.pathname.replace(/^\/|\/$/g, '').split('/');
+    if (parts.length < 2) return null;
+    return { owner: parts[0], repo: parts[1].replace(/\.git$/i, '') };
+  } catch { return null; }
+}
+
+async function loadGithubPreview(url) {
+  const parsed = parseGithubUrl(url);
+  if (!parsed) {
+    const c = document.getElementById('gh-preview');
+    if (c) c.innerHTML = githubFallback(url);
+    return;
+  }
+  try {
+    const res = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`);
+    if (!res.ok) throw new Error('not ok');
+    const repo = await res.json();
+    const c = document.getElementById('gh-preview');
+    if (!c) return;
+    c.innerHTML = `
+    <div class="flex items-start gap-4">
+      <img src="${esc(repo.owner?.avatar_url || '')}" class="w-14 h-14 rounded-lg border border-gray-200 shrink-0">
+      <div class="flex-1 min-w-0">
+        <a href="${esc(repo.html_url)}" target="_blank" rel="noopener" class="font-semibold text-gray-900 hover:underline break-all">${esc(repo.full_name)}</a>
+        ${repo.description ? `<p class="text-sm text-gray-500 mt-1">${esc(repo.description)}</p>` : ''}
+        <div class="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500">
+          ${repo.language ? `<span class="flex items-center gap-1">${icon('code', 14)} ${esc(repo.language)}</span>` : ''}
+          <span class="flex items-center gap-1">${icon('star', 14)} ${repo.stargazers_count}</span>
+          <span class="flex items-center gap-1">${icon('call_split', 14)} ${repo.forks_count}</span>
+          ${repo.private ? `<span class="flex items-center gap-1 text-amber-600">${icon('lock', 14)} Privado</span>` : ''}
+          <span>Actualizado ${fmtRelative(repo.pushed_at)}</span>
+        </div>
+      </div>
+      <a href="${esc(repo.html_url)}" target="_blank" rel="noopener" class="btn-primary shrink-0">${icon('open_in_new', 16)} Abrir</a>
+    </div>`;
+  } catch {
+    const c = document.getElementById('gh-preview');
+    if (c) c.innerHTML = githubFallback(url);
+  }
+}
+
+function githubFallback(url) {
+  return `
+  <div class="text-center py-4">
+    <span class="text-gray-300">${icon('code', 40)}</span>
+    <p class="text-sm text-gray-500 mt-3 mb-1 break-all">${esc(url)}</p>
+    <p class="text-xs text-gray-400 mb-4">No se pudo cargar la vista previa (repositorio privado o no disponible)</p>
+    <a href="${esc(url)}" target="_blank" rel="noopener" class="btn-primary inline-flex">${icon('open_in_new', 16)} Abrir repositorio</a>
   </div>`;
 }
 
