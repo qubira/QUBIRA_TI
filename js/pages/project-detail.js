@@ -440,10 +440,6 @@ function openEditModal() {
         </select>
         <p class="text-xs text-gray-400 mt-1">Para finalizar el proyecto usá el botón "Marcar como finalizado".</p>
       </div>
-      <div>
-        <label class="label">Avance (%)</label>
-        <input class="input" type="number" name="progress" min="0" max="100" value="${p.progress}">
-      </div>
       <div class="col-span-2">
         <label class="label">Descripción</label>
         <textarea class="input resize-none" name="description" rows="3">${esc(p.description||'')}</textarea>
