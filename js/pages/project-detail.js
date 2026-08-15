@@ -2,11 +2,11 @@ import { api }                                        from '../api.js';
 import { navigate }                                   from '../state.js';
 import { toast, showModal, closeModal,
          projectStatusBadge, priorityBadge,
-         contractStatusBadge, fmtDate, fmtDateTime,
+         fmtDate, fmtDateTime,
          fmtRelative, fmtMoney, spinner, icon,
          isOverdue, overdueBadge, previewFile }       from '../utils.js';
 
-let _id, _project, _contracts, _documents, _messages, _emails, _activities, _requirements;
+let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
 
 const DOC_TYPE_LABEL = { dni:'DNI', ce:'CE', pasaporte:'Pasaporte' };
@@ -24,15 +24,13 @@ export function render({ id }) {
 function loadAll() {
   Promise.all([
     api.get(`/projects/${_id}`),
-    api.get('/contracts',     { project_id: _id }),
     api.get('/documents',     { project_id: _id }),
     api.get('/whatsapp',      { project_id: _id }),
     api.get('/emails',        { project_id: _id }),
     api.get('/activities',    { project_id: _id }),
     api.get('/requirements',  { project_id: _id }),
-  ]).then(([proj, contr, docs, msgs, mails, acts, reqs]) => {
+  ]).then(([proj, docs, msgs, mails, acts, reqs]) => {
     _project      = proj;
-    _contracts    = contr;
     _documents    = docs;
     _messages     = msgs;
     _emails       = mails;
@@ -92,8 +90,8 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','requirements','contracts','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen',`Requisitos (${_requirements.length})`,`Contratos (${_contracts.length})`,`Documentos (${_documents.length})`,
+      ${['overview','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -182,7 +180,6 @@ function renderTabContent() {
         <h3 class="font-semibold text-gray-900 mb-4">Resumen de Contenido</h3>
         <div class="space-y-3">
           ${contentSummaryBtn('checklist','text-amber-600','Requisitos',_requirements.length,'requirements')}
-          ${contentSummaryBtn('description','text-blue-600','Contratos y Proformas',_contracts.length,'contracts')}
           ${contentSummaryBtn('article','text-green-600','Documentos',_documents.length,'documents')}
           ${contentSummaryBtn('chat','text-emerald-600','Mensajes WhatsApp',_messages.length,'whatsapp')}
           ${contentSummaryBtn('email','text-purple-600','Correos Electrónicos',_emails.length,'emails')}
@@ -221,28 +218,6 @@ function renderTabContent() {
       ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
     </div>`;
     wireRequirementsTab();
-  }
-
-  if (_tab === 'contracts') {
-    c.innerHTML = `
-    <div class="space-y-3">
-      <p class="text-xs text-gray-400">Los contratos y proformas los sube y administra ADG — acá se ve su información, pero no el archivo.</p>
-      ${_contracts.length === 0
-        ? '<div class="card p-10 text-center text-gray-400">No hay contratos en este proyecto</div>'
-        : _contracts.map(ct => `
-          <div class="card p-4 flex items-center gap-4">
-            <div class="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
-              ${icon('description',20)}
-            </div>
-            <div class="flex-1 min-w-0">
-              <p class="font-medium text-gray-900 text-sm">${esc(ct.title)}</p>
-              <p class="text-xs text-gray-500">${esc(ct.type)} · ${ct.amount > 0 ? '$'+Number(ct.amount).toLocaleString() : 'Sin monto'}</p>
-            </div>
-            ${contractStatusBadge(ct.status)}
-            ${ct.file_path ? `<button class="preview-file-btn p-1.5 rounded-lg hover:bg-gray-100 text-gray-400" data-url="${esc(ct.file_path)}" data-name="${esc(ct.file_name)}">${icon('visibility',18)}</button>` : ''}
-          </div>`).join('')}
-    </div>`;
-    attachPreviewListeners(c);
   }
 
   if (_tab === 'documents') {

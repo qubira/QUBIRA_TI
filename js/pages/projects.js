@@ -127,7 +127,6 @@ function projectCard(p) {
     <div class="flex items-center justify-between text-xs text-gray-400">
       <span>${esc(p.responsible_name || 'Sin responsable')}</span>
       <div class="flex gap-3">
-        ${p.contracts_count > 0 ? `<span>📄 ${p.contracts_count}</span>` : ''}
         ${p.documents_count > 0 ? `<span>📁 ${p.documents_count}</span>` : ''}
         ${p.messages_count  > 0 ? `<span>💬 ${p.messages_count}</span>` : ''}
       </div>

@@ -5,7 +5,6 @@ import { render as renderLogin }       from './pages/login.js';
 import { render as renderDashboard }   from './pages/dashboard.js';
 import { render as renderProjects }    from './pages/projects.js';
 import { render as renderProjectDetail } from './pages/project-detail.js';
-import { render as renderContracts }   from './pages/contracts.js';
 import { render as renderDocuments }   from './pages/documents.js';
 import { render as renderWhatsApp }    from './pages/whatsapp.js';
 import { render as renderEmails }      from './pages/emails.js';
@@ -43,7 +42,6 @@ let sidebarCollapsed = localStorage.getItem('sb') === '1';
 const NAV = [
   { path: '/',          iconName: 'dashboard',   label: 'Dashboard',            exact: true },
   { path: '/projects',  iconName: 'folder',      label: 'Proyectos' },
-  { path: '/contracts', iconName: 'description', label: 'Contratos & Proformas' },
   { path: '/documents', iconName: 'article',     label: 'Documentos' },
   { path: '/whatsapp',  iconName: 'chat',        label: 'WhatsApp' },
   { path: '/emails',    iconName: 'email',       label: 'Correos' },
@@ -161,7 +159,6 @@ addRoute('/',                () => renderDashboard());
 addRoute('/login',           () => renderLogin());
 addRoute('/projects',        () => renderProjects());
 addRoute('/projects/:id',    p  => renderProjectDetail(p));
-addRoute('/contracts',       () => renderContracts());
 addRoute('/documents',       () => renderDocuments());
 addRoute('/whatsapp',        () => renderWhatsApp());
 addRoute('/emails',          () => renderEmails());
