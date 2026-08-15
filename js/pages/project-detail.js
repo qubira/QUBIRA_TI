@@ -82,13 +82,13 @@ function renderPage() {
   </div>
 
   <!-- Progress -->
-  <div class="card p-4 mb-4">
+  <div class="card p-4 mb-4" id="progress-card">
     <div class="flex justify-between text-sm mb-2">
       <span class="font-medium text-gray-700">Avance del proyecto</span>
-      <span class="font-bold text-primary-700">${p.progress}%</span>
+      <span class="font-bold text-primary-700" id="progress-pct">${p.progress}%</span>
     </div>
     <div class="h-3 bg-gray-100 rounded-full overflow-hidden">
-      <div class="h-full bg-primary-500 rounded-full" style="width:${p.progress}%"></div>
+      <div class="h-full bg-primary-500 rounded-full" id="progress-fill" style="width:${p.progress}%"></div>
     </div>
   </div>
 
@@ -781,6 +781,17 @@ function requirementRow(r) {
   </div>`;
 }
 
+async function refreshProjectProgress() {
+  try {
+    const proj = await api.get(`/projects/${_id}`);
+    _project.progress = proj.progress;
+    const pct = document.getElementById('progress-pct');
+    const fill = document.getElementById('progress-fill');
+    if (pct)  pct.textContent = `${proj.progress}%`;
+    if (fill) fill.style.width = `${proj.progress}%`;
+  } catch { /* no bloquea el flujo si falla el refresco */ }
+}
+
 function wireRequirementsTab() {
   document.querySelectorAll('.req-add-btn').forEach(btn => {
     const type = btn.dataset.type;
@@ -795,6 +806,7 @@ function wireRequirementsTab() {
         document.querySelectorAll('.tab-btn').forEach(b => {
           if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
         });
+        refreshProjectProgress();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     };
     btn.addEventListener('click', submit);
@@ -809,6 +821,7 @@ function wireRequirementsTab() {
         await api.put(`/requirements/${inp.dataset.id}`, { progress: value });
         const r = _requirements.find(x => x.id === inp.dataset.id);
         if (r) r.progress = value;
+        refreshProjectProgress();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
   });
@@ -822,6 +835,7 @@ function wireRequirementsTab() {
         document.querySelectorAll('.tab-btn').forEach(b => {
           if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
         });
+        refreshProjectProgress();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
   });
