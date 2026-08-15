@@ -1,8 +1,9 @@
 import { api }      from '../api.js';
-import { getUser }  from '../state.js';
+import { getUser, pageToken }  from '../state.js';
 import { fmtDateTime, fmtMoney, projectStatusBadge, spinner, todayStr, icon, isOverdue, overdueBadge } from '../utils.js';
 
 export function render() {
+  const myToken = pageToken;
   const main = document.getElementById('main');
   main.innerHTML = spinner();
 
@@ -11,6 +12,7 @@ export function render() {
     api.get('/projects', { limit: 6 }),
     api.get('/activities', { limit: 15 }),
   ]).then(([stats, allProjects, activities]) => {
+    if (myToken !== pageToken) return;
     const projects = allProjects.slice(0, 6);
     const user = getUser();
     main.innerHTML = `
@@ -87,6 +89,7 @@ export function render() {
       </div>
     </div>`;
   }).catch(() => {
+    if (myToken !== pageToken) return;
     main.innerHTML = '<p class="text-center text-gray-400 py-16">Error al cargar el dashboard</p>';
   });
 }

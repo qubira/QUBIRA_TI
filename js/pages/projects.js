@@ -18,7 +18,8 @@ function load() {
     _projects = data;
     renderPage();
   }).catch(() => {
-    document.getElementById('projects-page').innerHTML = '<p class="text-center text-gray-400 py-16">Error al cargar proyectos</p>';
+    const c = document.getElementById('projects-page');
+    if (c) c.innerHTML = '<p class="text-center text-gray-400 py-16">Error al cargar proyectos</p>';
   });
 }
 

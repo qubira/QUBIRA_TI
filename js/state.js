@@ -28,3 +28,12 @@ export function getUser() {
 export function navigate(path) {
   location.hash = '#' + path;
 }
+
+// Evita que una carga lenta (que resuelve DESPUÉS de que el usuario ya
+// navegó a otra pantalla) pise el contenido de la pantalla nueva. Cada
+// render() lee `pageToken` al empezar y lo vuelve a comparar cuando su
+// fetch termina; si ya cambió, no toca el DOM.
+export let pageToken = 0;
+export function bumpPageToken() {
+  return ++pageToken;
+}

@@ -1,5 +1,5 @@
 import { api }                        from './api.js';
-import { getUser, setUser, navigate, normalizeUser } from './state.js';
+import { getUser, setUser, navigate, normalizeUser, bumpPageToken } from './state.js';
 import { icon }                        from './utils.js';
 import { render as renderLogin }       from './pages/login.js';
 import { render as renderDashboard }   from './pages/dashboard.js';
@@ -147,6 +147,7 @@ function handleRoute() {
     main.className = 'flex-1';
   }
 
+  bumpPageToken();
   const matched = matchRoute(hash);
   if (matched) {
     matched.handler(matched.params);
