@@ -31,7 +31,7 @@ function renderPage() {
 
   c.innerHTML = `
   ${pageHeader('Contratos & Proformas',
-    `${_contracts.length} documento${_contracts.length!==1?'s':''} · los sube y administra ADG`)}
+    `${_contracts.length} documento${_contracts.length!==1?'s':''}`)}
 
   <div class="flex flex-wrap gap-3 mb-5">
     <select id="f-project" class="input w-auto"><option value="">Todos los proyectos</option>${projOpts}</select>
