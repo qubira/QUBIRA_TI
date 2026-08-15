@@ -8,6 +8,9 @@ import { toast, showModal, closeModal,
 
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
+let _scrumRoles = [], _scrumUsers = [];
+
+const SCRUM_ROLES = [['product_owner','Product Owner'],['scrum_master','Scrum Master'],['developer','Equipo de Desarrollo']];
 
 const DOC_TYPE_LABEL = { dni:'DNI', ce:'CE', pasaporte:'Pasaporte', ruc:'RUC' };
 const PROJECT_TYPE_LABEL = { web:'Web', mobile:'Aplicativo Móvil', desktop:'Aplicativo de Escritorio' };
@@ -92,8 +95,8 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','github','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen','GitHub',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
+      ${['overview','github','scrum','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen','GitHub','Scrum',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -238,6 +241,11 @@ function renderTabContent() {
       <div id="gh-browser"></div>`;
       loadGithubPreview(p.github_url);
     }
+  }
+
+  if (_tab === 'scrum') {
+    c.innerHTML = `<div id="scrum-container">${spinner()}</div>`;
+    loadScrum();
   }
 
   if (_tab === 'requirements') {
@@ -489,6 +497,91 @@ function historyTimeline(items) {
         </div>
       </div>`).join('')}
   </div>`;
+}
+
+async function loadScrum() {
+  try {
+    const [roles, users] = await Promise.all([
+      api.get('/scrum-roles', { project_id: _id }),
+      _scrumUsers.length ? Promise.resolve(_scrumUsers) : api.get('/users'),
+    ]);
+    _scrumRoles = roles;
+    _scrumUsers = users;
+    renderScrum();
+  } catch {
+    const c = document.getElementById('scrum-container');
+    if (c) c.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">Error al cargar los roles Scrum</p>';
+  }
+}
+
+function renderScrum() {
+  const c = document.getElementById('scrum-container');
+  if (!c) return;
+  c.innerHTML = `
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+    ${SCRUM_ROLES.map(([key, label]) => scrumRoleColumn(key, label)).join('')}
+  </div>`;
+  wireScrum();
+}
+
+function scrumRoleHint(key) {
+  if (key === 'product_owner') return 'Define qué se construye y prioriza el backlog';
+  if (key === 'scrum_master')  return 'Facilita el proceso y quita obstáculos al equipo';
+  return 'Construye el incremento del producto';
+}
+
+function scrumRoleColumn(key, label) {
+  const items = _scrumRoles.filter(r => r.role === key);
+  const userOpts = _scrumUsers.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  return `
+  <div class="card p-5">
+    <h3 class="font-semibold text-gray-900 mb-1">${label}</h3>
+    <p class="text-xs text-gray-400 mb-3">${scrumRoleHint(key)}</p>
+    <div class="space-y-2 mb-3">
+      ${items.length === 0
+        ? '<p class="text-xs text-gray-400 text-center py-2">Sin asignar</p>'
+        : items.map(it => `
+          <div class="flex items-center gap-2 p-2 rounded-lg border border-gray-100 bg-white">
+            <div class="w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
+              <span class="text-primary-700 font-semibold text-[10px]">${esc((it.user_name || '?')[0]?.toUpperCase() || '?')}</span>
+            </div>
+            <p class="flex-1 text-sm text-gray-700 truncate">${esc(it.user_name || 'Usuario')}</p>
+            <button type="button" class="scrum-del text-gray-300 hover:text-red-500 shrink-0" data-id="${it.id}">${icon('delete',14)}</button>
+          </div>`).join('')}
+    </div>
+    <div class="flex gap-2">
+      <select class="input text-xs flex-1" id="scrum-select-${key}">
+        <option value="">Elegir trabajador...</option>
+        ${userOpts}
+      </select>
+      <button type="button" class="btn-secondary text-xs px-3 scrum-add" data-role="${key}">${icon('add',16)}</button>
+    </div>
+  </div>`;
+}
+
+function wireScrum() {
+  document.querySelectorAll('.scrum-add').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const role = btn.dataset.role;
+      const select = document.getElementById(`scrum-select-${role}`);
+      const user_id = select.value;
+      if (!user_id) return;
+      try {
+        await api.post('/scrum-roles', { project_id: _id, role, user_id });
+        _scrumRoles = await api.get('/scrum-roles', { project_id: _id });
+        renderScrum();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
+  document.querySelectorAll('.scrum-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.delete(`/scrum-roles/${btn.dataset.id}`);
+        _scrumRoles = _scrumRoles.filter(r => String(r.id) !== btn.dataset.id);
+        renderScrum();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
 }
 
 async function loadFamilyProjects(family) {
