@@ -8,8 +8,8 @@ export function render() {
   <div class="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 flex items-center justify-center p-4">
     <div class="w-full max-w-md">
       <div class="text-center mb-8">
-        <div class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-          <span class="text-primary-700 font-black text-2xl">Q</span>
+        <div class="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg overflow-hidden">
+          <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain p-1.5">
         </div>
         <h1 class="text-3xl font-bold text-white">Qubira CRM</h1>
         <p class="text-primary-200 mt-1">Sistema de Gestión de Proyectos</p>

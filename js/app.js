@@ -75,8 +75,8 @@ function renderSidebar(currentHash) {
     <!-- Logo -->
     <div class="flex items-center justify-between px-4 py-4 border-b border-gray-200 min-h-[64px]">
       <div class="flex items-center gap-2 ${collapsed ? 'mx-auto' : ''}">
-        <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-          <span class="text-white font-bold text-sm">Q</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+          <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain">
         </div>
         ${!collapsed ? '<span class="font-bold text-gray-900 text-lg">Qubira</span>' : ''}
       </div>
