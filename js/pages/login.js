@@ -1,6 +1,6 @@
 import { api }      from '../api.js';
 import { toast }    from '../utils.js';
-import { navigate } from '../state.js';
+import { navigate, normalizeUser } from '../state.js';
 
 export function render() {
   const main = document.getElementById('main');
@@ -39,7 +39,7 @@ export function render() {
           </button>
         </form>
         <p class="text-center text-xs text-gray-400 mt-6">
-          Credenciales iniciales: admin / Admin2024!
+          Usa tu cuenta de acceso de Qubira
         </p>
       </div>
     </div>
@@ -69,7 +69,7 @@ export function render() {
       const password = document.getElementById('password').value;
       const data = await api.post('/auth/login', { username, password });
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user',  JSON.stringify(data.user));
+      localStorage.setItem('user',  JSON.stringify(normalizeUser(data.user)));
       navigate('/');
     } catch (err) {
       toast(err.message || 'Error al iniciar sesión', 'error');

@@ -1,4 +1,15 @@
-const BASE = '/api';
+// Conectado a la API centralizada de Qubira (misma base que usan RRHH y
+// Soporte). El login y "quién soy" pegan contra /api/auth; todo lo demás
+// (proyectos, contratos, documentos, etc.) vive en /api/ti dentro de esa
+// misma API, en la base de Neon compartida.
+const CENTRAL_API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:4000'
+  : 'https://api-qubira.onrender.com';
+
+function resolveUrl(path) {
+  if (path.startsWith('/auth')) return CENTRAL_API + '/api' + path;
+  return CENTRAL_API + '/api/ti' + path;
+}
 
 async function request(method, path, body) {
   const token = localStorage.getItem('token');
@@ -10,7 +21,7 @@ async function request(method, path, body) {
   const opts = { method, headers };
   if (body) opts.body = isFormData ? body : JSON.stringify(body);
 
-  const res = await fetch(BASE + path, opts);
+  const res = await fetch(resolveUrl(path), opts);
 
   if (res.status === 401) {
     localStorage.removeItem('token');

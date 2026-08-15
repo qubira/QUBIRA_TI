@@ -1,5 +1,5 @@
 import { api }                        from './api.js';
-import { getUser, setUser, navigate }  from './state.js';
+import { getUser, setUser, navigate, normalizeUser } from './state.js';
 import { icon }                        from './utils.js';
 import { render as renderLogin }       from './pages/login.js';
 import { render as renderDashboard }   from './pages/dashboard.js';
@@ -9,7 +9,6 @@ import { render as renderContracts }   from './pages/contracts.js';
 import { render as renderDocuments }   from './pages/documents.js';
 import { render as renderWhatsApp }    from './pages/whatsapp.js';
 import { render as renderEmails }      from './pages/emails.js';
-import { render as renderUsers }       from './pages/users.js';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
@@ -90,12 +89,6 @@ function renderSidebar(currentHash) {
     <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
       ${!collapsed ? '<p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">Principal</p>' : ''}
       ${NAV.map(n => navLink(n, currentHash)).join('')}
-      ${user.role === 'admin' ? `
-        ${!collapsed ? '<p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mt-4 mb-2">Administración</p>' : ''}
-        <a href="#/users" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive('/users', currentHash) ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}" title="${collapsed ? 'Usuarios' : ''}">
-          ${icon('people', 20)}
-          ${!collapsed ? '<span>Usuarios</span>' : ''}
-        </a>` : ''}
     </nav>
 
     <!-- User -->
@@ -171,7 +164,6 @@ addRoute('/contracts',       () => renderContracts());
 addRoute('/documents',       () => renderDocuments());
 addRoute('/whatsapp',        () => renderWhatsApp());
 addRoute('/emails',          () => renderEmails());
-addRoute('/users',           () => renderUsers());
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('hashchange', handleRoute);
@@ -180,7 +172,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const token = localStorage.getItem('token');
   if (token) {
     try {
-      const user = await api.get('/auth/me');
+      const central = await api.get('/auth/me');
+      const user = normalizeUser(central);
       localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
     } catch {
