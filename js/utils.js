@@ -57,11 +57,12 @@ export function todayStr() {
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 const PS = {
-  pending:   ['Pendiente',  'bg-yellow-100 text-yellow-800'],
-  active:    ['Activo',     'bg-green-100 text-green-800'],
-  completed: ['Completado', 'bg-blue-100 text-blue-800'],
-  cancelled: ['Cancelado',  'bg-red-100 text-red-800'],
-  paused:    ['Pausado',    'bg-gray-100 text-gray-700'],
+  pending:        ['Pendiente',        'bg-yellow-100 text-yellow-800'],
+  active:         ['Activo',           'bg-green-100 text-green-800'],
+  finished_by_ti: ['Por revisar',      'bg-purple-100 text-purple-800'],
+  completed:      ['Completado',       'bg-blue-100 text-blue-800'],
+  cancelled:      ['Cancelado',        'bg-red-100 text-red-800'],
+  paused:         ['Pausado',          'bg-gray-100 text-gray-700'],
 };
 const CS = {
   draft:    ['Borrador',  'bg-gray-100 text-gray-700'],

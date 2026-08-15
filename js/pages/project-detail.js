@@ -66,7 +66,16 @@ function renderPage() {
       <p class="text-gray-500 mt-1">${esc(p.code)} · ${esc(p.client)}</p>
     </div>
     <button id="export-pdf-btn" class="btn-secondary">${icon('picture_as_pdf', 16)} Exportar PDF</button>
-    <button id="edit-btn" class="btn-secondary">${icon('edit', 16)} Editar</button>
+    ${p.status === 'pending' ? `
+      <button id="claim-btn" class="btn-primary">${icon('add_task', 16)} Reclamar para TI</button>
+    ` : p.status === 'completed' ? `
+      <span class="text-sm text-gray-400 flex items-center gap-1.5">${icon('lock', 16)} Completado — ADG aprobó el cierre</span>
+    ` : `
+      <button id="edit-btn" class="btn-secondary">${icon('edit', 16)} Editar</button>
+      ${p.status === 'finished_by_ti'
+        ? `<span class="text-sm text-purple-600 flex items-center gap-1.5">${icon('hourglass_empty', 16)} Esperando revisión de ADG</span>`
+        : `<button id="finish-btn" class="btn-primary">${icon('task_alt', 16)} Marcar como finalizado</button>`}
+    `}
   </div>
 
   <!-- Progress -->
@@ -96,8 +105,23 @@ function renderPage() {
   <div id="tab-content"></div>`;
 
   document.getElementById('back-btn').addEventListener('click', () => navigate('/projects'));
-  document.getElementById('edit-btn').addEventListener('click', () => openEditModal());
   document.getElementById('export-pdf-btn').addEventListener('click', exportToPDF);
+  document.getElementById('edit-btn')?.addEventListener('click', () => openEditModal());
+  document.getElementById('claim-btn')?.addEventListener('click', async () => {
+    try {
+      await api.post(`/projects/${_id}/claim`);
+      toast('Proyecto anexado a tu área');
+      loadAll();
+    } catch (err) { toast(err.message || 'Error al reclamar', 'error'); }
+  });
+  document.getElementById('finish-btn')?.addEventListener('click', async () => {
+    if (!confirm('¿Marcar este proyecto como finalizado? ADG lo va a revisar antes de darlo por completado.')) return;
+    try {
+      await api.put(`/projects/${_id}`, { status: 'finished_by_ti' });
+      toast('Proyecto marcado como finalizado');
+      loadAll();
+    } catch (err) { toast(err.message || 'Error', 'error'); }
+  });
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -202,7 +226,7 @@ function renderTabContent() {
   if (_tab === 'contracts') {
     c.innerHTML = `
     <div class="space-y-3">
-      <div class="flex justify-end"><a href="#/contracts" class="btn-primary text-sm">${icon('description',16)} Gestionar Contratos</a></div>
+      <p class="text-xs text-gray-400">Los contratos y proformas los sube y administra ADG — acá se ve su información, pero no el archivo.</p>
       ${_contracts.length === 0
         ? '<div class="card p-10 text-center text-gray-400">No hay contratos en este proyecto</div>'
         : _contracts.map(ct => `
@@ -397,9 +421,10 @@ function openEditModal() {
       <div>
         <label class="label">Estado</label>
         <select class="input" name="status">
-          ${[['pending','Pendiente'],['active','Activo'],['paused','Pausado'],['completed','Completado'],['cancelled','Cancelado']]
+          ${[['active','Activo'],['paused','Pausado']]
             .map(([v,l]) => `<option value="${v}" ${p.status===v?'selected':''}>${l}</option>`).join('')}
         </select>
+        <p class="text-xs text-gray-400 mt-1">Para finalizar el proyecto usá el botón "Marcar como finalizado".</p>
       </div>
       <div>
         <label class="label">Avance (%)</label>

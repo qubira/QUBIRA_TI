@@ -1,5 +1,5 @@
 import { api }                                         from '../api.js';
-import { toast, showModal, closeModal, pageHeader,
+import { pageHeader,
          contractStatusBadge, fmtDate, spinner, icon,
          previewFile }                                 from '../utils.js';
 
@@ -31,8 +31,7 @@ function renderPage() {
 
   c.innerHTML = `
   ${pageHeader('Contratos & Proformas',
-    `${_contracts.length} documento${_contracts.length!==1?'s':''}`,
-    `<button id="new-btn" class="btn-primary">${icon('add',20)} Nuevo Documento</button>`)}
+    `${_contracts.length} documento${_contracts.length!==1?'s':''} · los sube y administra ADG`)}
 
   <div class="flex flex-wrap gap-3 mb-5">
     <select id="f-project" class="input w-auto"><option value="">Todos los proyectos</option>${projOpts}</select>
@@ -58,12 +57,11 @@ function renderPage() {
             <th class="text-center px-4 py-3 font-semibold text-gray-600">Estado</th>
             <th class="text-left px-4 py-3 font-semibold text-gray-600">Fecha</th>
             <th class="text-center px-4 py-3 font-semibold text-gray-600">Archivo</th>
-            <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           ${_contracts.length === 0 ? `
-            <tr><td colspan="8" class="text-center py-12 text-gray-400">
+            <tr><td colspan="7" class="text-center py-12 text-gray-400">
               <span class="material-icons text-gray-300" style="font-size:40px">description</span>
               <p class="mt-2">No hay documentos todavía</p>
             </td></tr>` : _contracts.map(contractRow).join('')}
@@ -72,21 +70,9 @@ function renderPage() {
     </div>
   </div>`;
 
-  document.getElementById('new-btn').addEventListener('click', () => openModal());
   document.getElementById('f-project').addEventListener('change', e => { _filter.project_id = e.target.value; load(); });
   document.getElementById('f-type').addEventListener('change',    e => { _filter.type       = e.target.value; load(); });
   document.getElementById('f-status').addEventListener('change',  e => { _filter.status     = e.target.value; load(); });
-
-  document.querySelectorAll('.edit-c').forEach(btn => btn.addEventListener('click', () => {
-    const ct = _contracts.find(x => String(x.id) === btn.dataset.id);
-    if (ct) openModal(ct);
-  }));
-  document.querySelectorAll('.del-c').forEach(btn => btn.addEventListener('click', async () => {
-    const ct = _contracts.find(x => String(x.id) === btn.dataset.id);
-    if (!ct || !confirm(`¿Eliminar "${ct.title}"?`)) return;
-    try { await api.delete(`/contracts/${ct.id}`); toast('Eliminado'); load(); }
-    catch { toast('Error', 'error'); }
-  }));
 
   document.querySelectorAll('.preview-c-btn').forEach(btn => btn.addEventListener('click', () => {
     previewFile(btn.dataset.url, btn.dataset.name);
@@ -114,89 +100,7 @@ function contractRow(c) {
         ? `<button class="preview-c-btn p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 inline-flex" data-url="${esc(c.file_path)}" data-name="${esc(c.file_name)}" title="${esc(c.file_name)}">${icon('visibility',18)}</button>`
         : '<span class="text-gray-300">—</span>'}
     </td>
-    <td class="px-4 py-3">
-      <div class="flex gap-1 justify-end">
-        <button class="edit-c p-1.5 rounded hover:bg-gray-100 text-gray-400" data-id="${c.id}">${icon('edit',16)}</button>
-        <button class="del-c p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" data-id="${c.id}">${icon('delete',16)}</button>
-      </div>
-    </td>
   </tr>`;
-}
-
-function openModal(editing = null) {
-  const f = editing || { project_id:'', type:'contract', title:'', amount:'', currency:'USD', status:'draft', notes:'', signed_date:'' };
-  const projOpts = _projects.map(p => `<option value="${p.id}" ${String(f.project_id)===String(p.id)?'selected':''}>${esc(p.name)} (${esc(p.code)})</option>`).join('');
-
-  showModal(editing ? 'Editar Documento' : 'Nuevo Contrato / Proforma', `
-  <form id="contract-form" class="space-y-4">
-    <div class="grid grid-cols-2 gap-4">
-      <div class="col-span-2">
-        <label class="label">Proyecto</label>
-        <select class="input" name="project_id"><option value="">— Sin proyecto —</option>${projOpts}</select>
-      </div>
-      <div>
-        <label class="label">Tipo *</label>
-        <select class="input" name="type" required>
-          ${Object.entries(TYPE_LABEL).map(([k,v]) => `<option value="${k}" ${f.type===k?'selected':''}>${v}</option>`).join('')}
-        </select>
-      </div>
-      <div>
-        <label class="label">Estado</label>
-        <select class="input" name="status">
-          ${STATUS_OPTS.map(([k,v]) => `<option value="${k}" ${f.status===k?'selected':''}>${v}</option>`).join('')}
-        </select>
-      </div>
-      <div class="col-span-2">
-        <label class="label">Título *</label>
-        <input class="input" name="title" required value="${esc(f.title)}" placeholder="Ej: Contrato de Instalación Eléctrica">
-      </div>
-      <div>
-        <label class="label">Monto</label>
-        <input class="input" type="number" name="amount" min="0" step="0.01" value="${f.amount||''}" placeholder="0.00">
-      </div>
-      <div>
-        <label class="label">Moneda</label>
-        <select class="input" name="currency">
-          <option value="USD" ${f.currency==='USD'?'selected':''}>USD</option>
-          <option value="EUR" ${f.currency==='EUR'?'selected':''}>EUR</option>
-        </select>
-      </div>
-      <div>
-        <label class="label">Fecha de Firma</label>
-        <input class="input" type="date" name="signed_date" value="${f.signed_date||''}">
-      </div>
-      <div>
-        <label class="label">Archivo (PDF, DOC, etc.)</label>
-        <input type="file" class="input text-sm py-1.5" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png">
-      </div>
-      <div class="col-span-2">
-        <label class="label">Notas</label>
-        <textarea class="input resize-none" name="notes" rows="3" placeholder="Observaciones...">${esc(f.notes||'')}</textarea>
-      </div>
-    </div>
-    <div class="flex gap-3 pt-2">
-      <button type="submit" class="btn-primary flex-1 justify-center">${editing ? 'Guardar' : 'Crear'}</button>
-      <button type="button" id="c-cancel" class="btn-secondary">Cancelar</button>
-    </div>
-  </form>`, 'lg');
-
-  document.getElementById('c-cancel').addEventListener('click', closeModal);
-  document.getElementById('contract-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    // Remove empty file input so server doesn't error
-    if (!fd.get('file')?.name) fd.delete('file');
-    try {
-      if (editing) {
-        await api.put(`/contracts/${editing.id}`, fd);
-        toast('Actualizado');
-      } else {
-        await api.post('/contracts', fd);
-        toast('Contrato/Proforma creado');
-      }
-      closeModal(); load();
-    } catch (err) { toast(err.message || 'Error', 'error'); }
-  });
 }
 
 function esc(s) {
