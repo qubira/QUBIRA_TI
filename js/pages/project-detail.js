@@ -592,15 +592,15 @@ async function loadFamilyProjects(family) {
     if (!c) return;
     c.innerHTML = siblings.length === 0
       ? '<p class="text-center text-gray-400 py-2 text-sm">No hay otros proyectos en esta familia todavía</p>'
-      : `<div class="space-y-2">
+      : `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${siblings.map(s => `
-            <a href="#/projects/${s.id}" class="flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors">
-              <div class="w-8 h-8 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
-                ${s.company_logo ? `<img src="${esc(s.company_logo)}" class="w-full h-full object-contain">` : icon('apartment', 16)}
+            <a href="#/projects/${s.id}" class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50/40 hover:shadow-sm transition-all">
+              <div class="w-11 h-11 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                ${s.company_logo ? `<img src="${esc(s.company_logo)}" class="w-full h-full object-contain">` : icon('apartment', 18)}
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900 truncate">${esc(s.name)}</p>
-                <p class="text-xs text-gray-500">${PROJECT_TYPE_LABEL[s.project_type] || 'Sin tipo'} · ${esc(s.code)}</p>
+                <p class="text-sm font-semibold text-gray-900 truncate">${esc(s.name)}</p>
+                <p class="text-xs text-gray-500 truncate">${PROJECT_TYPE_LABEL[s.project_type] || 'Sin tipo'} · ${esc(s.code)}</p>
               </div>
               ${projectStatusBadge(s.status)}
             </a>`).join('')}
