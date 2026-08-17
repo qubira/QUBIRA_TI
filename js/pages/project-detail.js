@@ -1,5 +1,5 @@
 import { api }                                        from '../api.js';
-import { navigate }                                   from '../state.js';
+import { navigate, getUser }                          from '../state.js';
 import { toast, showModal, closeModal,
          projectStatusBadge, priorityBadge,
          fmtDate, fmtDateTime,
@@ -42,7 +42,10 @@ function loadAll() {
     _activities   = acts;
     _requirements = reqs;
     renderPage();
-  }).catch(() => { navigate('/projects'); });
+  }).catch(err => {
+    toast(err.message || 'No se pudo cargar el proyecto', 'error');
+    navigate('/projects');
+  });
 }
 
 function renderPage() {
@@ -253,7 +256,7 @@ function renderTabContent() {
     const functional    = _requirements.filter(r => r.type !== 'non_functional');
     const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
     c.innerHTML = `
-    <p class="text-xs text-gray-400 mb-3">Los requisitos los agrega y edita ADG — TI solo actualiza el % de avance.</p>
+    <p class="text-xs text-gray-400 mb-3">Los requisitos los agrega y edita ADG — solo el responsable del proyecto puede actualizar el % de avance.</p>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       ${requirementsColumn('Funcionales', functional, 'functional')}
       ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
@@ -769,11 +772,21 @@ function requirementsColumn(label, items, type) {
   </div>`;
 }
 
+function isResponsible() {
+  const user = getUser();
+  if (!user || !_project) return false;
+  if (user.nivel_acceso >= 100) return true;
+  return String(user.id) === String(_project.responsible_id);
+}
+
 function requirementRow(r) {
+  const canEditProgress = isResponsible();
   return `
   <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
     <div class="flex-1 text-sm text-gray-700 break-words rte-display">${sanitizeRichText(r.description || '')}</div>
-    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">
+    ${canEditProgress
+      ? `<input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">`
+      : `<span class="text-xs font-medium text-gray-500 shrink-0 mt-0.5" title="Solo el responsable puede editar el avance">${r.progress ?? 0}</span>`}
     <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
   </div>`;
 }
