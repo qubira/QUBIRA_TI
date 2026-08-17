@@ -252,11 +252,11 @@ function renderTabContent() {
     const functional    = _requirements.filter(r => r.type !== 'non_functional');
     const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
     c.innerHTML = `
-    <p class="text-xs text-gray-400 mb-3">Los requisitos los agrega y edita ADG — acá se ve su avance.</p>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       ${requirementsColumn('Funcionales', functional, 'functional')}
       ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
     </div>`;
+    wireRequirementsTab();
   }
 
   if (_tab === 'documents') {
@@ -759,10 +759,14 @@ function requirementsColumn(label, items, type) {
   return `
   <div class="card p-5">
     <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
-    <div class="space-y-2 max-h-96 overflow-y-auto pr-1" id="req-col-${type}">
+    <div class="space-y-2 max-h-96 overflow-y-auto pr-1 mb-3" id="req-col-${type}">
       ${items.length === 0
         ? '<p class="text-xs text-gray-400 py-2 text-center">Sin requerimientos registrados</p>'
         : items.map(requirementRow).join('')}
+    </div>
+    <div class="flex gap-2">
+      <input id="req-new-${type}" class="input text-sm flex-1" placeholder="Nuevo requerimiento...">
+      <button type="button" class="btn-secondary req-add-btn" data-type="${type}">${icon('add',18)}</button>
     </div>
   </div>`;
 }
@@ -771,8 +775,70 @@ function requirementRow(r) {
   return `
   <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
     <p class="flex-1 text-sm text-gray-700 whitespace-pre-wrap break-words">${esc(r.description)}</p>
-    <span class="text-xs font-medium text-gray-500 shrink-0 mt-0.5">${r.progress ?? 0}%</span>
+    <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">
+    <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
+    <button class="req-del-btn text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',16)}</button>
   </div>`;
+}
+
+async function refreshProjectProgress() {
+  try {
+    const proj = await api.get(`/projects/${_id}`);
+    _project.progress = proj.progress;
+    const pct = document.getElementById('progress-pct');
+    const fill = document.getElementById('progress-fill');
+    if (pct)  pct.textContent = `${proj.progress}%`;
+    if (fill) fill.style.width = `${proj.progress}%`;
+  } catch { /* no bloquea el flujo si falla el refresco */ }
+}
+
+function wireRequirementsTab() {
+  document.querySelectorAll('.req-add-btn').forEach(btn => {
+    const type = btn.dataset.type;
+    const input = document.getElementById(`req-new-${type}`);
+    const submit = async () => {
+      const description = input.value.trim();
+      if (!description) return;
+      try {
+        await api.post('/requirements', { project_id: _id, type, description });
+        _requirements = await api.get('/requirements', { project_id: _id });
+        renderTabContent();
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
+        });
+        refreshProjectProgress();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    };
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  });
+
+  document.querySelectorAll('.req-progress-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const value = Math.max(0, Math.min(100, parseInt(inp.value) || 0));
+      inp.value = value;
+      try {
+        await api.put(`/requirements/${inp.dataset.id}`, { progress: value });
+        const r = _requirements.find(x => x.id === inp.dataset.id);
+        if (r) r.progress = value;
+        refreshProjectProgress();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
+
+  document.querySelectorAll('.req-del-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.delete(`/requirements/${btn.dataset.id}`);
+        _requirements = _requirements.filter(x => x.id !== btn.dataset.id);
+        renderTabContent();
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
+        });
+        refreshProjectProgress();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
 }
 
 function contentSummaryBtn(iconName, colorCls, label, count, tabKey) {
