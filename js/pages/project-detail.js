@@ -4,7 +4,8 @@ import { toast, showModal, closeModal,
          projectStatusBadge, priorityBadge,
          fmtDate, fmtDateTime,
          fmtRelative, fmtMoney, spinner, icon,
-         isOverdue, overdueBadge, previewFile }       from '../utils.js';
+         isOverdue, overdueBadge, previewFile,
+         sanitizeRichText, richTextToolbar, wireRichEditor } from '../utils.js';
 
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
@@ -756,6 +757,7 @@ function renderGhBreadcrumb() {
 }
 
 function requirementsColumn(label, items, type) {
+  const inputId = `req-new-${type}`;
   return `
   <div class="card p-5">
     <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
@@ -764,9 +766,12 @@ function requirementsColumn(label, items, type) {
         ? '<p class="text-xs text-gray-400 py-2 text-center">Sin requerimientos registrados</p>'
         : items.map(requirementRow).join('')}
     </div>
-    <div class="flex gap-2">
-      <input id="req-new-${type}" class="input text-sm flex-1" placeholder="Nuevo requerimiento...">
-      <button type="button" class="btn-secondary req-add-btn" data-type="${type}">${icon('add',18)}</button>
+    <div>
+      ${richTextToolbar(inputId)}
+      <div id="${inputId}" class="rte-input" contenteditable="true" data-placeholder="Nuevo requerimiento..."></div>
+    </div>
+    <div class="flex justify-end mt-2">
+      <button type="button" class="btn-secondary text-xs req-add-btn" data-type="${type}">${icon('add',16)} Agregar</button>
     </div>
   </div>`;
 }
@@ -774,7 +779,7 @@ function requirementsColumn(label, items, type) {
 function requirementRow(r) {
   return `
   <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
-    <p class="flex-1 text-sm text-gray-700 whitespace-pre-wrap break-words">${esc(r.description)}</p>
+    <div class="flex-1 text-sm text-gray-700 break-words rte-display">${sanitizeRichText(r.description || '')}</div>
     <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">
     <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
     <button class="req-del-btn text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',16)}</button>
@@ -795,10 +800,12 @@ async function refreshProjectProgress() {
 function wireRequirementsTab() {
   document.querySelectorAll('.req-add-btn').forEach(btn => {
     const type = btn.dataset.type;
-    const input = document.getElementById(`req-new-${type}`);
+    const inputId = `req-new-${type}`;
+    wireRichEditor(inputId);
+    const input = document.getElementById(inputId);
     const submit = async () => {
-      const description = input.value.trim();
-      if (!description) return;
+      const description = sanitizeRichText(input.innerHTML);
+      if (!input.textContent.trim()) return;
       try {
         await api.post('/requirements', { project_id: _id, type, description });
         _requirements = await api.get('/requirements', { project_id: _id });
@@ -810,7 +817,6 @@ function wireRequirementsTab() {
       } catch (err) { toast(err.message || 'Error', 'error'); }
     };
     btn.addEventListener('click', submit);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
   });
 
   document.querySelectorAll('.req-progress-input').forEach(inp => {

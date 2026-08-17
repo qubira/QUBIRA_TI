@@ -58,6 +58,48 @@
 }
 .input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1); }
 
+.rte-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-top: none;
+  border-radius: 0 0 0.5rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  outline: none;
+  background: white;
+  font-family: inherit;
+  color: #111827;
+  min-height: 2.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.rte-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1); }
+.rte-input:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+}
+.rte-toolbar {
+  display: flex; gap: 2px;
+  border: 1px solid #d1d5db;
+  border-bottom: none;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: #f9fafb;
+  padding: 3px;
+}
+.rte-btn {
+  width: 24px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #4b5563;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+.rte-btn:hover { background: #e5e7eb; }
+.rte-display { white-space: pre-wrap; }
+
 .label {
   display: block;
   font-size: 0.875rem;

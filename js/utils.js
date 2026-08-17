@@ -14,6 +14,81 @@ export function icon(name, size = 20) {
   return `<span class="material-icons" style="font-size:${size}px;line-height:1">${name}</span>`;
 }
 
+// ─── Texto enriquecido (negrita/cursiva/subrayado + saltos de línea) ──────────
+// Se usa para los requerimientos: permite escribir con formato y pegar desde
+// Word/Google Docs conservando negrita, cursiva, subrayado y saltos de línea,
+// filtrando todo lo demás (colores, fuentes, comentarios, etc.)
+export function sanitizeRichText(html) {
+  const container = document.createElement('div');
+  container.innerHTML = html || '';
+
+  function escapeText(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function walk(node) {
+    let out = '';
+    node.childNodes.forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) { out += escapeText(child.textContent); return; }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = child.tagName;
+      if (tag === 'BR') { out += '<br>'; return; }
+      if (tag === 'SCRIPT' || tag === 'STYLE') return;
+
+      let inner = walk(child);
+      const style = child.style || {};
+      const fw = style.fontWeight;
+      const isBold = tag === 'B' || tag === 'STRONG' || fw === 'bold' || fw === 'bolder' || (!isNaN(parseInt(fw)) && parseInt(fw) >= 600);
+      const isItalic = tag === 'I' || tag === 'EM' || style.fontStyle === 'italic';
+      const td = style.textDecorationLine || style.textDecoration || '';
+      const isUnderline = tag === 'U' || td.includes('underline');
+
+      if (isBold) inner = `<b>${inner}</b>`;
+      if (isItalic) inner = `<i>${inner}</i>`;
+      if (isUnderline) inner = `<u>${inner}</u>`;
+
+      if (tag === 'DIV' || tag === 'P' || tag === 'LI') {
+        out += (out ? '<br>' : '') + inner;
+      } else {
+        out += inner;
+      }
+    });
+    return out;
+  }
+
+  return walk(container).trim();
+}
+
+export function richTextToolbar(targetId) {
+  return `
+  <div class="rte-toolbar">
+    <button type="button" class="rte-btn" data-cmd="bold" data-target="${targetId}" title="Negrita (Ctrl+B)"><b>B</b></button>
+    <button type="button" class="rte-btn" data-cmd="italic" data-target="${targetId}" title="Cursiva (Ctrl+I)"><i>I</i></button>
+    <button type="button" class="rte-btn" data-cmd="underline" data-target="${targetId}" title="Subrayado (Ctrl+U)"><u>U</u></button>
+  </div>`;
+}
+
+export function wireRichEditor(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('paste', e => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    const clean = html
+      ? sanitizeRichText(html)
+      : text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    document.execCommand('insertHTML', false, clean);
+  });
+  document.querySelectorAll(`.rte-btn[data-target="${id}"]`).forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.addEventListener('click', () => {
+      el.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+    });
+  });
+}
+
 // ─── Date ─────────────────────────────────────────────────────────────────────
 function safeParse(s) {
   if (!s) return null;
