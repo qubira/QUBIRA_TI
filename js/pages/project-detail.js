@@ -5,7 +5,7 @@ import { toast, showModal, closeModal,
          fmtDate, fmtDateTime,
          fmtRelative, fmtMoney, spinner, icon,
          isOverdue, overdueBadge, previewFile,
-         sanitizeRichText, richTextToolbar, wireRichEditor } from '../utils.js';
+         sanitizeRichText } from '../utils.js';
 
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
@@ -253,6 +253,7 @@ function renderTabContent() {
     const functional    = _requirements.filter(r => r.type !== 'non_functional');
     const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
     c.innerHTML = `
+    <p class="text-xs text-gray-400 mb-3">Los requisitos los agrega y edita ADG — TI solo actualiza el % de avance.</p>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       ${requirementsColumn('Funcionales', functional, 'functional')}
       ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
@@ -757,21 +758,13 @@ function renderGhBreadcrumb() {
 }
 
 function requirementsColumn(label, items, type) {
-  const inputId = `req-new-${type}`;
   return `
   <div class="card p-5">
     <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
-    <div class="space-y-2 max-h-96 overflow-y-auto pr-1 mb-3" id="req-col-${type}">
+    <div class="space-y-2 max-h-96 overflow-y-auto pr-1" id="req-col-${type}">
       ${items.length === 0
         ? '<p class="text-xs text-gray-400 py-2 text-center">Sin requerimientos registrados</p>'
         : items.map(requirementRow).join('')}
-    </div>
-    <div>
-      ${richTextToolbar(inputId)}
-      <div id="${inputId}" class="rte-input" contenteditable="true" data-placeholder="Nuevo requerimiento..."></div>
-    </div>
-    <div class="flex justify-end mt-2">
-      <button type="button" class="btn-secondary text-xs req-add-btn" data-type="${type}">${icon('add',16)} Agregar</button>
     </div>
   </div>`;
 }
@@ -782,7 +775,6 @@ function requirementRow(r) {
     <div class="flex-1 text-sm text-gray-700 break-words rte-display">${sanitizeRichText(r.description || '')}</div>
     <input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">
     <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
-    <button class="req-del-btn text-gray-300 hover:text-red-500 shrink-0" data-id="${r.id}">${icon('delete',16)}</button>
   </div>`;
 }
 
@@ -798,27 +790,6 @@ async function refreshProjectProgress() {
 }
 
 function wireRequirementsTab() {
-  document.querySelectorAll('.req-add-btn').forEach(btn => {
-    const type = btn.dataset.type;
-    const inputId = `req-new-${type}`;
-    wireRichEditor(inputId);
-    const input = document.getElementById(inputId);
-    const submit = async () => {
-      const description = sanitizeRichText(input.innerHTML);
-      if (!input.textContent.trim()) return;
-      try {
-        await api.post('/requirements', { project_id: _id, type, description });
-        _requirements = await api.get('/requirements', { project_id: _id });
-        renderTabContent();
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
-        });
-        refreshProjectProgress();
-      } catch (err) { toast(err.message || 'Error', 'error'); }
-    };
-    btn.addEventListener('click', submit);
-  });
-
   document.querySelectorAll('.req-progress-input').forEach(inp => {
     inp.addEventListener('change', async () => {
       const value = Math.max(0, Math.min(100, parseInt(inp.value) || 0));
@@ -827,20 +798,6 @@ function wireRequirementsTab() {
         await api.put(`/requirements/${inp.dataset.id}`, { progress: value });
         const r = _requirements.find(x => x.id === inp.dataset.id);
         if (r) r.progress = value;
-        refreshProjectProgress();
-      } catch (err) { toast(err.message || 'Error', 'error'); }
-    });
-  });
-
-  document.querySelectorAll('.req-del-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      try {
-        await api.delete(`/requirements/${btn.dataset.id}`);
-        _requirements = _requirements.filter(x => x.id !== btn.dataset.id);
-        renderTabContent();
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          if (b.dataset.tab === 'requirements') b.textContent = `Requisitos (${_requirements.length})`;
-        });
         refreshProjectProgress();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
