@@ -65,8 +65,11 @@ function renderPage() {
     catch { toast('Error', 'error'); }
   }));
 
-  document.querySelectorAll('.preview-doc-btn').forEach(btn => btn.addEventListener('click', () => {
-    previewFile(btn.dataset.url, btn.dataset.name);
+  document.querySelectorAll('.preview-doc-btn').forEach(btn => btn.addEventListener('click', async () => {
+    try {
+      const { url } = await api.get(`/documents/${btn.dataset.id}/file`);
+      previewFile(url, btn.dataset.name);
+    } catch (err) { toast(err.message || 'Error al abrir el archivo', 'error'); }
   }));
 }
 
@@ -92,7 +95,7 @@ function docCard(d) {
       </div>` : ''}
       <div class="flex items-center justify-between mt-2">
         <span class="text-xs text-gray-400">${fileSize(d.file_size)} · ${fmtDate(d.created_at,'dd/MM/yy')}</span>
-        ${d.file_path ? `<button class="preview-doc-btn flex items-center gap-1 text-xs text-primary-600 hover:underline" data-url="${esc(d.file_path)}" data-name="${esc(d.file_name||d.title)}">${icon('visibility',14)} Ver</button>` : ''}
+        ${d.file_path ? `<button class="preview-doc-btn flex items-center gap-1 text-xs text-primary-600 hover:underline" data-id="${d.id}" data-name="${esc(d.file_name||d.title)}">${icon('visibility',14)} Ver</button>` : ''}
       </div>
     </div>
   </div>`;
