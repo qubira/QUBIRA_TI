@@ -11,6 +11,8 @@ let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
 let _scrumRoles = [], _scrumUsers = [];
 let _technologies = [];
+let _techCatalog = { language: [], tool: [] };
+let _pendingTechImage = { language: null, tool: null };
 
 const SCRUM_ROLES = [['product_owner','Product Owner'],['scrum_master','Scrum Master'],['developer','Equipo de Desarrollo']];
 
@@ -593,7 +595,13 @@ function wireScrum() {
 
 async function loadTechnologies() {
   try {
-    _technologies = await api.get('/technologies', { project_id: _id });
+    const [techs, langCat, toolCat] = await Promise.all([
+      api.get('/technologies', { project_id: _id }),
+      api.get('/technology-catalog', { category: 'language' }),
+      api.get('/technology-catalog', { category: 'tool' }),
+    ]);
+    _technologies = techs;
+    _techCatalog = { language: langCat, tool: toolCat };
     renderTechnologies();
   } catch {
     const c = document.getElementById('tech-container');
@@ -614,6 +622,7 @@ function renderTechnologies() {
 
 function techColumn(label, category) {
   const items = _technologies.filter(t => t.category === category);
+  const catalog = _techCatalog[category] || [];
   return `
   <div class="card p-5">
     <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
@@ -622,22 +631,56 @@ function techColumn(label, category) {
         ? '<p class="text-xs text-gray-400">Sin registrar</p>'
         : items.map(techChip).join('')}
     </div>
-    <div class="flex gap-2">
-      <input id="tech-new-${category}" class="input text-sm flex-1" placeholder="${category === 'tool' ? 'Ej: Figma, Docker...' : 'Ej: JavaScript, Python...'}">
+    <div class="flex gap-2 items-center">
+      <input type="file" accept="image/*" id="tech-img-${category}" class="hidden" data-category="${category}">
+      <button type="button" class="tech-img-btn w-9 h-9 shrink-0 rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50 hover:bg-gray-100" data-category="${category}" title="Imagen (opcional, solo para tecnologías nuevas)">
+        <img id="tech-img-preview-${category}" class="hidden w-full h-full object-cover" alt="">
+        <span id="tech-img-icon-${category}" class="material-icons text-gray-400" style="font-size:18px">image</span>
+      </button>
+      <input id="tech-new-${category}" list="tech-options-${category}" class="input text-sm flex-1" placeholder="${category === 'tool' ? 'Buscar o escribir: Figma, Docker...' : 'Buscar o escribir: JavaScript, Python...'}">
+      <datalist id="tech-options-${category}">
+        ${catalog.map(c => `<option value="${esc(c.name)}"></option>`).join('')}
+      </datalist>
       <button type="button" class="btn-secondary text-xs px-3 tech-add-btn" data-category="${category}">${icon('add',16)}</button>
     </div>
   </div>`;
 }
 
 function techChip(t) {
+  const avatar = t.image_url
+    ? `<img src="${t.image_url}" class="w-4 h-4 rounded object-cover" alt="">`
+    : `<span class="w-4 h-4 rounded bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
   return `
-  <span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+  <span class="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+    ${avatar}
     <button type="button" class="tech-edit-btn hover:underline" data-id="${t.id}" title="Editar">${esc(t.name)}</button>
     <button type="button" class="tech-del-btn text-indigo-300 hover:text-red-500 rounded-full flex items-center justify-center" data-id="${t.id}" title="Quitar">${icon('close',14)}</button>
   </span>`;
 }
 
 function wireTechnologies() {
+  document.querySelectorAll('.tech-img-btn').forEach(btn => {
+    btn.addEventListener('click', () => document.getElementById(`tech-img-${btn.dataset.category}`).click());
+  });
+
+  document.querySelectorAll('input[type="file"][id^="tech-img-"]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const category = inp.dataset.category;
+      const file = inp.files[0] || null;
+      _pendingTechImage[category] = file;
+      const preview = document.getElementById(`tech-img-preview-${category}`);
+      const iconEl = document.getElementById(`tech-img-icon-${category}`);
+      if (file) {
+        preview.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+        iconEl.classList.add('hidden');
+      } else {
+        preview.classList.add('hidden');
+        iconEl.classList.remove('hidden');
+      }
+    });
+  });
+
   document.querySelectorAll('.tech-add-btn').forEach(btn => {
     const category = btn.dataset.category;
     const input = document.getElementById(`tech-new-${category}`);
@@ -645,9 +688,19 @@ function wireTechnologies() {
       const name = input.value.trim();
       if (!name) return;
       try {
-        await api.post('/technologies', { project_id: _id, category, name });
-        _technologies = await api.get('/technologies', { project_id: _id });
-        renderTechnologies();
+        const match = (_techCatalog[category] || []).find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (match) {
+          await api.post('/technologies', { project_id: _id, category, name, catalog_id: match.id });
+        } else {
+          const fd = new FormData();
+          fd.append('project_id', _id);
+          fd.append('category', category);
+          fd.append('name', name);
+          if (_pendingTechImage[category]) fd.append('image', _pendingTechImage[category]);
+          await api.post('/technologies', fd);
+        }
+        _pendingTechImage[category] = null;
+        await loadTechnologies();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     };
     btn.addEventListener('click', submit);
@@ -661,8 +714,7 @@ function wireTechnologies() {
       if (!name || !name.trim() || name.trim() === current?.name) return;
       try {
         await api.put(`/technologies/${btn.dataset.id}`, { name: name.trim() });
-        _technologies = await api.get('/technologies', { project_id: _id });
-        renderTechnologies();
+        await loadTechnologies();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
   });
