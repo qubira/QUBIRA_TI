@@ -10,6 +10,7 @@ import { toast, showModal, closeModal,
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
 let _scrumRoles = [], _scrumUsers = [];
+let _technologies = [];
 
 const SCRUM_ROLES = [['product_owner','Product Owner'],['scrum_master','Scrum Master'],['developer','Equipo de Desarrollo']];
 
@@ -99,8 +100,8 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','github','scrum','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen','GitHub','Scrum',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
+      ${['overview','github','scrum','technologies','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen','GitHub','Scrum','Tecnologías',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -250,6 +251,11 @@ function renderTabContent() {
   if (_tab === 'scrum') {
     c.innerHTML = `<div id="scrum-container">${spinner()}</div>`;
     loadScrum();
+  }
+
+  if (_tab === 'technologies') {
+    c.innerHTML = `<div id="tech-container">${spinner()}</div>`;
+    loadTechnologies();
   }
 
   if (_tab === 'requirements') {
@@ -580,6 +586,93 @@ function wireScrum() {
         await api.delete(`/scrum-roles/${btn.dataset.id}`);
         _scrumRoles = _scrumRoles.filter(r => String(r.id) !== btn.dataset.id);
         renderScrum();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
+}
+
+async function loadTechnologies() {
+  try {
+    _technologies = await api.get('/technologies', { project_id: _id });
+    renderTechnologies();
+  } catch {
+    const c = document.getElementById('tech-container');
+    if (c) c.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">Error al cargar las tecnologías</p>';
+  }
+}
+
+function renderTechnologies() {
+  const c = document.getElementById('tech-container');
+  if (!c) return;
+  c.innerHTML = `
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    ${techColumn('Lenguajes', 'language')}
+    ${techColumn('Herramientas', 'tool')}
+  </div>`;
+  wireTechnologies();
+}
+
+function techColumn(label, category) {
+  const items = _technologies.filter(t => t.category === category);
+  return `
+  <div class="card p-5">
+    <h3 class="font-semibold text-gray-900 mb-4">${label}</h3>
+    <div class="flex flex-wrap gap-2 mb-3" id="tech-list-${category}">
+      ${items.length === 0
+        ? '<p class="text-xs text-gray-400">Sin registrar</p>'
+        : items.map(techChip).join('')}
+    </div>
+    <div class="flex gap-2">
+      <input id="tech-new-${category}" class="input text-sm flex-1" placeholder="${category === 'tool' ? 'Ej: Figma, Docker...' : 'Ej: JavaScript, Python...'}">
+      <button type="button" class="btn-secondary text-xs px-3 tech-add-btn" data-category="${category}">${icon('add',16)}</button>
+    </div>
+  </div>`;
+}
+
+function techChip(t) {
+  return `
+  <span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+    <button type="button" class="tech-edit-btn hover:underline" data-id="${t.id}" title="Editar">${esc(t.name)}</button>
+    <button type="button" class="tech-del-btn text-indigo-300 hover:text-red-500 rounded-full flex items-center justify-center" data-id="${t.id}" title="Quitar">${icon('close',14)}</button>
+  </span>`;
+}
+
+function wireTechnologies() {
+  document.querySelectorAll('.tech-add-btn').forEach(btn => {
+    const category = btn.dataset.category;
+    const input = document.getElementById(`tech-new-${category}`);
+    const submit = async () => {
+      const name = input.value.trim();
+      if (!name) return;
+      try {
+        await api.post('/technologies', { project_id: _id, category, name });
+        _technologies = await api.get('/technologies', { project_id: _id });
+        renderTechnologies();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    };
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  });
+
+  document.querySelectorAll('.tech-edit-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const current = _technologies.find(t => t.id === btn.dataset.id);
+      const name = prompt('Editar:', current?.name || '');
+      if (!name || !name.trim() || name.trim() === current?.name) return;
+      try {
+        await api.put(`/technologies/${btn.dataset.id}`, { name: name.trim() });
+        _technologies = await api.get('/technologies', { project_id: _id });
+        renderTechnologies();
+      } catch (err) { toast(err.message || 'Error', 'error'); }
+    });
+  });
+
+  document.querySelectorAll('.tech-del-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await api.delete(`/technologies/${btn.dataset.id}`);
+        _technologies = _technologies.filter(t => t.id !== btn.dataset.id);
+        renderTechnologies();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
   });
