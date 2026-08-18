@@ -137,7 +137,7 @@ export function render() {
           <h2>Ingresar</h2>
           <p>Accede con tu cuenta corporativa para continuar.</p>
 
-          <form id="login-form" novalidate>
+          <form id="login-form" novalidate autocomplete="off">
             <div class="qlogin-field">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5Zm0 2c-3.87 0-7 2.24-7 5v1h14v-1c0-2.76-3.13-5-7-5Z"/>
@@ -149,7 +149,7 @@ export function render() {
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M17 8h-1V6a4 4 0 1 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-6 8.73V18h2v-1.27a2 2 0 1 0-2 0ZM10 8V6a2 2 0 1 1 4 0v2h-4Z"/>
               </svg>
-              <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password">
+              <input type="password" id="password" placeholder="Contraseña" autocomplete="new-password">
               <button type="button" class="qlogin-toggle" id="toggle-pwd">VER</button>
             </div>
 
