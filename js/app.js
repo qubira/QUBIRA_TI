@@ -8,6 +8,7 @@ import { render as renderProjectDetail } from './pages/project-detail.js';
 import { render as renderDocuments }   from './pages/documents.js';
 import { render as renderWhatsApp }    from './pages/whatsapp.js';
 import { render as renderEmails }      from './pages/emails.js';
+import { render as renderCalendario }  from './pages/calendario.js';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
@@ -40,11 +41,12 @@ function matchRoute(hash) {
 let sidebarCollapsed = localStorage.getItem('sb') === '1';
 
 const NAV = [
-  { path: '/',          iconName: 'dashboard',   label: 'Dashboard',            exact: true },
-  { path: '/projects',  iconName: 'folder',      label: 'Proyectos' },
-  { path: '/documents', iconName: 'article',     label: 'Documentos' },
-  { path: '/whatsapp',  iconName: 'chat',        label: 'WhatsApp' },
-  { path: '/emails',    iconName: 'email',       label: 'Correos' },
+  { path: '/',           iconName: 'dashboard',     label: 'Dashboard',            exact: true },
+  { path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
+  { path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
+  { path: '/documents',  iconName: 'article',       label: 'Documentos' },
+  { path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
+  { path: '/emails',     iconName: 'email',         label: 'Correos' },
 ];
 
 function isActive(path, currentHash, exact) {
@@ -159,6 +161,7 @@ addRoute('/',                () => renderDashboard());
 addRoute('/login',           () => renderLogin());
 addRoute('/projects',        () => renderProjects());
 addRoute('/projects/:id',    p  => renderProjectDetail(p));
+addRoute('/calendario',      () => renderCalendario());
 addRoute('/documents',       () => renderDocuments());
 addRoute('/whatsapp',        () => renderWhatsApp());
 addRoute('/emails',          () => renderEmails());

@@ -20,9 +20,15 @@ let _editingMeetingId = null;
 let _meetingConflicts = [];
 let _meetingSelectedParticipants = [];
 let _meetingCheckToken = 0;
+let _meetingParticipantInfo = new Map();
+let _meetingExternalParticipants = [];
+let _meetingDirResults = [];
+let _meetingDirDebounce;
 
 const SCRUM_ROLES = [['product_owner','Product Owner'],['scrum_master','Scrum Master'],['developer','Equipo de Desarrollo']];
 const MEETING_ROLE_LABEL = { ...Object.fromEntries(SCRUM_ROLES), responsible: 'Responsable' };
+const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Otro'];
+const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 
 const DOC_TYPE_LABEL = { dni:'DNI', ce:'CE', pasaporte:'Pasaporte', ruc:'RUC' };
 const PROJECT_TYPE_LABEL = { web:'Web', mobile:'Aplicativo Móvil', desktop:'Aplicativo de Escritorio' };
@@ -619,7 +625,7 @@ function fmtMeetingDate(s) {
 async function loadSchedule() {
   try {
     const [meetings, scrumRoles] = await Promise.all([
-      api.get('/meetings', { project_id: _id }),
+      api.get('/calendar/meetings', { project_id: _id }),
       api.get('/scrum-roles', { project_id: _id }),
     ]);
     _meetings = meetings;
@@ -629,6 +635,7 @@ async function loadSchedule() {
       pool.set(_project.responsible_id, { user_id: _project.responsible_id, name: _project.responsible_name, role: 'responsible' });
     }
     _meetingPool = Array.from(pool.values());
+    _meetingParticipantInfo = new Map(pool);
     renderSchedule();
   } catch {
     const c = document.getElementById('schedule-container');
@@ -665,8 +672,10 @@ function scheduleListHtml() {
 }
 
 function meetingCard(m) {
-  const participantsHtml = (m.participants || [])
-    .map(p => `${esc(p.user_name || '—')} — ${esc(MEETING_ROLE_LABEL[p.role] || p.role)}`)
+  const isBusy = m.visibility === 'busy_only';
+  const participantsHtml = (m.participants || []).map(p => p.participant_type === 'external'
+    ? `${esc(p.external_name)} (${EXTERNAL_KINDS.find(k=>k[0]===p.external_kind)?.[1] || p.external_kind})`
+    : `${esc(p.user_name || '—')} — ${esc(MEETING_ROLE_LABEL[p.role] || p.user_area || p.role || '—')}`)
     .join('<br>');
   const statusBadge = m.status === 'cancelled'
     ? '<span class="badge bg-red-50 text-red-600">Cancelada</span>'
@@ -678,19 +687,21 @@ function meetingCard(m) {
     <div class="flex items-start justify-between gap-3">
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
-          <h4 class="font-semibold text-gray-900">${esc(m.name)}</h4>
+          <h4 class="font-semibold text-gray-900">${esc(m.title)}</h4>
           ${statusBadge}
+          ${isBusy ? `<span class="badge bg-gray-100 text-gray-500">${icon('lock',12)} Privada</span>` : ''}
         </div>
-        <p class="text-xs text-gray-500 mt-1">${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}${m.clients ? ` · Cliente: ${esc(m.clients)}` : ''}</p>
-        ${m.description ? `<p class="text-sm text-gray-600 mt-2">${esc(m.description)}</p>` : ''}
-        ${participantsHtml ? `<div class="text-xs text-gray-500 mt-2">${participantsHtml}</div>` : ''}
-        <p class="text-xs text-gray-400 mt-2">Programada por ${esc(m.created_by_name || '—')}</p>
+        <p class="text-xs text-gray-500 mt-1">${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}${m.meeting_type ? ' · ' + esc(m.meeting_type) : ''}</p>
+        ${!isBusy && m.motivo ? `<p class="text-sm text-gray-600 mt-2">${esc(m.motivo)}</p>` : ''}
+        ${!isBusy && participantsHtml ? `<div class="text-xs text-gray-500 mt-2">${participantsHtml}</div>` : ''}
+        ${!isBusy ? `<p class="text-xs text-gray-400 mt-2">Programada por ${esc(m.created_by_name || '—')}</p>` : ''}
       </div>
+      ${!isBusy ? `
       <div class="flex gap-1 shrink-0">
         <button type="button" class="meeting-view-btn p-1.5 rounded hover:bg-gray-100 text-gray-400" data-id="${m.id}" title="Ver detalle">${icon('visibility',16)}</button>
         <button type="button" class="meeting-edit-btn p-1.5 rounded hover:bg-gray-100 text-gray-400" data-id="${m.id}" title="Editar">${icon('edit',16)}</button>
         <button type="button" class="meeting-del-btn p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600" data-id="${m.id}" title="Eliminar">${icon('delete',16)}</button>
-      </div>
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -698,6 +709,7 @@ function meetingCard(m) {
 function meetingFormHtml() {
   const editing = _meetings.find(m => m.id === _editingMeetingId);
   const selected = new Set(_meetingSelectedParticipants);
+  const extras = _meetingSelectedParticipants.filter(id => !_meetingPool.some(p => p.user_id === id));
   return `
   <div class="card p-5">
     <div class="flex items-center justify-between mb-4">
@@ -707,7 +719,7 @@ function meetingFormHtml() {
     <form id="meeting-form" class="space-y-3">
       <div>
         <label class="text-xs font-medium text-gray-600">Nombre de la reunión *</label>
-        <input name="name" class="input text-sm w-full mt-1" required value="${esc(editing?.name || '')}">
+        <input name="title" class="input text-sm w-full mt-1" required value="${esc(editing?.title || '')}">
       </div>
       <div class="grid grid-cols-3 gap-2">
         <div>
@@ -724,16 +736,23 @@ function meetingFormHtml() {
         </div>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Motivo / descripción</label>
+        <label class="text-xs font-medium text-gray-600">Tipo de reunión</label>
+        <select name="meeting_type" class="input text-sm w-full mt-1">
+          <option value="">— Seleccionar —</option>
+          ${MEETING_TYPES.map(t => `<option value="${t}" ${editing?.meeting_type===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600">Motivo</label>
+        <input name="motivo" class="input text-sm w-full mt-1" value="${esc(editing?.motivo || '')}">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600">Descripción</label>
         <textarea name="description" class="input text-sm w-full mt-1" rows="2">${esc(editing?.description || '')}</textarea>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Cliente(s)</label>
-        <input name="clients" class="input text-sm w-full mt-1" placeholder="Ej: Empresa ABC" value="${esc(editing?.clients || '')}">
-      </div>
-      <div>
-        <label class="text-xs font-medium text-gray-600 block mb-1">Participantes (equipo Scrum) *</label>
-        <div class="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto" id="meeting-participants-list">
+        <label class="text-xs font-medium text-gray-600 block mb-1">Equipo del proyecto</label>
+        <div class="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-32 overflow-y-auto" id="meeting-participants-list">
           ${_meetingPool.length === 0
             ? '<p class="text-xs text-gray-400 p-3">Este proyecto todavía no tiene equipo Scrum ni responsable asignado.</p>'
             : _meetingPool.map(p => `
@@ -744,8 +763,31 @@ function meetingFormHtml() {
         </div>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Observaciones</label>
-        <textarea name="observations" class="input text-sm w-full mt-1" rows="2">${esc(editing?.observations || '')}</textarea>
+        <label class="text-xs font-medium text-gray-600 block mb-1">Agregar a alguien de otra área</label>
+        <div class="relative">
+          <input id="meeting-dir-search" class="input text-sm w-full" placeholder="Buscar por nombre, cargo o área...">
+          <div id="meeting-dir-results" class="absolute z-10 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto hidden"></div>
+        </div>
+        ${extras.length ? `<div class="flex flex-wrap gap-1.5 mt-2">
+          ${extras.map(id => {
+            const info = _meetingParticipantInfo.get(id) || {};
+            return `<span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium">
+              ${esc(info.name || info.nombre || '—')}${info.area ? ' — ' + esc(info.area) : ''}
+              <button type="button" class="meeting-remove-extra text-indigo-300 hover:text-red-500 flex items-center" data-id="${id}">${icon('close',12)}</button>
+            </span>`;
+          }).join('')}
+        </div>` : ''}
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1">Participante externo (cliente, proveedor...)</label>
+        <div class="flex gap-2">
+          <input id="meeting-ext-name" class="input text-sm flex-1" placeholder="Nombre">
+          <select id="meeting-ext-kind" class="input text-sm w-auto">
+            ${EXTERNAL_KINDS.map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
+          </select>
+          <button type="button" id="meeting-ext-add" class="btn-secondary text-xs px-3">${icon('add',16)}</button>
+        </div>
+        <div id="meeting-selected-externals" class="flex flex-wrap gap-1.5 mt-2">${externalsHtml()}</div>
       </div>
       <div id="meeting-conflict-banner">${conflictBannerHtml()}</div>
       <div class="flex gap-2 pt-1">
@@ -756,13 +798,22 @@ function meetingFormHtml() {
   </div>`;
 }
 
+function externalsHtml() {
+  if (!_meetingExternalParticipants.length) return '';
+  return _meetingExternalParticipants.map((p, i) => `
+    <span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+      ${esc(p.name)} (${EXTERNAL_KINDS.find(k=>k[0]===p.kind)?.[1] || p.kind})
+      <button type="button" class="meeting-remove-external text-amber-300 hover:text-red-500 flex items-center" data-i="${i}">${icon('close',12)}</button>
+    </span>`).join('');
+}
+
 function conflictBannerHtml() {
   if (!_meetingConflicts.length) return '';
   return `
   <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
     <p class="font-semibold flex items-center gap-1.5">${icon('warning',16)} ${_meetingConflicts.length > 1 ? 'Se detectaron conflictos de horario:' : 'Conflicto de horario'}</p>
     <ul class="mt-1.5 space-y-1 list-disc list-inside">
-      ${_meetingConflicts.map(c => `<li>${esc(c.user_name || 'Alguien')} ya tiene "${esc(c.meeting_name)}" en ${esc(c.project_name || 'otro proyecto')} de ${c.start_time.slice(0,5)} a ${c.end_time.slice(0,5)} (${fmtMeetingDate(c.date)}).</li>`).join('')}
+      ${_meetingConflicts.map(c => `<li>${esc(c.user_name || 'Alguien')} (${esc(c.area || '—')}) ya tiene "${esc(c.meeting_name)}" de ${c.start_time.slice(0,5)} a ${c.end_time.slice(0,5)} (${fmtMeetingDate(c.date)}).</li>`).join('')}
     </ul>
   </div>`;
 }
@@ -772,6 +823,7 @@ function wireSchedule() {
   if (addBtn) addBtn.addEventListener('click', () => {
     _editingMeetingId = null;
     _meetingSelectedParticipants = [];
+    _meetingExternalParticipants = [];
     _meetingConflicts = [];
     _meetingFormOpen = true;
     renderSchedule();
@@ -788,10 +840,29 @@ function wireSchedule() {
 
   document.querySelectorAll('.meeting-participant-checkbox').forEach(cb => {
     cb.addEventListener('change', () => {
-      _meetingSelectedParticipants = Array.from(document.querySelectorAll('.meeting-participant-checkbox:checked')).map(x => Number(x.value));
+      const pool = new Set(_meetingPool.map(p => p.user_id));
+      const extras = _meetingSelectedParticipants.filter(id => !pool.has(id));
+      const checked = Array.from(document.querySelectorAll('.meeting-participant-checkbox:checked')).map(x => Number(x.value));
+      _meetingSelectedParticipants = [...checked, ...extras];
       scheduleLiveCheck();
     });
   });
+
+  wireDirectorySearch();
+  wireRemoveExtras();
+
+  const extAdd = document.getElementById('meeting-ext-add');
+  if (extAdd) extAdd.addEventListener('click', () => {
+    const nameEl = document.getElementById('meeting-ext-name');
+    const kindEl = document.getElementById('meeting-ext-kind');
+    const name = nameEl.value.trim();
+    if (!name) return;
+    _meetingExternalParticipants.push({ name, kind: kindEl.value });
+    nameEl.value = '';
+    document.getElementById('meeting-selected-externals').innerHTML = externalsHtml();
+    wireRemoveExternals();
+  });
+  wireRemoveExternals();
 
   const form = document.getElementById('meeting-form');
   if (form) {
@@ -805,6 +876,84 @@ function wireSchedule() {
   document.querySelectorAll('.meeting-view-btn').forEach(btn => btn.addEventListener('click', () => viewMeeting(btn.dataset.id)));
   document.querySelectorAll('.meeting-edit-btn').forEach(btn => btn.addEventListener('click', () => editMeeting(btn.dataset.id)));
   document.querySelectorAll('.meeting-del-btn').forEach(btn => btn.addEventListener('click', () => deleteMeeting(btn.dataset.id)));
+}
+
+function wireDirectorySearch() {
+  const search = document.getElementById('meeting-dir-search');
+  const results = document.getElementById('meeting-dir-results');
+  if (!search) return;
+  search.addEventListener('input', () => {
+    clearTimeout(_meetingDirDebounce);
+    const q = search.value.trim();
+    if (!q) { results.classList.add('hidden'); results.innerHTML = ''; return; }
+    _meetingDirDebounce = setTimeout(async () => {
+      try {
+        _meetingDirResults = await api.get('/calendar/directory', { q });
+        results.innerHTML = _meetingDirResults.length
+          ? _meetingDirResults.map(p => `
+              <button type="button" class="meeting-dir-pick w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between" data-id="${p.user_id}">
+                <span>${esc([p.nombre, p.apellidos].filter(Boolean).join(' '))}</span>
+                <span class="text-xs text-gray-400">${esc(p.area || '—')}${p.cargo ? ' · ' + esc(p.cargo) : ''}</span>
+              </button>`).join('')
+          : '<p class="px-3 py-2 text-xs text-gray-400">Sin resultados</p>';
+        results.classList.remove('hidden');
+        results.querySelectorAll('.meeting-dir-pick').forEach(btn => btn.addEventListener('click', () => {
+          const person = _meetingDirResults.find(p => String(p.user_id) === btn.dataset.id);
+          if (person && !_meetingSelectedParticipants.includes(person.user_id)) {
+            _meetingSelectedParticipants.push(person.user_id);
+            _meetingParticipantInfo.set(person.user_id, { name: [person.nombre, person.apellidos].filter(Boolean).join(' '), area: person.area });
+            // Re-renderizar todo el panel (no solo parchear el DOM a mano) para
+            // que el <form> nuevo quede completamente re-cableado, incluido el
+            // listener de submit — si no, "Guardar reunión" queda sin efecto.
+            // Se preserva lo ya escrito, porque el re-render genera un <form> en blanco.
+            const preserved = captureMeetingFormValues();
+            renderSchedule();
+            restoreMeetingFormValues(preserved);
+            scheduleLiveCheck();
+            return;
+          }
+          search.value = ''; results.classList.add('hidden'); results.innerHTML = '';
+        }));
+      } catch { /* silencioso */ }
+    }, 250);
+  });
+}
+
+const MEETING_FORM_FIELDS = ['title', 'date', 'start_time', 'end_time', 'meeting_type', 'motivo', 'description'];
+
+/* Un pick de participante o quitar un "extra" re-renderiza el panel del
+   formulario para que quede bien cableado (el <form> es nuevo, necesita su
+   propio listener de submit) — pero eso también borra lo que el usuario ya
+   había escrito. Se guarda y se restaura antes/después del re-render. */
+function captureMeetingFormValues() {
+  const form = document.getElementById('meeting-form');
+  if (!form) return null;
+  const values = {};
+  MEETING_FORM_FIELDS.forEach(f => { if (form.elements[f]) values[f] = form.elements[f].value; });
+  return values;
+}
+function restoreMeetingFormValues(values) {
+  if (!values) return;
+  const form = document.getElementById('meeting-form');
+  if (!form) return;
+  Object.entries(values).forEach(([f, v]) => { if (form.elements[f]) form.elements[f].value = v; });
+}
+
+function wireRemoveExtras() {
+  document.querySelectorAll('.meeting-remove-extra').forEach(btn => btn.addEventListener('click', () => {
+    const id = Number(btn.dataset.id);
+    _meetingSelectedParticipants = _meetingSelectedParticipants.filter(x => x !== id);
+    const preserved = captureMeetingFormValues();
+    renderSchedule();
+    restoreMeetingFormValues(preserved);
+  }));
+}
+function wireRemoveExternals() {
+  document.querySelectorAll('.meeting-remove-external').forEach(btn => btn.addEventListener('click', () => {
+    _meetingExternalParticipants.splice(Number(btn.dataset.i), 1);
+    document.getElementById('meeting-selected-externals').innerHTML = externalsHtml();
+    wireRemoveExternals();
+  }));
 }
 
 async function scheduleLiveCheck() {
@@ -826,7 +975,7 @@ async function scheduleLiveCheck() {
   const token = ++_meetingCheckToken;
   let conflicts = [];
   try {
-    const res = await api.post('/meetings/check-availability', {
+    const res = await api.post('/calendar/check-availability', {
       date, start_time: start, end_time: end,
       participant_ids: _meetingSelectedParticipants,
       exclude_meeting_id: _editingMeetingId || undefined,
@@ -844,28 +993,31 @@ async function scheduleLiveCheck() {
 async function submitMeeting(e) {
   e.preventDefault();
   const form = e.target;
-  const name = form.elements.name.value.trim();
+  const title = form.elements.title.value.trim();
   const date = form.elements.date.value;
   const start_time = form.elements.start_time.value;
   const end_time = form.elements.end_time.value;
+  const meeting_type = form.elements.meeting_type.value;
+  const motivo = form.elements.motivo.value.trim();
   const description = form.elements.description.value.trim();
-  const clients = form.elements.clients.value.trim();
-  const observations = form.elements.observations.value.trim();
 
-  if (!name) return toast('El nombre de la reunión es requerido', 'error');
+  if (!title) return toast('El nombre de la reunión es requerido', 'error');
   if (!date || !start_time || !end_time) return toast('Fecha y horario son requeridos', 'error');
   if (end_time <= start_time) return toast('La hora de fin debe ser posterior a la de inicio', 'error');
-  if (!_meetingSelectedParticipants.length) return toast('Selecciona al menos un participante', 'error');
+  if (!_meetingSelectedParticipants.length && !_meetingExternalParticipants.length) return toast('Selecciona al menos un participante', 'error');
 
-  const participants = _meetingSelectedParticipants.map(user_id => ({ user_id }));
-  const payload = { project_id: _id, name, date, start_time, end_time, description, clients, observations, participants };
+  const payload = {
+    project_id: _id, title, date, start_time, end_time, meeting_type, motivo, description,
+    participants: _meetingSelectedParticipants.map(user_id => ({ user_id })),
+    external_participants: _meetingExternalParticipants,
+  };
 
   try {
     if (_editingMeetingId) {
-      await api.put(`/meetings/${_editingMeetingId}`, payload);
+      await api.put(`/calendar/meetings/${_editingMeetingId}`, payload);
       toast('Reunión actualizada');
     } else {
-      await api.post('/meetings', payload);
+      await api.post('/calendar/meetings', payload);
       toast('Reunión programada');
     }
     _meetingFormOpen = false;
@@ -886,9 +1038,14 @@ async function submitMeeting(e) {
 
 function editMeeting(id) {
   const m = _meetings.find(x => x.id === id);
-  if (!m) return;
+  if (!m || m.visibility === 'busy_only') return;
   _editingMeetingId = id;
-  _meetingSelectedParticipants = (m.participants || []).map(p => p.user_id);
+  _meetingSelectedParticipants = (m.participants || []).filter(p => p.participant_type === 'internal').map(p => p.user_id);
+  (m.participants || []).filter(p => p.participant_type === 'internal').forEach(p => {
+    _meetingParticipantInfo.set(p.user_id, { name: p.user_name, area: p.user_area });
+  });
+  _meetingExternalParticipants = (m.participants || []).filter(p => p.participant_type === 'external')
+    .map(p => ({ name: p.external_name, kind: p.external_kind }));
   _meetingConflicts = [];
   _meetingFormOpen = true;
   renderSchedule();
@@ -896,9 +1053,9 @@ function editMeeting(id) {
 
 async function deleteMeeting(id) {
   const m = _meetings.find(x => x.id === id);
-  if (!m || !confirm(`¿Deseas eliminar la reunión "${m.name}"?`)) return;
+  if (!m || !confirm(`¿Deseas eliminar la reunión "${m.title}"? Esta acción no se puede deshacer.`)) return;
   try {
-    await api.delete(`/meetings/${id}`);
+    await api.delete(`/calendar/meetings/${id}`);
     toast('Reunión eliminada');
     if (_editingMeetingId === id) { _meetingFormOpen = false; _editingMeetingId = null; }
     await loadSchedule();
@@ -907,20 +1064,21 @@ async function deleteMeeting(id) {
 
 function viewMeeting(id) {
   const m = _meetings.find(x => x.id === id);
-  if (!m) return;
-  const participantsHtml = (m.participants || [])
-    .map(p => `<li>${esc(p.user_name || '—')} — ${esc(MEETING_ROLE_LABEL[p.role] || p.role)}</li>`).join('');
-  showModal(esc(m.name), `
+  if (!m || m.visibility === 'busy_only') return;
+  const participantsHtml = (m.participants || []).map(p => p.participant_type === 'external'
+    ? `<li>${esc(p.external_name)} — ${EXTERNAL_KINDS.find(k=>k[0]===p.external_kind)?.[1] || p.external_kind} (externo)</li>`
+    : `<li>${esc(p.user_name || '—')} — ${esc(MEETING_ROLE_LABEL[p.role] || p.user_area || p.role || '—')}</li>`).join('');
+  showModal(esc(m.title), `
     <div class="space-y-3 text-sm">
       <p><span class="font-medium text-gray-700">Fecha:</span> ${fmtMeetingDate(m.meeting_date)}</p>
       <p><span class="font-medium text-gray-700">Horario:</span> ${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}</p>
-      ${m.description ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.description)}</p>` : ''}
-      ${m.clients ? `<p><span class="font-medium text-gray-700">Cliente(s):</span> ${esc(m.clients)}</p>` : ''}
+      ${m.meeting_type ? `<p><span class="font-medium text-gray-700">Tipo:</span> ${esc(m.meeting_type)}</p>` : ''}
+      ${m.motivo ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.motivo)}</p>` : ''}
+      ${m.description ? `<p><span class="font-medium text-gray-700">Descripción:</span> ${esc(m.description)}</p>` : ''}
       <div>
         <p class="font-medium text-gray-700 mb-1">Participantes:</p>
         <ul class="list-disc list-inside text-gray-600">${participantsHtml || '<li>Sin participantes</li>'}</ul>
       </div>
-      ${m.observations ? `<p><span class="font-medium text-gray-700">Observaciones:</span> ${esc(m.observations)}</p>` : ''}
       <p class="text-xs text-gray-400">Programada por ${esc(m.created_by_name || '—')}</p>
     </div>
   `, 'md');

@@ -8,6 +8,7 @@ const CENTRAL_API = (location.hostname === 'localhost' || location.hostname === 
 
 function resolveUrl(path) {
   if (path.startsWith('/auth')) return CENTRAL_API + '/api' + path;
+  if (path.startsWith('/calendar')) return CENTRAL_API + '/api' + path;
   return CENTRAL_API + '/api/ti' + path;
 }
 
