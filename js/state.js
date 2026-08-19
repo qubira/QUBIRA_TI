@@ -13,6 +13,7 @@ export function normalizeUser(central) {
     avatar: null,
     rol: central.rol,
     nivel_acceso: central.nivel_acceso,
+    cargo: central.cargo || null,
   };
 }
 
