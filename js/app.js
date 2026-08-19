@@ -179,11 +179,44 @@ addRoute('/emails',          () => renderEmails());
 // ─── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('hashchange', handleRoute);
 
+const CENTRAL_LOGIN_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:5515/login.html'
+  : 'https://qubira-login.vercel.app/login.html';
+
+function isAuthorizedForThisPanel(central) {
+  return (central.authorized_modules || []).includes('TI');
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
+  const handoffCode = new URLSearchParams(location.search).get('handoff');
+
+  if (handoffCode) {
+    try {
+      const data = await api.post('/auth/exchange', { code: handoffCode });
+      if (!isAuthorizedForThisPanel(data.user)) { window.location.href = CENTRAL_LOGIN_URL; return; }
+      const user = normalizeUser(data.user);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(user));
+      setUser(user);
+      history.replaceState(null, '', location.pathname + location.hash);
+    } catch {
+      window.location.href = CENTRAL_LOGIN_URL;
+      return;
+    }
+    handleRoute();
+    return;
+  }
+
   const token = localStorage.getItem('token');
   if (token) {
     try {
       const { user: central } = await api.get('/auth/me');
+      if (!isAuthorizedForThisPanel(central)) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = CENTRAL_LOGIN_URL;
+        return;
+      }
       const user = normalizeUser(central);
       localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
