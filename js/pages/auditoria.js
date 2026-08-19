@@ -109,15 +109,35 @@ function renderPage() {
   wire();
 }
 
+function changeValueText(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+function changesHtml(changes) {
+  if (!changes || typeof changes !== 'object') return '';
+  const entries = Object.entries(changes);
+  if (!entries.length) return '';
+  return `<div class="flex flex-wrap gap-1 mt-1.5">
+    ${entries.map(([k, v]) => `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-[11px] text-gray-600">
+      <strong class="text-gray-700">${esc(k)}:</strong> ${esc(changeValueText(v))}
+    </span>`).join('')}
+  </div>`;
+}
+
 function rowHtml(r) {
   const badge = ACTION_COLOR[r.action_type] || 'bg-gray-100 text-gray-600';
   return `
-  <div class="grid grid-cols-[160px_1fr_100px_110px_1fr] gap-3 px-4 py-2.5 text-sm items-center">
-    <span class="text-gray-500 text-xs">${fmtDateTime(r.created_at)}</span>
-    <span class="text-gray-800 truncate">${esc(r.user_name || r.username || '—')}</span>
-    <span class="text-gray-500 text-xs">${esc(r.area || '—')}</span>
+  <div class="grid grid-cols-[160px_1fr_100px_110px_1fr] gap-3 px-4 py-2.5 text-sm items-start">
+    <span class="text-gray-500 text-xs pt-0.5">${fmtDateTime(r.created_at)}</span>
+    <span class="text-gray-800 truncate pt-0.5">${esc(r.user_name || r.username || '—')}</span>
+    <span class="text-gray-500 text-xs pt-0.5">${esc(r.area || '—')}</span>
     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge} w-fit">${esc(ACTION_LABEL[r.action_type] || r.action_type)}</span>
-    <span class="text-gray-500 text-xs truncate" title="${esc(r.full_path || r.path)}">${esc(r.description)} <span class="text-gray-300">· ${esc(r.method)} ${esc(r.full_path || r.path)}</span></span>
+    <div class="min-w-0">
+      <span class="text-gray-500 text-xs truncate block" title="${esc(r.full_path || r.path)}">${esc(r.description)} <span class="text-gray-300">· ${esc(r.method)} ${esc(r.full_path || r.path)}</span></span>
+      ${changesHtml(r.changes)}
+    </div>
   </div>`;
 }
 
