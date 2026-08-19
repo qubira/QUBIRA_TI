@@ -111,12 +111,14 @@ function renderSidebar(currentHash) {
           <p class="text-sm font-medium text-white truncate">${user.name}</p>
           <p class="text-xs text-gray-400 capitalize">${user.role}</p>
         </div>
+        <button id="switch-module-btn" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
         <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400" title="Cerrar sesión">${icon('logout', 18)}</button>
       </div>` : `
       <div class="flex flex-col items-center gap-2 py-2">
         <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
           <span class="text-primary-700 font-semibold text-sm">${user.name?.[0]?.toUpperCase()}</span>
         </div>
+        <button id="switch-module-btn" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
         <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400">${icon('logout', 18)}</button>
         <button id="sb-toggle" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_right', 18)}</button>
       </div>`}
@@ -134,6 +136,10 @@ function renderSidebar(currentHash) {
     localStorage.removeItem('user');
     setUser(null);
     navigate('/login');
+  });
+
+  document.getElementById('switch-module-btn')?.addEventListener('click', () => {
+    window.location.href = CENTRAL_MODULO_URL;
   });
 }
 
@@ -182,6 +188,9 @@ window.addEventListener('hashchange', handleRoute);
 const CENTRAL_LOGIN_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:5515/login.html'
   : 'https://qubira-login.vercel.app/login.html';
+const CENTRAL_MODULO_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:5515/modulo.html'
+  : 'https://qubira-login.vercel.app/modulo.html';
 
 function isAuthorizedForThisPanel(central) {
   return (central.authorized_modules || []).includes('TI');
