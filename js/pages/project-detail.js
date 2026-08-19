@@ -13,6 +13,16 @@ let _scrumRoles = [], _scrumUsers = [];
 let _technologies = [];
 let _techCatalog = { language: [], tool: [] };
 let _pendingTechImage = { language: null, tool: null };
+let _pendingCatalogMatch = { language: null, tool: null };
+
+/* Un solo listener delegado (no uno por render) para cerrar el desplegable
+   de tecnologías al hacer clic fuera — evita acumular listeners en cada
+   renderTechnologies(). */
+document.addEventListener('click', e => {
+  document.querySelectorAll('.tech-dropdown:not(.hidden)').forEach(dd => {
+    if (!dd.closest('[data-tech-wrap]')?.contains(e.target)) dd.classList.add('hidden');
+  });
+});
 let _meetings = [];
 let _meetingPool = [];
 let _meetingFormOpen = false;
@@ -1128,13 +1138,27 @@ function techColumn(label, category) {
         <img id="tech-img-preview-${category}" class="hidden w-full h-full object-cover" alt="">
         <span id="tech-img-icon-${category}" class="material-icons text-gray-400" style="font-size:18px">image</span>
       </button>
-      <input id="tech-new-${category}" list="tech-options-${category}" class="input text-sm flex-1" placeholder="${category === 'tool' ? 'Buscar o escribir: Figma, Docker...' : 'Buscar o escribir: JavaScript, Python...'}">
-      <datalist id="tech-options-${category}">
-        ${catalog.map(c => `<option value="${esc(c.name)}"></option>`).join('')}
-      </datalist>
+      <div class="relative flex-1" data-tech-wrap="${category}">
+        <input id="tech-new-${category}" autocomplete="off" class="input text-sm w-full" placeholder="${category === 'tool' ? 'Buscar o escribir: Figma, Docker...' : 'Buscar o escribir: JavaScript, Python...'}">
+        <div id="tech-dropdown-${category}" class="tech-dropdown hidden absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto z-20"></div>
+      </div>
       <button type="button" class="btn-secondary text-xs px-3 tech-add-btn" data-category="${category}">${icon('add',16)}</button>
     </div>
   </div>`;
+}
+
+function techAvatarHtml(name, image_url, sizeClass) {
+  return image_url
+    ? `<img src="${image_url}" class="${sizeClass} rounded object-cover shrink-0" alt="">`
+    : `<span class="${sizeClass} rounded bg-indigo-200 flex items-center justify-center text-[9px] font-bold text-indigo-700 shrink-0">${esc((name || '?').charAt(0).toUpperCase())}</span>`;
+}
+
+function techDropdownOptionHtml(c) {
+  return `
+  <button type="button" class="tech-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 text-left" data-id="${c.id}" data-name="${esc(c.name)}" data-image="${c.image_url || ''}">
+    ${techAvatarHtml(c.name, c.image_url, 'w-5 h-5')}
+    <span class="truncate">${esc(c.name)}</span>
+  </button>`;
 }
 
 function techChip(t) {
@@ -1175,11 +1199,36 @@ function wireTechnologies() {
   document.querySelectorAll('.tech-add-btn').forEach(btn => {
     const category = btn.dataset.category;
     const input = document.getElementById(`tech-new-${category}`);
+    const dropdown = document.getElementById(`tech-dropdown-${category}`);
+
+    const closeDropdown = () => dropdown.classList.add('hidden');
+    const openDropdown = () => {
+      const q = input.value.trim().toLowerCase();
+      const options = (_techCatalog[category] || [])
+        .filter(c => !q || c.name.toLowerCase().includes(q))
+        .slice(0, 8);
+      if (!options.length) { closeDropdown(); return; }
+      dropdown.innerHTML = options.map(techDropdownOptionHtml).join('');
+      dropdown.querySelectorAll('.tech-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          input.value = opt.dataset.name;
+          _pendingCatalogMatch[category] = { id: opt.dataset.id, name: opt.dataset.name, image_url: opt.dataset.image || null };
+          closeDropdown();
+        });
+      });
+      dropdown.classList.remove('hidden');
+    };
+
+    input.addEventListener('input', () => { _pendingCatalogMatch[category] = null; openDropdown(); });
+    input.addEventListener('focus', openDropdown);
+
     const submit = async () => {
       const name = input.value.trim();
       if (!name) return;
       try {
-        const match = (_techCatalog[category] || []).find(c => c.name.toLowerCase() === name.toLowerCase());
+        const picked = _pendingCatalogMatch[category] && _pendingCatalogMatch[category].name.toLowerCase() === name.toLowerCase()
+          ? _pendingCatalogMatch[category] : null;
+        const match = picked || (_techCatalog[category] || []).find(c => c.name.toLowerCase() === name.toLowerCase());
         if (match) {
           await api.post('/technologies', { project_id: _id, category, name, catalog_id: match.id });
         } else {
@@ -1191,11 +1240,16 @@ function wireTechnologies() {
           await api.post('/technologies', fd);
         }
         _pendingTechImage[category] = null;
+        _pendingCatalogMatch[category] = null;
+        closeDropdown();
         await loadTechnologies();
       } catch (err) { toast(err.message || 'Error', 'error'); }
     };
     btn.addEventListener('click', submit);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') closeDropdown();
+    });
   });
 
   document.querySelectorAll('.tech-edit-btn').forEach(btn => {
