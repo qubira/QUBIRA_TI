@@ -80,9 +80,6 @@ function renderPage() {
   if (!container) return;
   const p = _project;
 
-  const daysLeft = p.status === 'observed' && p.observation_deadline
-    ? Math.ceil((new Date(p.observation_deadline) - new Date()) / 86400000) : null;
-
   container.innerHTML = `
   <!-- Header -->
   <div class="flex items-start gap-4 mb-6">
@@ -98,22 +95,12 @@ function renderPage() {
         ${projectStatusBadge(p.status)}
         ${priorityBadge(p.priority)}
         ${isOverdue(p) ? overdueBadge() : ''}
-        ${daysLeft !== null ? `<span class="badge ${daysLeft <= 3 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'} inline-flex items-center gap-1">${icon('schedule', 12)} ${daysLeft > 0 ? `${daysLeft} día${daysLeft === 1 ? '' : 's'} para subsanar` : 'Plazo vencido'}</span>` : ''}
       </div>
       <p class="text-gray-500 mt-1">${esc(p.code)} · ${esc(p.client)}</p>
-      ${p.origin_area && p.origin_area !== 'TI' ? `
-        <p class="text-xs text-gray-400 mt-1 inline-flex items-center gap-1">${icon('call_made', 12)} Enviado por <strong class="text-gray-600">${esc(p.origin_area)}</strong> · ${esc(p.created_by_name || 'usuario eliminado')}</p>
-      ` : ''}
     </div>
     <button id="export-pdf-btn" class="btn-secondary">${icon('picture_as_pdf', 16)} Exportar PDF</button>
     ${p.website_url ? `<a href="${esc(p.website_url)}" target="_blank" rel="noopener" class="btn-secondary">${icon('open_in_new', 16)} Ver página</a>` : ''}
-    ${p.status === 'pending_approval' ? `
-      <span class="text-sm text-amber-700 flex items-center gap-1.5">${icon('hourglass_empty', 16)} Esperando aprobación de ADG</span>
-      ${p.origin_area === 'TI' ? `<button id="edit-btn" class="btn-secondary">${icon('edit', 16)} Editar</button>` : ''}
-    ` : p.status === 'observed' ? `
-      <span class="text-sm text-red-700 flex items-center gap-1.5">${icon('flag', 16)} Observado por ADG</span>
-      ${p.origin_area === 'TI' ? `<button id="edit-btn" class="btn-secondary">${icon('edit', 16)} Editar</button>` : ''}
-    ` : p.status === 'pending' ? `
+    ${p.status === 'pending' ? `
       <button id="claim-btn" class="btn-primary">${icon('add_task', 16)} Reclamar para TI</button>
     ` : p.status === 'completed' ? `
       <span class="text-sm text-gray-400 flex items-center gap-1.5">${icon('lock', 16)} Completado — ADG aprobó el cierre</span>
@@ -139,15 +126,12 @@ function renderPage() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${(() => {
-        const tabs = ['overview','github','scrum','schedule','technologies','requirements','documents','whatsapp','emails','activity'];
+      ${['overview','github','scrum','schedule','technologies','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
         const labels = ['Resumen','GitHub','Scrum','Cronograma','Tecnologías',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
-        if (p.status === 'observed') { tabs.push('observations'); labels.push('Observaciones'); }
-        return tabs.map((t,i) => `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-          ${t === 'observations' ? (_tab===t ? 'border-red-600 text-red-700' : 'border-transparent text-red-500 hover:text-red-700') :
-            (_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700')}">${labels[i]}</button>`).join('');
-      })()}
+        return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+          ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
+      }).join('')}
     </div>
   </div>
 
@@ -378,33 +362,6 @@ function renderTabContent() {
   if (_tab === 'activity') {
     c.innerHTML = `<div class="card p-5">${historyTimeline(_activities)}</div>`;
   }
-
-  if (_tab === 'observations') {
-    const deadline = p.observation_deadline ? new Date(p.observation_deadline) : null;
-    const daysLeft = deadline ? Math.ceil((deadline - new Date()) / 86400000) : null;
-    const canResubmit = p.origin_area === 'TI';
-    c.innerHTML = `
-    <div class="card p-5 bg-red-50 border border-red-200">
-      <div class="flex items-center gap-2 mb-3">
-        ${icon('flag', 18)}
-        <h3 class="font-semibold text-red-800">Observación de ADG</h3>
-      </div>
-      <p class="text-sm text-red-900 whitespace-pre-wrap mb-4">${esc(p.observation_reason || 'Sin motivo registrado')}</p>
-      <div class="flex flex-wrap items-center gap-4 text-xs text-red-700 mb-4">
-        <span>Observado el ${fmtDateTime(p.observed_at)}</span>
-        ${deadline ? `<span class="font-semibold">${daysLeft > 0 ? `${daysLeft} día${daysLeft === 1 ? '' : 's'} restantes para reenviar` : 'Plazo vencido — se archivará automáticamente'}</span>` : ''}
-      </div>
-      ${canResubmit ? `<button id="resubmit-btn" class="btn-primary">${icon('send', 16)} Reenviar solicitud corregida</button>` : ''}
-    </div>`;
-    document.getElementById('resubmit-btn')?.addEventListener('click', async () => {
-      if (!confirm('¿Reenviar esta solicitud? Vuelve a la cola de aprobación de ADG.')) return;
-      try {
-        await api.post(`/projects/${_id}/resubmit`, {});
-        toast('Solicitud reenviada');
-        loadAll();
-      } catch (err) { toast(err.message || 'Error', 'error'); }
-    });
-  }
 }
 
 function exportToPDF() {
@@ -517,7 +474,6 @@ function openEditModal() {
         <label class="label">Cliente *</label>
         <input class="input" name="client" required value="${esc(p.client)}">
       </div>
-      ${['active','paused'].includes(p.status) ? `
       <div>
         <label class="label">Estado</label>
         <select class="input" name="status">
@@ -525,7 +481,7 @@ function openEditModal() {
             .map(([v,l]) => `<option value="${v}" ${p.status===v?'selected':''}>${l}</option>`).join('')}
         </select>
         <p class="text-xs text-gray-400 mt-1">Para finalizar el proyecto usá el botón "Marcar como finalizado".</p>
-      </div>` : ''}
+      </div>
       <div class="col-span-2">
         <label class="label">Descripción</label>
         <textarea class="input resize-none" name="description" rows="3">${esc(p.description||'')}</textarea>
