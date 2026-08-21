@@ -290,6 +290,12 @@ function renderTabContent() {
   }
 
   if (_tab === 'requirements') {
+    /* Si algo llega a reconstruir este tab (ej. al actualizar el % de
+       avance), se conserva el scroll de cada columna en vez de mandar
+       la lista de vuelta arriba. */
+    const scrollF  = document.getElementById('req-col-functional')?.scrollTop;
+    const scrollNF = document.getElementById('req-col-non_functional')?.scrollTop;
+
     const functional    = _requirements.filter(r => r.type !== 'non_functional');
     const nonFunctional = _requirements.filter(r => r.type === 'non_functional');
     c.innerHTML = `
@@ -299,6 +305,9 @@ function renderTabContent() {
       ${requirementsColumn('No Funcionales', nonFunctional, 'non_functional')}
     </div>`;
     wireRequirementsTab();
+
+    if (scrollF)  { const el = document.getElementById('req-col-functional');     if (el) el.scrollTop = scrollF; }
+    if (scrollNF) { const el = document.getElementById('req-col-non_functional'); if (el) el.scrollTop = scrollNF; }
   }
 
   if (_tab === 'documents') {
