@@ -1466,7 +1466,7 @@ function requirementsColumn(label, items, type) {
     <div class="space-y-2 max-h-96 overflow-y-auto pr-1" id="req-col-${type}">
       ${items.length === 0
         ? '<p class="text-xs text-gray-400 py-2 text-center">Sin requerimientos registrados</p>'
-        : items.map(requirementRow).join('')}
+        : items.map((r, i) => requirementRow(r, i)).join('')}
     </div>
   </div>`;
 }
@@ -1478,11 +1478,16 @@ function isResponsible() {
   return String(user.id) === String(_project.responsible_id);
 }
 
-function requirementRow(r) {
+function reqLabel(r, index) {
+  return `${r.type === 'non_functional' ? 'RNF' : 'RF'}${index + 1}`;
+}
+
+function requirementRow(r, index) {
   const canEditProgress = isResponsible();
+  const label = reqLabel(r, index);
   return `
   <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
-    <div class="flex-1 text-sm text-gray-700 break-words rte-display">${sanitizeRichText(r.description || '')}</div>
+    <div class="flex-1 text-sm text-gray-700 break-words rte-display"><span class="font-semibold text-gray-400 mr-1.5">${label}.</span>${sanitizeRichText(r.description || '')}</div>
     ${canEditProgress
       ? `<input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">`
       : `<span class="text-xs font-medium text-gray-500 shrink-0 mt-0.5" title="Solo el responsable puede editar el avance">${r.progress ?? 0}</span>`}
