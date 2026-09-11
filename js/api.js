@@ -5,6 +5,9 @@
 const CENTRAL_API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'http://localhost:4000'
   : 'https://api-qubira.onrender.com';
+const CENTRAL_ALERT_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:5515/session-alert.html'
+  : 'https://qubira-login.vercel.app/session-alert.html';
 
 function resolveUrl(path) {
   if (path.startsWith('/auth')) return CENTRAL_API + '/api' + path;
@@ -26,9 +29,16 @@ async function request(method, path, body) {
   const res = await fetch(resolveUrl(path), opts);
 
   if (res.status === 401) {
+    const text401 = await res.text();
+    const data401 = text401 ? JSON.parse(text401) : null;
+    const cachedUsername = JSON.parse(localStorage.getItem('user') || 'null')?.username;
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    location.hash = '#/login';
+    if (data401?.code === 'SESSION_REPLACED') {
+      window.location.href = `${CENTRAL_ALERT_URL}?username=${encodeURIComponent(cachedUsername || '')}&ip=${encodeURIComponent(data401.ip || '')}`;
+    } else {
+      location.hash = '#/login';
+    }
     throw new Error('No autorizado');
   }
 
