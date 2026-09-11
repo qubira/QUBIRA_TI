@@ -303,4 +303,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(evt =>
     document.addEventListener(evt, handleActivity, { passive: true }));
+
+  /* Arranca el conteo apenas carga la página, no recién en la primera
+     interacción — si no, alguien que deja la pestaña abierta sin
+     tocar nada JAMÁS se desloguea (nunca dispara un evento). */
+  resetTimers();
 })(logout);
