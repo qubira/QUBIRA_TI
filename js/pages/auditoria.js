@@ -2,7 +2,7 @@ import { api }        from '../api.js';
 import { getUser }    from '../state.js';
 import { pageHeader, spinner } from '../utils.js';
 
-const AREAS = [['TI','TI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
+const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
 const QUALIFYING_CARGOS = ['SUPERVISOR', 'COORDINADOR', 'GERENTE'];
 const ACTION_LABEL = { view: 'Consultó', create: 'Creó', update: 'Actualizó', delete: 'Eliminó', login: 'Inició sesión', logout: 'Cerró sesión' };
 const ACTION_COLOR = {

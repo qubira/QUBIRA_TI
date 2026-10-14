@@ -101,7 +101,7 @@ function renderPage() {
     <button id="export-pdf-btn" class="btn-secondary">${icon('picture_as_pdf', 16)} Exportar PDF</button>
     ${p.website_url ? `<a href="${esc(p.website_url)}" target="_blank" rel="noopener" class="btn-secondary">${icon('open_in_new', 16)} Ver página</a>` : ''}
     ${p.status === 'pending' ? `
-      <button id="claim-btn" class="btn-primary">${icon('add_task', 16)} Reclamar para TI</button>
+      <button id="claim-btn" class="btn-primary">${icon('add_task', 16)} Reclamar para OTI</button>
     ` : p.status === 'completed' ? `
       <span class="text-sm text-gray-400 flex items-center gap-1.5">${icon('lock', 16)} Completado — ADG aprobó el cierre</span>
     ` : `

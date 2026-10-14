@@ -3,7 +3,7 @@ import { getUser }    from '../state.js';
 import { toast, showModal, closeModal, pageHeader, spinner, icon } from '../utils.js';
 
 const OWN_AREA = 'TI';
-const AREAS = [['TI','TI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
+const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
 const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Otro'];
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };
@@ -69,11 +69,11 @@ function renderPage() {
   if (!c) return;
 
   c.innerHTML = `
-  ${pageHeader('Calendario — TI', `${_meetings.length} reunión${_meetings.length !== 1 ? 'es' : ''}`,
+  ${pageHeader('Calendario — OTI', `${_meetings.length} reunión${_meetings.length !== 1 ? 'es' : ''}`,
     `<button id="cal-add-btn" class="btn-primary">${icon('add',20)} Agregar reunión</button>`)}
 
   <div class="flex items-center gap-2 mb-4 border-b border-gray-200">
-    <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='area' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="area">Calendario — TI</button>
+    <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='area' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="area">Calendario — OTI</button>
     <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='mine' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="mine">Mi agenda</button>
   </div>
 

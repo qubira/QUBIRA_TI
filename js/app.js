@@ -89,7 +89,7 @@ function renderSidebar(currentHash) {
         <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
           <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain">
         </div>
-        ${!collapsed ? '<span class="font-bold text-white text-lg">Qubira TI</span>' : ''}
+        ${!collapsed ? '<span class="font-bold text-white text-lg">Qubira OTI</span>' : ''}
       </div>
       ${!collapsed ? `<button id="sb-toggle" class="p-1 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_left', 20)}</button>` : ''}
     </div>
