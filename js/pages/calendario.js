@@ -1,6 +1,6 @@
 import { api }        from '../api.js';
 import { getUser }    from '../state.js';
-import { toast, showModal, closeModal, pageHeader, spinner, icon } from '../utils.js';
+import { toast, showModal, closeModal, confirmModal, pageHeader, spinner, icon } from '../utils.js';
 
 const OWN_AREA = 'TI';
 const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
@@ -8,10 +8,9 @@ const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Inciden
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };
 
-let _mode = 'area';               // 'area' | 'mine'
+let _mode = 'area';               // 'area' | 'mine' | 'week' | 'weekArea'
 let _filters = { area: OWN_AREA, participant: '', type: '', date_from: todayISO(), date_to: '', status: '' };
 let _meetings = [];
-let _formOpen = false;
 let _editingId = null;
 let _conflicts = [];
 let _selectedParticipants = [];   // [{user_id, nombre, apellidos, area, cargo, role?}]
@@ -19,6 +18,10 @@ let _externalParticipants = [];   // [{name, kind}]
 let _dirResults = [];
 let _dirDebounce, _filterDebounce;
 let _checkToken = 0;
+let _draft = {};                  // texto en progreso del formulario — sobrevive a un re-render por filtro/recarga
+let _weekOffset = 0;              // semanas respecto a la actual, para la vista semanal
+const WEEK_START_HOUR = 7;
+const WEEK_END_HOUR = 21;
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function esc(s) {
@@ -33,6 +36,23 @@ function fmtDateOnly(s) {
 function fullName(p) { return [p.nombre, p.apellidos].filter(Boolean).join(' '); }
 function isPrivileged() { return (getUser()?.nivel_acceso || 0) >= 100; }
 
+function isoDate(d) { return d.toISOString().slice(0, 10); }
+function weekBounds(offset) {
+  const now = new Date();
+  const day = now.getDay(); // 0=domingo..6=sábado
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  monday.setDate(monday.getDate() + diffToMonday + offset * 7);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+  return { monday, sunday: days[6], days };
+}
+const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const MONTH_LABELS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
 export function render() {
   const main = document.getElementById('main');
   main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="cal-page">${spinner()}</div>`;
@@ -41,20 +61,41 @@ export function render() {
 
 async function load() {
   try {
-    const params = { date_from: _filters.date_from || undefined, date_to: _filters.date_to || undefined, status: _filters.status || undefined };
-    if (_mode === 'mine') {
-      params.mine = 'true';
+    let params;
+    if (_mode === 'week' || _mode === 'weekArea') {
+      const { monday, sunday } = weekBounds(_weekOffset);
+      params = { date_from: isoDate(monday), date_to: isoDate(sunday) };
+      if (_mode === 'week') {
+        /* Solo las reuniones propias de quien está logueado — el horario
+           de una misma persona nunca se solapa (ya se valida al crear/
+           editar), así que esta vista nunca va a mostrar bloques
+           superpuestos. */
+        params.mine = 'true';
+      } else {
+        /* Vista semana general: todas las reuniones del área, de
+           cualquier participante — estas sí pueden solaparse entre sí
+           (dos personas distintas con reuniones a la misma hora), así
+           que el render usa un layout de columnas para no superponerlas. */
+        params.area = OWN_AREA;
+      }
     } else {
-      params.area = _filters.area;
+      params = { date_from: _filters.date_from || undefined, date_to: _filters.date_to || undefined, status: _filters.status || undefined };
+      if (_mode === 'mine') {
+        params.mine = 'true';
+      } else {
+        params.area = _filters.area;
+      }
     }
     let meetings = await api.get('/calendar/meetings', params);
-    if (_filters.participant) {
-      const q = _filters.participant.toLowerCase();
-      meetings = meetings.filter(m => (m.participants || []).some(p =>
-        (p.user_name || p.external_name || '').toLowerCase().includes(q)));
-    }
-    if (_filters.type) {
-      meetings = meetings.filter(m => (m.meeting_type || '').toLowerCase() === _filters.type.toLowerCase());
+    if (_mode !== 'week' && _mode !== 'weekArea') {
+      if (_filters.participant) {
+        const q = _filters.participant.toLowerCase();
+        meetings = meetings.filter(m => (m.participants || []).some(p =>
+          (p.user_name || p.external_name || '').toLowerCase().includes(q)));
+      }
+      if (_filters.type) {
+        meetings = meetings.filter(m => (m.meeting_type || '').toLowerCase() === _filters.type.toLowerCase());
+      }
     }
     _meetings = meetings;
     renderPage();
@@ -72,39 +113,175 @@ function renderPage() {
   ${pageHeader('Calendario — OTI', `${_meetings.length} reunión${_meetings.length !== 1 ? 'es' : ''}`,
     `<button id="cal-add-btn" class="btn-primary">${icon('add',20)} Agregar reunión</button>`)}
 
-  <div class="flex items-center gap-2 mb-4 border-b border-gray-200">
-    <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='area' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="area">Calendario — OTI</button>
-    <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='mine' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="mine">Mi agenda</button>
-  </div>
-
-  <div class="flex flex-wrap gap-3 mb-5">
-    ${_mode === 'area' ? `
-      <select id="f-area" class="input w-auto">
-        ${AREAS.map(([k,l]) => `<option value="${k}" ${_filters.area===k?'selected':''}>${l}</option>`).join('')}
-        ${isPrivileged() ? `<option value="ALL" ${_filters.area==='ALL'?'selected':''}>Todas las áreas</option>` : ''}
-      </select>` : ''}
-    <div class="relative min-w-[180px]">
-      <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style="font-size:16px">search</span>
-      <input id="f-participant" class="input pl-8" placeholder="Buscar participante..." value="${esc(_filters.participant)}">
+  <div class="sticky top-0 z-20 bg-gray-50 pt-1 pb-3 -mx-6 px-6">
+    <div class="flex items-center gap-2 border-b border-gray-200">
+      <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='area' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="area">Calendario — OTI</button>
+      <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='mine' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="mine">Mi agenda</button>
+      <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='week' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="week">Vista semana</button>
+      <button type="button" class="cal-tab px-4 py-2 text-sm font-medium border-b-2 ${_mode==='weekArea' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}" data-mode="weekArea">Vista semana general</button>
     </div>
-    <select id="f-type" class="input w-auto">
-      <option value="">Todos los tipos</option>
-      ${MEETING_TYPES.map(t => `<option value="${t}" ${_filters.type===t?'selected':''}>${t}</option>`).join('')}
-    </select>
-    <input type="date" id="f-date-from" class="input w-auto" value="${_filters.date_from}">
-    <input type="date" id="f-date-to" class="input w-auto" value="${_filters.date_to}">
-    <select id="f-status" class="input w-auto">
-      <option value="">Todos los estados</option>
-      ${Object.entries(STATUS_LABEL).map(([k,l]) => `<option value="${k}" ${_filters.status===k?'selected':''}>${l}</option>`).join('')}
-    </select>
+    ${(_mode === 'week' || _mode === 'weekArea') ? '' : `
+    <div class="flex flex-wrap gap-3 mt-4">
+      ${_mode === 'area' ? `
+        <select id="f-area" class="input w-auto">
+          ${AREAS.map(([k,l]) => `<option value="${k}" ${_filters.area===k?'selected':''}>${l}</option>`).join('')}
+          ${isPrivileged() ? `<option value="ALL" ${_filters.area==='ALL'?'selected':''}>Todas las áreas</option>` : ''}
+        </select>` : ''}
+      <div class="relative min-w-[180px]">
+        <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style="font-size:16px">search</span>
+        <input id="f-participant" class="input pl-8" placeholder="Buscar participante..." value="${esc(_filters.participant)}">
+      </div>
+      <select id="f-type" class="input w-auto">
+        <option value="">Todos los tipos</option>
+        ${MEETING_TYPES.map(t => `<option value="${t}" ${_filters.type===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <input type="date" id="f-date-from" class="input w-auto" value="${_filters.date_from}">
+      <input type="date" id="f-date-to" class="input w-auto" value="${_filters.date_to}">
+      <select id="f-status" class="input w-auto">
+        <option value="">Todos los estados</option>
+        ${Object.entries(STATUS_LABEL).map(([k,l]) => `<option value="${k}" ${_filters.status===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+    </div>`}
   </div>
 
-  <div class="grid grid-cols-1 ${_formOpen ? 'lg:grid-cols-[1fr_380px]' : ''} gap-5 items-start">
-    <div id="cal-list">${listHtml()}</div>
-    ${_formOpen ? `<div id="cal-form-panel">${formHtml()}</div>` : ''}
+  <div class="mt-5">
+  ${_mode === 'week' ? weekViewHtml(false) : _mode === 'weekArea' ? weekViewHtml(true) : `
+  <div id="cal-list">${listHtml()}</div>`}
   </div>`;
 
   wirePage();
+}
+
+/* En la vista semana solo se muestran las reuniones propias (ver
+   load()), así que colorear por área no sirve para distinguirlas —
+   casi siempre serían todas del mismo color. Se colorea por tipo de
+   reunión en su lugar, que varía más seguido. */
+const MEETING_TYPE_COLORS = {
+  'Reunión técnica': 'bg-indigo-500',
+  'Planificación': 'bg-sky-500',
+  'Revisión': 'bg-rose-500',
+  'Incidencia': 'bg-red-600',
+  'Coordinación': 'bg-amber-500',
+  'Otro': 'bg-violet-500',
+};
+function meetingTypeColor(type) { return MEETING_TYPE_COLORS[type] || 'bg-slate-500'; }
+
+const WEEK_ROW_H = 48; // px por hora
+
+/* Reparte eventos que se solapan en el tiempo en columnas lado a lado
+   (como Google Calendar), para que nunca se dibujen uno encima del
+   otro. Agrupa eventos en "racimos" de solapamiento consecutivo y
+   dentro de cada racimo asigna la primera columna libre a cada evento
+   (algoritmo greedy por orden de inicio). */
+function layoutDayEvents(events) {
+  const sorted = [...events].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const placed = [];
+  let cluster = [];
+  let clusterEnd = -Infinity;
+
+  const flushCluster = () => {
+    if (!cluster.length) return;
+    const colEnds = [];
+    cluster.forEach(ev => {
+      let col = colEnds.findIndex(end => end <= ev.startMin);
+      if (col === -1) { col = colEnds.length; colEnds.push(ev.endMin); }
+      else { colEnds[col] = ev.endMin; }
+      placed.push({ ev, col });
+    });
+    const totalCols = colEnds.length;
+    placed.slice(-cluster.length).forEach(p => { p.totalCols = totalCols; });
+    cluster = []; clusterEnd = -Infinity;
+  };
+
+  sorted.forEach(ev => {
+    if (cluster.length && ev.startMin >= clusterEnd) flushCluster();
+    cluster.push(ev);
+    clusterEnd = Math.max(clusterEnd, ev.endMin);
+  });
+  flushCluster();
+
+  return placed;
+}
+
+function weekViewHtml(general) {
+  const { monday, days } = weekBounds(_weekOffset);
+  const hours = [];
+  for (let h = WEEK_START_HOUR; h < WEEK_END_HOUR; h++) hours.push(h);
+  const rangeLabel = `${monday.getDate()} de ${MONTH_LABELS[monday.getMonth()]}${monday.getMonth() !== days[6].getMonth() ? ' – ' + days[6].getDate() + ' de ' + MONTH_LABELS[days[6].getMonth()] : ' – ' + days[6].getDate()} de ${days[6].getFullYear()}`;
+  const todayIso = todayISO();
+
+  const dayCols = days.map((d, i) => {
+    const iso = isoDate(d);
+    const isToday = iso === todayIso;
+    const dayMeetings = _meetings
+      .filter(m => m.meeting_date === iso && m.visibility !== 'busy_only')
+      .map(m => {
+        const [sh, sm] = m.start_time.slice(0,5).split(':').map(Number);
+        const [eh, em] = m.end_time.slice(0,5).split(':').map(Number);
+        return {
+          m,
+          startMin: Math.max(0, (sh - WEEK_START_HOUR) * 60 + sm),
+          endMin: Math.min((WEEK_END_HOUR - WEEK_START_HOUR) * 60, (eh - WEEK_START_HOUR) * 60 + em),
+        };
+      });
+    const blocks = layoutDayEvents(dayMeetings).map(({ ev, col, totalCols }) => {
+      const { m, startMin, endMin } = ev;
+      const top = (startMin / 60) * WEEK_ROW_H;
+      const height = Math.max(20, ((endMin - startMin) / 60) * WEEK_ROW_H);
+      const widthPct = 100 / totalCols;
+      const leftPct = col * widthPct;
+      const posStyle = totalCols > 1
+        ? `left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 2px)`
+        : 'left:2px;right:2px';
+      const internalNames = general
+        ? (m.participants || []).filter(p => p.participant_type === 'internal').map(p => p.user_name).filter(Boolean)
+        : [];
+      return `
+        <button type="button" class="cal-week-event absolute rounded-md ${meetingTypeColor(m.meeting_type)} text-white text-left px-1.5 py-0.5 overflow-hidden shadow-sm hover:brightness-110" data-id="${m.id}" style="top:${top}px;height:${height}px;${posStyle}">
+          <div class="text-[10px] font-semibold leading-tight truncate">${esc(m.title)}</div>
+          <div class="text-[9px] opacity-90 leading-tight">${m.start_time.slice(0,5)}–${m.end_time.slice(0,5)}</div>
+          ${internalNames.length ? `<div class="text-[9px] opacity-80 leading-tight truncate">${esc(internalNames.join(', '))}</div>` : ''}
+        </button>`;
+    }).join('');
+    return `
+      <div class="relative border-l border-gray-100 ${isToday ? 'bg-primary-50/40' : ''}" style="height:${hours.length * WEEK_ROW_H}px">
+        ${hours.map((_, hi) => `<div class="absolute left-0 right-0 border-t border-gray-100" style="top:${hi * WEEK_ROW_H}px"></div>`).join('')}
+        ${blocks}
+      </div>`;
+  }).join('');
+
+  const dayHeaders = days.map((d, i) => {
+    const iso = isoDate(d);
+    const isToday = iso === todayIso;
+    return `
+      <div class="text-center py-2 border-l border-gray-100 ${isToday ? 'bg-primary-50/40' : ''}">
+        <div class="text-[11px] text-gray-400 uppercase">${WEEKDAY_LABELS[i]}</div>
+        <div class="text-sm font-semibold ${isToday ? 'text-primary-700' : 'text-gray-700'}">${d.getDate()}</div>
+      </div>`;
+  }).join('');
+
+  return `
+  <div class="card p-0 overflow-hidden">
+    ${general ? `<div class="px-4 pt-3 text-xs font-medium text-gray-500">Todas las reuniones del área OTI — eventos que se cruzan en horario se muestran lado a lado</div>` : ''}
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <button type="button" id="week-today-btn" class="btn-secondary text-xs px-3 py-1.5">Hoy</button>
+      <div class="flex items-center gap-2">
+        <button type="button" id="week-prev-btn" class="p-1.5 rounded hover:bg-gray-100 text-gray-500">${icon('chevron_left',18)}</button>
+        <span class="text-sm font-medium text-gray-700">${rangeLabel}</span>
+        <button type="button" id="week-next-btn" class="p-1.5 rounded hover:bg-gray-100 text-gray-500">${icon('chevron_right',18)}</button>
+      </div>
+      <div class="w-[72px]"></div>
+    </div>
+    <div class="overflow-x-auto">
+      <div class="grid" style="grid-template-columns:56px repeat(7,minmax(110px,1fr));min-width:820px">
+        <div></div>${dayHeaders}
+        <div class="relative" style="height:${hours.length * WEEK_ROW_H}px">
+          ${hours.map((h, hi) => `<div class="absolute left-0 right-0 text-right pr-2 text-[11px] text-gray-400 -translate-y-1/2" style="top:${hi * WEEK_ROW_H}px">${String(h).padStart(2,'0')}:00</div>`).join('')}
+        </div>
+        ${dayCols}
+      </div>
+    </div>
+  </div>`;
 }
 
 function listHtml() {
@@ -159,55 +336,62 @@ function meetingCard(m) {
 
 function formHtml() {
   const editing = _meetings.find(m => m.id === _editingId);
+  const fv = (name, fallback) => esc(_draft[name] ?? fallback ?? '');
+  const currentImage = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
   return `
-  <div class="card p-5">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-semibold text-gray-900">${editing ? 'Editar reunión' : 'Nueva reunión'}</h3>
-      <button type="button" id="cal-form-close" class="p-1 rounded hover:bg-gray-100 text-gray-400">${icon('close',18)}</button>
-    </div>
     <form id="cal-form" class="space-y-3">
       <div>
         <label class="text-xs font-medium text-gray-600">Nombre de la reunión *</label>
-        <input name="title" class="input text-sm w-full mt-1" required value="${esc(editing?.title || '')}">
+        <input name="title" class="input text-sm w-full mt-1" required autocomplete="off" value="${fv('title', editing?.title)}">
       </div>
       <div class="grid grid-cols-3 gap-2">
         <div>
           <label class="text-xs font-medium text-gray-600">Fecha *</label>
-          <input type="date" name="date" class="input text-sm w-full mt-1" required value="${editing?.meeting_date || ''}">
+          <input type="date" name="date" class="input text-sm w-full mt-1" required value="${fv('date', editing?.meeting_date)}">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-600">Inicio *</label>
-          <input type="time" name="start_time" class="input text-sm w-full mt-1" required value="${editing ? editing.start_time.slice(0,5) : ''}">
+          <input type="time" name="start_time" class="input text-sm w-full mt-1" required value="${fv('start_time', editing ? editing.start_time.slice(0,5) : '')}">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-600">Fin *</label>
-          <input type="time" name="end_time" class="input text-sm w-full mt-1" required value="${editing ? editing.end_time.slice(0,5) : ''}">
+          <input type="time" name="end_time" class="input text-sm w-full mt-1" required value="${fv('end_time', editing ? editing.end_time.slice(0,5) : '')}">
         </div>
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600">Tipo de reunión</label>
         <select name="meeting_type" class="input text-sm w-full mt-1">
           <option value="">— Seleccionar —</option>
-          ${MEETING_TYPES.map(t => `<option value="${t}" ${editing?.meeting_type===t?'selected':''}>${t}</option>`).join('')}
+          ${MEETING_TYPES.map(t => `<option value="${t}" ${(_draft.meeting_type ?? editing?.meeting_type)===t?'selected':''}>${t}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Ubicación</label>
-        <input name="location" class="input text-sm w-full mt-1" placeholder="Sala de reuniones, dirección, link de videollamada..." value="${esc(editing?.location || '')}">
-      </div>
-      <div>
         <label class="text-xs font-medium text-gray-600">Motivo</label>
-        <input name="motivo" class="input text-sm w-full mt-1" value="${esc(editing?.motivo || '')}">
+        <input name="motivo" class="input text-sm w-full mt-1" autocomplete="off" value="${fv('motivo', editing?.motivo)}">
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600">Descripción</label>
-        <textarea name="description" class="input text-sm w-full mt-1" rows="2">${esc(editing?.description || '')}</textarea>
+        <textarea name="description" class="input text-sm w-full mt-1" rows="2">${fv('description', editing?.description)}</textarea>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600">Ubicación</label>
+        <input name="location" class="input text-sm w-full mt-1" placeholder="Sala de reuniones, dirección, link de videollamada..." autocomplete="off" value="${fv('location', editing?.location)}">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1">Imagen del evento (opcional)</label>
+        ${currentImage ? `
+          <div class="relative inline-block mb-1.5">
+            <img src="${esc(currentImage)}" class="rounded-lg max-h-28 border border-gray-200">
+            <button type="button" id="cal-image-remove" class="absolute -top-1.5 -right-1.5 bg-white rounded-full shadow p-0.5 text-gray-500 hover:text-red-600">${icon('close',14)}</button>
+          </div>` : ''}
+        <input type="file" id="cal-image-input" accept="image/*" class="text-xs w-full">
+        <p id="cal-image-status" class="text-[11px] text-gray-400 mt-1"></p>
       </div>
 
       <div>
         <label class="text-xs font-medium text-gray-600 block mb-1">Participantes internos</label>
         <div class="relative">
-          <input id="cal-participant-search" class="input text-sm w-full" placeholder="Buscar por nombre, cargo o área...">
+          <input id="cal-participant-search" class="input text-sm w-full" placeholder="Buscar por nombre, cargo o área..." autocomplete="off">
           <div id="cal-dir-results" class="absolute z-10 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto hidden"></div>
         </div>
         <div id="cal-selected-participants" class="flex flex-wrap gap-1.5 mt-2">${selectedParticipantsHtml()}</div>
@@ -216,7 +400,7 @@ function formHtml() {
       <div>
         <label class="text-xs font-medium text-gray-600 block mb-1">Participante externo (cliente, postulante, proveedor...)</label>
         <div class="flex gap-2">
-          <input id="cal-ext-name" class="input text-sm flex-1" placeholder="Nombre">
+          <input id="cal-ext-name" class="input text-sm flex-1" placeholder="Nombre" autocomplete="off">
           <select id="cal-ext-kind" class="input text-sm w-auto">
             ${EXTERNAL_KINDS.map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
           </select>
@@ -230,8 +414,16 @@ function formHtml() {
         <button type="submit" id="cal-save-btn" class="btn-primary text-sm flex-1 justify-center" ${_conflicts.length ? 'disabled' : ''}>${editing ? 'Guardar cambios' : 'Guardar reunión'}</button>
         <button type="button" id="cal-form-cancel" class="btn-secondary text-sm">Cancelar</button>
       </div>
-    </form>
-  </div>`;
+    </form>`;
+}
+
+function openFormModal() {
+  const editing = _meetings.find(m => m.id === _editingId);
+  showModal(editing ? 'Editar reunión' : 'Nueva reunión', formHtml(), 'lg');
+  document.getElementById('cal-form-cancel')?.addEventListener('click', closeModal);
+  wireFormExtras();
+  wireFormDraftCapture();
+  wireImageControls();
 }
 
 function selectedParticipantsHtml() {
@@ -266,8 +458,17 @@ function conflictBannerHtml() {
 function wirePage() {
   document.querySelectorAll('.cal-tab').forEach(btn => btn.addEventListener('click', () => {
     _mode = btn.dataset.mode;
+    if (_mode === 'week' || _mode === 'weekArea') _weekOffset = 0;
     load();
   }));
+
+  const weekPrev = document.getElementById('week-prev-btn');
+  if (weekPrev) weekPrev.addEventListener('click', () => { _weekOffset--; load(); });
+  const weekNext = document.getElementById('week-next-btn');
+  if (weekNext) weekNext.addEventListener('click', () => { _weekOffset++; load(); });
+  const weekToday = document.getElementById('week-today-btn');
+  if (weekToday) weekToday.addEventListener('click', () => { _weekOffset = 0; load(); });
+  document.querySelectorAll('.cal-week-event').forEach(btn => btn.addEventListener('click', () => viewMeeting(btn.dataset.id)));
 
   const areaSel = document.getElementById('f-area');
   if (areaSel) areaSel.addEventListener('change', e => { _filters.area = e.target.value; load(); });
@@ -288,30 +489,70 @@ function wirePage() {
 
   const addBtn = document.getElementById('cal-add-btn');
   if (addBtn) addBtn.addEventListener('click', () => {
-    _editingId = null; _selectedParticipants = []; _externalParticipants = []; _conflicts = [];
-    _formOpen = true; renderPage();
+    _editingId = null; _selectedParticipants = []; _externalParticipants = []; _conflicts = []; _draft = {};
+    openFormModal();
   });
-
-  ['cal-form-close', 'cal-form-cancel'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', () => { _formOpen = false; _editingId = null; renderPage(); });
-  });
-
-  wireFormExtras();
-
-  const form = document.getElementById('cal-form');
-  if (form) {
-    ['date', 'start_time', 'end_time'].forEach(name => {
-      const el = form.elements[name];
-      if (el) el.addEventListener('change', liveCheck);
-    });
-    form.addEventListener('submit', submitForm);
-  }
 
   document.querySelectorAll('.cal-view-btn').forEach(btn => btn.addEventListener('click', () => viewMeeting(btn.dataset.id)));
   document.querySelectorAll('.cal-edit-btn').forEach(btn => btn.addEventListener('click', () => editMeeting(btn.dataset.id)));
   document.querySelectorAll('.cal-cancel-btn').forEach(btn => btn.addEventListener('click', () => cancelMeeting(btn.dataset.id)));
   document.querySelectorAll('.cal-del-btn').forEach(btn => btn.addEventListener('click', () => deleteMeeting(btn.dataset.id)));
+}
+
+/* Guarda lo que se va escribiendo en un estado aparte (_draft) — si la
+   lista se recarga por un filtro mientras el panel sigue abierto, el
+   re-render del formulario no borra lo que ya se había tecleado. Se
+   vuelve a llamar cada vez que se regenera el HTML del panel (subir
+   imagen, quitar imagen), no solo en el render inicial. */
+function wireFormDraftCapture() {
+  const form = document.getElementById('cal-form');
+  if (!form) return;
+  const captureDraft = e => { if (e.target.name) _draft[e.target.name] = e.target.value; };
+  form.addEventListener('input', captureDraft);
+  form.addEventListener('change', captureDraft);
+  ['date', 'start_time', 'end_time'].forEach(name => {
+    const el = form.elements[name];
+    if (el) el.addEventListener('change', liveCheck);
+  });
+  form.addEventListener('submit', submitForm);
+}
+
+function rerenderFormModal() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  body.innerHTML = formHtml();
+  document.getElementById('cal-form-cancel')?.addEventListener('click', closeModal);
+  wireFormExtras();
+  wireFormDraftCapture();
+  wireImageControls();
+}
+
+function wireImageControls() {
+  const imageInput = document.getElementById('cal-image-input');
+  if (imageInput) imageInput.addEventListener('change', handleImageUpload);
+  const imageRemove = document.getElementById('cal-image-remove');
+  if (imageRemove) imageRemove.addEventListener('click', () => {
+    _draft.image_url = null;
+    rerenderFormModal();
+  });
+}
+
+async function handleImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('cal-image-status');
+  if (status) status.textContent = 'Subiendo imagen...';
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const data = await api.post('/calendar/meetings/image', fd);
+    _draft.image_url = data.url;
+    rerenderFormModal();
+    toast('Imagen subida');
+  } catch (err) {
+    if (status) status.textContent = '';
+    toast(err.message || 'No se pudo subir la imagen', 'error');
+  }
 }
 
 function wireFormExtras() {
@@ -429,8 +670,11 @@ async function submitForm(e) {
   if (end_time <= start_time) return toast('La hora de fin debe ser posterior a la de inicio', 'error');
   if (!_selectedParticipants.length && !_externalParticipants.length) return toast('Selecciona al menos un participante', 'error');
 
+  const editing = _meetings.find(m => m.id === _editingId);
+  const image_url = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
+
   const payload = {
-    title, date, start_time, end_time, meeting_type, location, motivo, description,
+    title, date, start_time, end_time, meeting_type, location, motivo, description, image_url,
     participants: _selectedParticipants.map(p => ({ user_id: p.user_id })),
     external_participants: _externalParticipants,
   };
@@ -443,7 +687,7 @@ async function submitForm(e) {
       await api.post('/calendar/meetings', payload);
       toast('Reunión programada');
     }
-    _formOpen = false; _editingId = null; _conflicts = [];
+    closeModal(); _editingId = null; _conflicts = []; _draft = {};
     await load();
   } catch (err) {
     if (err.response?.data?.conflicts) {
@@ -468,13 +712,13 @@ function editMeeting(id) {
     .filter(p => p.participant_type === 'external')
     .map(p => ({ name: p.external_name, kind: p.external_kind }));
   _conflicts = [];
-  _formOpen = true;
-  renderPage();
+  _draft = {};
+  openFormModal();
 }
 
 async function cancelMeeting(id) {
   const m = _meetings.find(x => x.id === id);
-  if (!m || !confirm(`¿Deseas cancelar la reunión "${m.title}"? Se liberará el horario de los participantes.`)) return;
+  if (!m || !(await confirmModal(`¿Deseas cancelar la reunión "${m.title}"? Se liberará el horario de los participantes.`, { title: 'Cancelar reunión', confirmLabel: 'Sí, cancelar' }))) return;
   try {
     await api.post(`/calendar/meetings/${id}/cancel`);
     toast('Reunión cancelada');
@@ -484,11 +728,11 @@ async function cancelMeeting(id) {
 
 async function deleteMeeting(id) {
   const m = _meetings.find(x => x.id === id);
-  if (!m || !confirm(`¿Deseas eliminar la reunión "${m.title}"? Esta acción no se puede deshacer.`)) return;
+  if (!m || !(await confirmModal(`¿Deseas eliminar la reunión "${m.title}"? Esta acción no se puede deshacer.`))) return;
   try {
     await api.delete(`/calendar/meetings/${id}`);
     toast('Reunión eliminada');
-    if (_editingId === id) { _formOpen = false; _editingId = null; }
+    if (_editingId === id) { closeModal(); _editingId = null; }
     await load();
   } catch (err) { toast(err.message || 'Error', 'error'); }
 }
@@ -504,13 +748,14 @@ function viewMeeting(id) {
   }).join('');
   showModal(esc(m.title), `
     <div class="space-y-3 text-sm">
+      ${m.image_url ? `<img src="${esc(m.image_url)}" class="w-full max-h-64 object-cover rounded-lg border border-gray-200">` : ''}
       <p><span class="font-medium text-gray-700">Área:</span> ${esc(m.area)}</p>
       <p><span class="font-medium text-gray-700">Fecha:</span> ${fmtDateOnly(m.meeting_date)}</p>
       <p><span class="font-medium text-gray-700">Horario:</span> ${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}</p>
       ${m.meeting_type ? `<p><span class="font-medium text-gray-700">Tipo:</span> ${esc(m.meeting_type)}</p>` : ''}
       ${m.location ? `<p><span class="font-medium text-gray-700">Ubicación:</span> ${esc(m.location)}</p>` : ''}
       ${m.motivo ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.motivo)}</p>` : ''}
-      ${m.description ? `<p><span class="font-medium text-gray-700">Descripción:</span> ${esc(m.description)}</p>` : ''}
+      ${m.description ? `<div><span class="font-medium text-gray-700">Descripción:</span><p class="mt-1 text-gray-600" style="white-space:pre-wrap">${esc(m.description)}</p></div>` : ''}
       <div>
         <p class="font-medium text-gray-700 mb-1">Participantes:</p>
         <ul class="list-disc list-inside text-gray-600">${participantsHtml || '<li>Sin participantes</li>'}</ul>
