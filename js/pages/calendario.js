@@ -192,6 +192,10 @@ function formHtml() {
         </select>
       </div>
       <div>
+        <label class="text-xs font-medium text-gray-600">Ubicación</label>
+        <input name="location" class="input text-sm w-full mt-1" placeholder="Sala de reuniones, dirección, link de videollamada..." value="${esc(editing?.location || '')}">
+      </div>
+      <div>
         <label class="text-xs font-medium text-gray-600">Motivo</label>
         <input name="motivo" class="input text-sm w-full mt-1" value="${esc(editing?.motivo || '')}">
       </div>
@@ -416,6 +420,7 @@ async function submitForm(e) {
   const start_time = form.elements.start_time.value;
   const end_time = form.elements.end_time.value;
   const meeting_type = form.elements.meeting_type.value;
+  const location = form.elements.location.value.trim();
   const motivo = form.elements.motivo.value.trim();
   const description = form.elements.description.value.trim();
 
@@ -425,7 +430,7 @@ async function submitForm(e) {
   if (!_selectedParticipants.length && !_externalParticipants.length) return toast('Selecciona al menos un participante', 'error');
 
   const payload = {
-    title, date, start_time, end_time, meeting_type, motivo, description,
+    title, date, start_time, end_time, meeting_type, location, motivo, description,
     participants: _selectedParticipants.map(p => ({ user_id: p.user_id })),
     external_participants: _externalParticipants,
   };
@@ -503,6 +508,7 @@ function viewMeeting(id) {
       <p><span class="font-medium text-gray-700">Fecha:</span> ${fmtDateOnly(m.meeting_date)}</p>
       <p><span class="font-medium text-gray-700">Horario:</span> ${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}</p>
       ${m.meeting_type ? `<p><span class="font-medium text-gray-700">Tipo:</span> ${esc(m.meeting_type)}</p>` : ''}
+      ${m.location ? `<p><span class="font-medium text-gray-700">Ubicación:</span> ${esc(m.location)}</p>` : ''}
       ${m.motivo ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.motivo)}</p>` : ''}
       ${m.description ? `<p><span class="font-medium text-gray-700">Descripción:</span> ${esc(m.description)}</p>` : ''}
       <div>
