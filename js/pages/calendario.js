@@ -7,6 +7,24 @@ const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte
 const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Otro'];
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };
+const MODALITY_LABEL = { presencial: 'Presencial', virtual: 'Virtual' };
+
+/* Ícono clickeable que resume la modalidad de la reunión: en presencial
+   abre la dirección en Google Maps, en virtual abre el link de ingreso
+   tal cual se guardó. Sin ubicación cargada, solo informa la modalidad. */
+function modalityIconHtml(m) {
+  const isVirtual = m.modality === 'virtual';
+  const iconName = isVirtual ? 'videocam' : 'location_on';
+  const label = MODALITY_LABEL[m.modality] || 'Presencial';
+  const colorClasses = isVirtual ? 'bg-blue-50 text-blue-700' : 'bg-primary-50 text-primary-700';
+  if (!m.location) {
+    return `<span class="badge ${colorClasses}" title="${esc(label)}">${icon(iconName,12)} ${label}</span>`;
+  }
+  const href = isVirtual
+    ? (/^https?:\/\//i.test(m.location) ? m.location : 'https://' + m.location)
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location)}`;
+  return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" class="badge ${colorClasses} hover:brightness-95" title="${esc(label + ' · ' + m.location)}" onclick="event.stopPropagation()">${icon(iconName,12)} ${label}</a>`;
+}
 
 let _mode = 'area';               // 'area' | 'mine' | 'week' | 'weekArea'
 let _filters = { area: OWN_AREA, participant: '', type: '', date_from: todayISO(), date_to: '', status: '' };
@@ -315,7 +333,7 @@ function meetingCard(m) {
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
           <h4 class="font-semibold text-gray-900">${esc(m.title)}</h4>
-          ${areaBadge} ${statusBadge}
+          ${areaBadge} ${statusBadge} ${modalityIconHtml(m)}
           ${isBusy ? `<span class="badge bg-gray-100 text-gray-500">${icon('lock',12)} Privada</span>` : ''}
         </div>
         <p class="text-xs text-gray-500 mt-1">${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}${m.meeting_type ? ' · ' + esc(m.meeting_type) : ''}</p>
@@ -358,12 +376,21 @@ function formHtml() {
           <input type="time" name="end_time" class="input text-sm w-full mt-1" required value="${fv('end_time', editing ? editing.end_time.slice(0,5) : '')}">
         </div>
       </div>
-      <div>
-        <label class="text-xs font-medium text-gray-600">Tipo de reunión</label>
-        <select name="meeting_type" class="input text-sm w-full mt-1">
-          <option value="">— Seleccionar —</option>
-          ${MEETING_TYPES.map(t => `<option value="${t}" ${(_draft.meeting_type ?? editing?.meeting_type)===t?'selected':''}>${t}</option>`).join('')}
-        </select>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs font-medium text-gray-600">Tipo de reunión</label>
+          <select name="meeting_type" class="input text-sm w-full mt-1">
+            <option value="">— Seleccionar —</option>
+            ${MEETING_TYPES.map(t => `<option value="${t}" ${(_draft.meeting_type ?? editing?.meeting_type)===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-600">Modalidad</label>
+          <select name="modality" id="cal-in-modality" class="input text-sm w-full mt-1">
+            <option value="presencial" ${(_draft.modality ?? editing?.modality ?? 'presencial')==='presencial'?'selected':''}>Presencial</option>
+            <option value="virtual" ${(_draft.modality ?? editing?.modality)==='virtual'?'selected':''}>Virtual</option>
+          </select>
+        </div>
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600">Motivo</label>
@@ -374,8 +401,8 @@ function formHtml() {
         <textarea name="description" class="input text-sm w-full mt-1" rows="2">${fv('description', editing?.description)}</textarea>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Ubicación</label>
-        <input name="location" class="input text-sm w-full mt-1" placeholder="Sala de reuniones, dirección, link de videollamada..." autocomplete="off" value="${fv('location', editing?.location)}">
+        <label class="text-xs font-medium text-gray-600" id="cal-location-label">${(_draft.modality ?? editing?.modality ?? 'presencial')==='virtual' ? 'Link de la reunión' : 'Dirección'}</label>
+        <input name="location" class="input text-sm w-full mt-1" placeholder="${(_draft.modality ?? editing?.modality ?? 'presencial')==='virtual' ? 'Link de Zoom, Meet, Teams...' : 'Sala de reuniones, dirección...'}" autocomplete="off" value="${fv('location', editing?.location)}">
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600 block mb-1">Imagen del evento (opcional)</label>
@@ -444,15 +471,27 @@ function selectedExternalsHtml() {
     </span>`).join('');
 }
 
+/* _conflicts trae conflictos "hard" (misma modalidad presencial,
+   bloquean guardar) y "soft" (modalidad mixta — una presencial y otra
+   virtual —, solo se avisa pero sí se puede guardar e inscribir a la
+   persona en ambas). Se muestran en dos bloques separados. */
 function conflictBannerHtml() {
   if (!_conflicts.length) return '';
+  const hard = _conflicts.filter(c => c.hard);
+  const soft = _conflicts.filter(c => !c.hard);
+  const item = c => `<li>${esc(c.user_name || 'Alguien')} (${esc(c.area || '—')}) ya tiene "${esc(c.meeting_name)}" (${MODALITY_LABEL[c.modality] || 'Presencial'}) de ${c.start_time.slice(0,5)} a ${c.end_time.slice(0,5)} (${fmtDateOnly(c.date)}).</li>`;
   return `
+  ${hard.length ? `
   <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-    <p class="font-semibold flex items-center gap-1.5">${icon('warning',16)} ${_conflicts.length > 1 ? 'Se encontraron ' + _conflicts.length + ' conflictos:' : 'Conflicto de horario'}</p>
-    <ul class="mt-1.5 space-y-1 list-disc list-inside">
-      ${_conflicts.map(c => `<li>${esc(c.user_name || 'Alguien')} (${esc(c.area || '—')}) ya tiene "${esc(c.meeting_name)}" de ${c.start_time.slice(0,5)} a ${c.end_time.slice(0,5)} (${fmtDateOnly(c.date)}).</li>`).join('')}
-    </ul>
-  </div>`;
+    <p class="font-semibold flex items-center gap-1.5">${icon('warning',16)} ${hard.length > 1 ? 'Se encontraron ' + hard.length + ' conflictos de horario:' : 'Conflicto de horario'}</p>
+    <ul class="mt-1.5 space-y-1 list-disc list-inside">${hard.map(item).join('')}</ul>
+  </div>` : ''}
+  ${soft.length ? `
+  <div class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 ${hard.length ? 'mt-2' : ''}">
+    <p class="font-semibold flex items-center gap-1.5">${icon('warning',16)} ${soft.length > 1 ? 'Hay ' + soft.length + ' cruces de horario (modalidad mixta)' : 'Hay un cruce de horario (modalidad mixta)'}</p>
+    <ul class="mt-1.5 space-y-1 list-disc list-inside">${soft.map(item).join('')}</ul>
+    <p class="mt-1.5 text-xs">Al ser una presencial y una virtual, igual puedes guardar e inscribir a la persona en ambas.</p>
+  </div>` : ''}`;
 }
 
 function wirePage() {
@@ -510,11 +549,25 @@ function wireFormDraftCapture() {
   const captureDraft = e => { if (e.target.name) _draft[e.target.name] = e.target.value; };
   form.addEventListener('input', captureDraft);
   form.addEventListener('change', captureDraft);
-  ['date', 'start_time', 'end_time'].forEach(name => {
+  ['date', 'start_time', 'end_time', 'modality'].forEach(name => {
     const el = form.elements[name];
     if (el) el.addEventListener('change', liveCheck);
   });
+  form.elements.modality?.addEventListener('change', updateLocationField);
   form.addEventListener('submit', submitForm);
+}
+
+/* La Ubicación es el mismo campo para ambas modalidades, pero cambia
+   de significado: en Presencial es una dirección física, en Virtual es
+   el link de ingreso — solo se le cambia la etiqueta/placeholder. */
+function updateLocationField() {
+  const form = document.getElementById('cal-form');
+  if (!form) return;
+  const isVirtual = form.elements.modality.value === 'virtual';
+  const label = document.getElementById('cal-location-label');
+  if (label) label.textContent = isVirtual ? 'Link de la reunión' : 'Dirección';
+  const input = form.elements.location;
+  if (input) input.placeholder = isVirtual ? 'Link de Zoom, Meet, Teams...' : 'Sala de reuniones, dirección...';
 }
 
 function rerenderFormModal() {
@@ -626,6 +679,7 @@ async function liveCheck() {
   const date = form.elements.date.value;
   const start = form.elements.start_time.value;
   const end = form.elements.end_time.value;
+  const modality = form.elements.modality?.value || 'presencial';
   const ids = _selectedParticipants.map(p => p.user_id);
   const saveBtn = document.getElementById('cal-save-btn');
 
@@ -641,7 +695,7 @@ async function liveCheck() {
   let conflicts = [];
   try {
     const res = await api.post('/calendar/check-availability', {
-      date, start_time: start, end_time: end, participant_ids: ids, exclude_meeting_id: _editingId || undefined,
+      date, start_time: start, end_time: end, participant_ids: ids, exclude_meeting_id: _editingId || undefined, modality,
     });
     conflicts = res.conflicts || [];
   } catch { conflicts = []; }
@@ -650,7 +704,9 @@ async function liveCheck() {
   const banner = document.getElementById('cal-conflict-banner');
   if (banner) banner.innerHTML = conflictBannerHtml();
   const saveBtnEl = document.getElementById('cal-save-btn');
-  if (saveBtnEl) saveBtnEl.disabled = _conflicts.length > 0;
+  // Solo los conflictos "hard" (misma modalidad presencial) bloquean
+  // guardar — los "soft" (modalidad mixta) solo avisan.
+  if (saveBtnEl) saveBtnEl.disabled = _conflicts.some(c => c.hard);
 }
 
 async function submitForm(e) {
@@ -661,6 +717,7 @@ async function submitForm(e) {
   const start_time = form.elements.start_time.value;
   const end_time = form.elements.end_time.value;
   const meeting_type = form.elements.meeting_type.value;
+  const modality = form.elements.modality.value;
   const location = form.elements.location.value.trim();
   const motivo = form.elements.motivo.value.trim();
   const description = form.elements.description.value.trim();
@@ -674,7 +731,7 @@ async function submitForm(e) {
   const image_url = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
 
   const payload = {
-    title, date, start_time, end_time, meeting_type, location, motivo, description, image_url,
+    title, date, start_time, end_time, meeting_type, modality, location, motivo, description, image_url,
     participants: _selectedParticipants.map(p => ({ user_id: p.user_id })),
     external_participants: _externalParticipants,
   };
@@ -749,11 +806,12 @@ function viewMeeting(id) {
   showModal(esc(m.title), `
     <div class="space-y-3 text-sm">
       ${m.image_url ? `<img src="${esc(m.image_url)}" class="w-full max-h-64 object-cover rounded-lg border border-gray-200">` : ''}
+      <p>${modalityIconHtml(m)}</p>
       <p><span class="font-medium text-gray-700">Área:</span> ${esc(m.area)}</p>
       <p><span class="font-medium text-gray-700">Fecha:</span> ${fmtDateOnly(m.meeting_date)}</p>
       <p><span class="font-medium text-gray-700">Horario:</span> ${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}</p>
       ${m.meeting_type ? `<p><span class="font-medium text-gray-700">Tipo:</span> ${esc(m.meeting_type)}</p>` : ''}
-      ${m.location ? `<p><span class="font-medium text-gray-700">Ubicación:</span> ${esc(m.location)}</p>` : ''}
+      ${m.location ? `<p><span class="font-medium text-gray-700">${m.modality === 'virtual' ? 'Link' : 'Dirección'}:</span> ${esc(m.location)}</p>` : ''}
       ${m.motivo ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.motivo)}</p>` : ''}
       ${m.description ? `<div><span class="font-medium text-gray-700">Descripción:</span><p class="mt-1 text-gray-600" style="white-space:pre-wrap">${esc(m.description)}</p></div>` : ''}
       <div>
