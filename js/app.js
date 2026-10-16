@@ -204,14 +204,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (handoffCode) {
     try {
       const data = await api.post('/auth/exchange', { code: handoffCode });
-      if (!isAuthorizedForThisPanel(data.user)) { window.location.href = CENTRAL_LOGIN_URL; return; }
+      if (!isAuthorizedForThisPanel(data.user)) { window.location.href = CENTRAL_MODULO_URL; return; }
       const user = normalizeUser(data.user);
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
       history.replaceState(null, '', location.pathname + location.hash);
     } catch {
-      window.location.href = CENTRAL_LOGIN_URL;
+      /* Código de traspaso inválido/vencido (ej. carrera de doble
+         envío del 2FA ya corregida en el hub, o timing ajustado) — la
+         sesión central sigue siendo válida, así que vuelve directo al
+         hub en vez de forzar un login completo. */
+      window.location.href = CENTRAL_MODULO_URL;
       return;
     }
     handleRoute();
