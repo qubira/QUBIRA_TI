@@ -47,9 +47,17 @@ function techColumn(label, category) {
   </div>`;
 }
 
+function thumbUrl(url, size = 64) {
+  if (!url) return '';
+  if (url.includes('res.cloudinary.com') && url.includes('/image/upload/')) {
+    return url.replace('/image/upload/', `/image/upload/w_${size},h_${size},c_fit,f_auto,q_auto/`);
+  }
+  return url;
+}
+
 function techRow(t) {
   const avatar = t.image_url
-    ? `<img src="${t.image_url}" class="w-6 h-6 rounded object-cover shrink-0" alt="">`
+    ? `<img src="${thumbUrl(t.image_url, 64)}" width="24" height="24" loading="lazy" decoding="async" class="w-6 h-6 rounded object-contain shrink-0" alt="${esc(t.name)}">`
     : `<span class="w-6 h-6 rounded bg-indigo-200 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
   return `
   <div class="flex items-center gap-3 py-2.5">
