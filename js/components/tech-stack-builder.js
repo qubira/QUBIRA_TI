@@ -100,8 +100,74 @@ function createEmptyStack(name, type = 'Web') {
   };
 }
 
+function ensureStyles() {
+  if (document.getElementById('ts-builder-injected-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'ts-builder-injected-styles';
+  style.textContent = `
+    #ts-canvas-container {
+      cursor: grab;
+    }
+    #ts-canvas-container.is-dragging {
+      cursor: grabbing !important;
+      scroll-behavior: auto !important;
+    }
+    #ts-canvas-container::-webkit-scrollbar {
+      width: 14px;
+      height: 14px;
+    }
+    #ts-canvas-container::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+    }
+    #ts-canvas-container::-webkit-scrollbar-thumb {
+      background: #6366f1;
+      border-radius: 8px;
+      border: 2px solid #f1f5f9;
+    }
+    #ts-canvas-container::-webkit-scrollbar-thumb:hover {
+      background: #4f46e5;
+    }
+    .ts-nav-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1.5px solid #94a3b8;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      color: #4f46e5;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 40;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      user-select: none;
+    }
+    .ts-nav-arrow:hover {
+      background: #4f46e5;
+      color: #ffffff;
+      border-color: #4f46e5;
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45);
+      transform: translateY(-50%) scale(1.15);
+    }
+    .ts-nav-left { left: 14px; }
+    .ts-nav-right { right: 14px; }
+  `;
+  document.head.appendChild(style);
+}
+
 function renderBuilder(scrollOpts = {}) {
   if (!_container || !_activeStack) return;
+  ensureStyles();
 
   // Preservar posición de scroll horizontal y vertical previa del canvas
   const prevCanvas = document.getElementById('ts-canvas-container');
@@ -149,6 +215,15 @@ function renderBuilder(scrollOpts = {}) {
           <button type="button" id="ts-btn-clone-quote" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100">
             ${icon('content_copy', 16)} Clonar para Cotización
           </button>` : ''}
+          <!-- Navegación rápida horizontal -->
+          <div class="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 text-gray-500 text-xs">
+            <span class="text-[10px] font-bold text-gray-400 px-1">ÁRBOL:</span>
+            <button type="button" id="ts-btn-scroll-start" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold" title="Ir al inicio del árbol (C1)">⏮ C1</button>
+            <button type="button" id="ts-btn-scroll-prev" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-bold" title="Mover a la izquierda">‹</button>
+            <button type="button" id="ts-btn-scroll-next" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-bold" title="Mover a la derecha">›</button>
+            <button type="button" id="ts-btn-scroll-end" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold" title="Ir al final del árbol">Fin ⏭</button>
+          </div>
+
           <button type="button" id="ts-btn-add-col" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
             ${icon('view_column', 16)} + Agregar Columna
           </button>
@@ -183,16 +258,26 @@ function renderBuilder(scrollOpts = {}) {
       </div>
 
       <!-- Lienzo horizontal con columnas y conexiones SVG -->
-      <div class="flex-1 overflow-x-auto overflow-y-auto p-6 bg-slate-50/60 relative select-none min-h-[460px]" id="ts-canvas-container">
-        <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
-          <!-- Capa SVG para las líneas de ramificación -->
-          <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 10; overflow: visible;">
-            <g id="ts-svg-paths"></g>
-          </svg>
+      <div style="position:relative;overflow:hidden;flex:1;display:flex;flex-direction:column">
+        <!-- Botones flotantes de desplazamiento rápido -->
+        <button type="button" id="ts-scroll-left" class="ts-nav-arrow ts-nav-left" title="Desplazar a la izquierda (←)">
+          ‹
+        </button>
+        <button type="button" id="ts-scroll-right" class="ts-nav-arrow ts-nav-right" title="Desplazar a la derecha (→)">
+          ›
+        </button>
 
-          <!-- Columnas del Tech Stack -->
-          <div class="flex items-start gap-10 relative" id="ts-columns-wrapper">
-            ${(_activeStack.stages || []).map((stage, sIdx) => renderStageColumn(stage, sIdx, isTI)).join('')}
+        <div class="flex-1 overflow-x-auto overflow-y-auto p-6 bg-slate-50/60 relative select-none min-h-[460px] max-h-[75vh]" id="ts-canvas-container" style="scroll-behavior:smooth">
+          <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
+            <!-- Capa SVG para las líneas de ramificación -->
+            <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 10; overflow: visible;">
+              <g id="ts-svg-paths"></g>
+            </svg>
+
+            <!-- Columnas del Tech Stack -->
+            <div class="flex items-start gap-10 relative" id="ts-columns-wrapper">
+              ${(_activeStack.stages || []).map((stage, sIdx) => renderStageColumn(stage, sIdx, isTI)).join('')}
+            </div>
           </div>
         </div>
       </div>
@@ -642,6 +727,83 @@ function setupEventListeners() {
   if (!_container) return;
 
   // Re-dibujar líneas en scroll y resize
+  // Botones de navegación horizontal del árbol
+  document.getElementById('ts-scroll-left')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollBy({ left: -380, behavior: 'smooth' });
+  });
+  document.getElementById('ts-scroll-right')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollBy({ left: 380, behavior: 'smooth' });
+  });
+  document.getElementById('ts-btn-scroll-prev')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollBy({ left: -380, behavior: 'smooth' });
+  });
+  document.getElementById('ts-btn-scroll-next')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollBy({ left: 380, behavior: 'smooth' });
+  });
+  document.getElementById('ts-btn-scroll-start')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollTo({ left: 0, behavior: 'smooth' });
+  });
+  document.getElementById('ts-btn-scroll-end')?.addEventListener('click', () => {
+    const c = document.getElementById('ts-canvas-container');
+    if (c) c.scrollTo({ left: c.scrollWidth, behavior: 'smooth' });
+  });
+
+  // Arrastre con el ratón (Drag to pan) y desplazamiento con rueda
+  const cEl = document.getElementById('ts-canvas-container');
+  if (cEl) {
+    let isDown = false;
+    let startX = 0;
+    let startY = 0;
+    let sLeft = 0;
+    let sTop = 0;
+
+    cEl.addEventListener('mousedown', e => {
+      if (e.target.closest('button, input, select, textarea, a, .ts-card-plan, .ts-nav-arrow')) return;
+      isDown = true;
+      startX = e.pageX - cEl.offsetLeft;
+      startY = e.pageY - cEl.offsetTop;
+      sLeft = cEl.scrollLeft;
+      sTop = cEl.scrollTop;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDown) {
+        isDown = false;
+        cEl.classList.remove('is-dragging');
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - cEl.offsetLeft;
+      const y = e.pageY - cEl.offsetTop;
+      const walkX = (x - startX) * 1.5;
+      const walkY = (y - startY) * 1.5;
+      if (Math.abs(walkX) > 3 || Math.abs(walkY) > 3) {
+        cEl.classList.add('is-dragging');
+      }
+      cEl.scrollLeft = sLeft - walkX;
+      cEl.scrollTop = sTop - walkY;
+    });
+
+    cEl.addEventListener('wheel', e => {
+      if (!e.ctrlKey) {
+        if (Math.abs(e.deltaX) > 0) {
+          cEl.scrollLeft += e.deltaX;
+        } else if (e.shiftKey) {
+          cEl.scrollLeft += e.deltaY;
+        }
+      }
+    }, { passive: true });
+  }
+
+  // Scroll del canvas & resize de ventana
   const canvas = document.getElementById('ts-canvas-container');
   if (canvas) {
     canvas.addEventListener('scroll', () => updateSvgConnections(), { passive: true });
