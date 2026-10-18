@@ -173,10 +173,12 @@ function renderBuilder() {
   `;
 
   setupEventListeners();
+  updateSvgConnections();
   requestAnimationFrame(() => updateSvgConnections());
-  setTimeout(() => updateSvgConnections(), 60);
-  setTimeout(() => updateSvgConnections(), 200);
-  setTimeout(() => updateSvgConnections(), 600);
+  setTimeout(() => updateSvgConnections(), 50);
+  setTimeout(() => updateSvgConnections(), 150);
+  setTimeout(() => updateSvgConnections(), 400);
+  setTimeout(() => updateSvgConnections(), 1000);
 }
 
 function renderStageColumn(stage, sIdx, isTI) {
@@ -239,10 +241,10 @@ function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
   return `
     <div class="ts-node-card bg-white border border-gray-200/90 rounded-xl p-3 shadow-2xs hover:shadow-md transition-all relative flex flex-col gap-2 group cursor-default" id="${esc(item.id)}" data-stage-index="${sIdx}" data-item-index="${itIdx}">
       <!-- Conectores visuales izquierdo y derecho -->
-      <div class="ts-port-in absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-indigo-500 shadow-2xs z-20 flex items-center justify-center ${sIdx === 0 ? 'hidden' : ''}" title="Entrada de ramificación">
+      <div class="ts-port-in absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-indigo-500 shadow-2xs z-30 flex items-center justify-center ${sIdx === 0 ? 'hidden' : ''}" title="Entrada de ramificación">
         <div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
       </div>
-      <div class="ts-port-out absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-emerald-500 shadow-2xs z-20 flex items-center justify-center ${isLast ? 'hidden' : ''}" title="Salida de ramificación">
+      <div class="ts-port-out absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-emerald-500 shadow-2xs z-30 flex items-center justify-center ${isLast ? 'hidden' : ''}" title="Salida de ramificación">
         <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
       </div>
 
@@ -354,8 +356,25 @@ const STAGE_LINE_COLORS = [
 
 function updateSvgConnections() {
   const svgGroup = document.getElementById('ts-svg-paths');
-  const wrapper = document.getElementById('ts-content-wrapper') || document.getElementById('ts-canvas-container');
-  if (!svgGroup || !wrapper || !_activeStack) return;
+  const svgLayer = document.getElementById('ts-svg-layer');
+  const colsWrapper = document.getElementById('ts-columns-wrapper');
+  const wrapper = document.getElementById('ts-content-wrapper') || colsWrapper || document.getElementById('ts-canvas-container');
+  if (!svgGroup || !svgLayer || !colsWrapper || !wrapper || !_activeStack) return;
+
+  // 1. Sincronizar dimensiones explícitas del SVG en píxeles (para que nunca colapse a 0)
+  const w = Math.max(colsWrapper.scrollWidth, colsWrapper.offsetWidth, 1200);
+  const h = Math.max(colsWrapper.scrollHeight, colsWrapper.offsetHeight, 650);
+  svgLayer.setAttribute('width', w);
+  svgLayer.setAttribute('height', h);
+  svgLayer.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svgLayer.style.width = w + 'px';
+  svgLayer.style.height = h + 'px';
+  svgLayer.style.position = 'absolute';
+  svgLayer.style.top = '0px';
+  svgLayer.style.left = '0px';
+  svgLayer.style.zIndex = '20';
+  svgLayer.style.pointerEvents = 'none';
+  svgLayer.style.overflow = 'visible';
 
   svgGroup.innerHTML = '';
   const wrapperRect = wrapper.getBoundingClientRect();
@@ -374,10 +393,10 @@ function updateSvgConnections() {
       const sourceEl = document.getElementById(sourceItem.id);
       if (!sourceEl) return;
       const sPort = sourceEl.querySelector('.ts-port-out');
-      const sRect = (sPort && sPort.offsetParent !== null) ? sPort.getBoundingClientRect() : sourceEl.getBoundingClientRect();
+      const sRect = sPort ? sPort.getBoundingClientRect() : sourceEl.getBoundingClientRect();
 
       const x1 = (sPort ? sRect.left + sRect.width / 2 : sRect.right) - wrapperRect.left;
-      const y1 = (sRect.top + sRect.height / 2) - wrapperRect.top;
+      const y1 = (sPort ? sRect.top + sRect.height / 2 : sRect.top + sRect.height / 2) - wrapperRect.top;
 
       let validTargets = (Array.isArray(sourceItem.targets) && sourceItem.targets.length)
         ? sourceItem.targets.filter(tid => nextItemIds.has(tid))
@@ -390,10 +409,10 @@ function updateSvgConnections() {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
         const tPort = targetEl.querySelector('.ts-port-in');
-        const tRect = (tPort && tPort.offsetParent !== null) ? tPort.getBoundingClientRect() : targetEl.getBoundingClientRect();
+        const tRect = tPort ? tPort.getBoundingClientRect() : targetEl.getBoundingClientRect();
 
         const x2 = (tPort ? tPort.left + tPort.width / 2 : tRect.left) - wrapperRect.left;
-        const y2 = (tRect.top + tRect.height / 2) - wrapperRect.top;
+        const y2 = (tPort ? tPort.top + tPort.height / 2 : tRect.top + tRect.height / 2) - wrapperRect.top;
 
         if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) return;
 
@@ -401,28 +420,25 @@ function updateSvgConnections() {
         const dx = Math.max(35, (x2 - x1) * 0.45);
         const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
-        // 1. Línea principal curva con sombra de resplandor
+        // 1. Línea principal curva continua y bien visible
         const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         pathEl.setAttribute('d', pathData);
         pathEl.setAttribute('stroke', lineColor);
-        pathEl.setAttribute('stroke-width', '2.5');
+        pathEl.setAttribute('stroke-width', '3');
         pathEl.setAttribute('fill', 'none');
         pathEl.setAttribute('stroke-linecap', 'round');
-        pathEl.setAttribute('opacity', '0.85');
+        pathEl.setAttribute('opacity', '0.95');
         pathEl.setAttribute('data-source', sourceItem.id);
         pathEl.setAttribute('data-target', targetId);
-        pathEl.style.filter = `drop-shadow(0 1px 3px ${lineColor}50)`;
-        pathEl.style.transition = 'stroke-width 0.2s, opacity 0.2s, stroke 0.2s';
         svgGroup.appendChild(pathEl);
 
-        // 2. Indicador direccional (flecha hacia el puerto)
+        // 2. Indicador direccional (flecha hacia el puerto de entrada)
         const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        arrow.setAttribute('points', `${x2 - 8},${y2 - 3.5} ${x2 - 1},${y2} ${x2 - 8},${y2 + 3.5}`);
+        arrow.setAttribute('points', `${x2 - 9},${y2 - 4} ${x2 - 1},${y2} ${x2 - 9},${y2 + 4}`);
         arrow.setAttribute('fill', lineColor);
-        arrow.setAttribute('opacity', '0.9');
+        arrow.setAttribute('opacity', '1');
         arrow.setAttribute('data-source', sourceItem.id);
         arrow.setAttribute('data-target', targetId);
-        arrow.style.transition = 'opacity 0.2s, fill 0.2s';
         svgGroup.appendChild(arrow);
       });
     });
