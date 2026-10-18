@@ -73,6 +73,15 @@ function createEmptyStack(name, type = 'Web') {
 function renderBuilder() {
   if (!_container || !_activeStack) return;
 
+  // Garantizar que todos los nodos tengan ID único válido
+  (_activeStack.stages || []).forEach((st, sI) => {
+    (st.items || []).forEach((it, itI) => {
+      if (!it.id) {
+        it.id = `node_s${sI}_i${itI}_${Date.now()}`;
+      }
+    });
+  });
+
   const isTI = (_role === 'TI');
   const stackOptions = _stacks.map(s => `
     <option value="${esc(s.id)}" ${s.id === _activeStack.id ? 'selected' : ''}>
@@ -145,24 +154,16 @@ function renderBuilder() {
 
       <!-- Lienzo horizontal con columnas y conexiones SVG -->
       <div class="flex-1 overflow-x-auto overflow-y-auto p-6 bg-slate-50/60 relative select-none min-h-[460px]" id="ts-canvas-container">
-        <!-- Capa SVG para las líneas curvas de ramificación -->
-        <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none w-full h-full" style="min-width:100%; min-height:100%; z-index:5">
-          <defs>
-            <linearGradient id="ts-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#6366f1" />
-              <stop offset="50%" stop-color="#3b82f6" />
-              <stop offset="100%" stop-color="#10b981" />
-            </linearGradient>
-            <marker id="ts-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-              <path d="M 0 1 L 8 5 L 0 9 z" fill="#10b981" />
-            </marker>
-          </defs>
-          <g id="ts-svg-paths"></g>
-        </svg>
+        <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
+          <!-- Capa SVG para las líneas de ramificación -->
+          <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 5; overflow: visible;">
+            <g id="ts-svg-paths"></g>
+          </svg>
 
-        <!-- Columnas del Tech Stack -->
-        <div class="flex items-start gap-8 min-w-max relative" style="z-index:10" id="ts-columns-wrapper">
-          ${(_activeStack.stages || []).map((stage, sIdx) => renderStageColumn(stage, sIdx, isTI)).join('')}
+          <!-- Columnas del Tech Stack -->
+          <div class="flex items-start gap-8 relative" style="z-index: 10;" id="ts-columns-wrapper">
+            ${(_activeStack.stages || []).map((stage, sIdx) => renderStageColumn(stage, sIdx, isTI)).join('')}
+          </div>
         </div>
       </div>
 
@@ -173,6 +174,9 @@ function renderBuilder() {
 
   setupEventListeners();
   requestAnimationFrame(() => updateSvgConnections());
+  setTimeout(() => updateSvgConnections(), 60);
+  setTimeout(() => updateSvgConnections(), 200);
+  setTimeout(() => updateSvgConnections(), 600);
 }
 
 function renderStageColumn(stage, sIdx, isTI) {
@@ -233,10 +237,14 @@ function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
   const targets = Array.isArray(item.targets) ? item.targets : [];
 
   return `
-    <div class="ts-node-card bg-white border border-gray-200/90 rounded-xl p-3 shadow-2xs hover:shadow-md transition-all relative flex flex-col gap-2 group" id="${esc(item.id)}" data-stage-index="${sIdx}" data-item-index="${itIdx}">
+    <div class="ts-node-card bg-white border border-gray-200/90 rounded-xl p-3 shadow-2xs hover:shadow-md transition-all relative flex flex-col gap-2 group cursor-default" id="${esc(item.id)}" data-stage-index="${sIdx}" data-item-index="${itIdx}">
       <!-- Conectores visuales izquierdo y derecho -->
-      <div class="ts-port-in absolute -left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-indigo-500 shadow-xs z-10 ${sIdx === 0 ? 'hidden' : ''}" title="Entrada de ramificación"></div>
-      <div class="ts-port-out absolute -right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white border-2 border-emerald-500 shadow-xs z-10 ${isLast ? 'hidden' : ''}" title="Salida de ramificación"></div>
+      <div class="ts-port-in absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-indigo-500 shadow-2xs z-20 flex items-center justify-center ${sIdx === 0 ? 'hidden' : ''}" title="Entrada de ramificación">
+        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+      </div>
+      <div class="ts-port-out absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-emerald-500 shadow-2xs z-20 flex items-center justify-center ${isLast ? 'hidden' : ''}" title="Salida de ramificación">
+        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+      </div>
 
       <!-- Cabecera de la tarjeta -->
       <div class="flex items-center gap-2">
@@ -335,13 +343,22 @@ function renderInvestmentFooter() {
   `;
 }
 
+const STAGE_LINE_COLORS = [
+  '#6366f1', // Indigo (Col 1 -> Col 2)
+  '#3b82f6', // Blue   (Col 2 -> Col 3)
+  '#0ea5e9', // Sky    (Col 3 -> Col 4)
+  '#10b981', // Emerald (Col 4 -> Col 5)
+  '#8b5cf6', // Violet
+  '#f59e0b', // Amber
+];
+
 function updateSvgConnections() {
   const svgGroup = document.getElementById('ts-svg-paths');
-  const canvas = document.getElementById('ts-canvas-container');
-  if (!svgGroup || !canvas || !_activeStack) return;
+  const wrapper = document.getElementById('ts-content-wrapper') || document.getElementById('ts-canvas-container');
+  if (!svgGroup || !wrapper || !_activeStack) return;
 
   svgGroup.innerHTML = '';
-  const canvasRect = canvas.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
   const stages = _activeStack.stages || [];
 
   for (let s = 0; s < stages.length - 1; s++) {
@@ -350,41 +367,63 @@ function updateSvgConnections() {
     const nextItems = nextStage.items || [];
     if (!nextItems.length) continue;
 
+    const lineColor = STAGE_LINE_COLORS[s % STAGE_LINE_COLORS.length];
+    const nextItemIds = new Set(nextItems.map(it => it.id));
+
     (currentStage.items || []).forEach(sourceItem => {
       const sourceEl = document.getElementById(sourceItem.id);
       if (!sourceEl) return;
       const sPort = sourceEl.querySelector('.ts-port-out');
-      const sRect = sPort ? sPort.getBoundingClientRect() : sourceEl.getBoundingClientRect();
+      const sRect = (sPort && sPort.offsetParent !== null) ? sPort.getBoundingClientRect() : sourceEl.getBoundingClientRect();
 
-      const x1 = (sPort ? sRect.left + sRect.width / 2 : sRect.right) - canvasRect.left + canvas.scrollLeft;
-      const y1 = (sRect.top + sRect.height / 2) - canvasRect.top + canvas.scrollTop;
+      const x1 = (sPort ? sRect.left + sRect.width / 2 : sRect.right) - wrapperRect.left;
+      const y1 = (sRect.top + sRect.height / 2) - wrapperRect.top;
 
-      // Targets específicos o todos los nodos de la siguiente columna
-      const targets = (Array.isArray(sourceItem.targets) && sourceItem.targets.length)
-        ? sourceItem.targets
-        : nextItems.map(it => it.id);
+      let validTargets = (Array.isArray(sourceItem.targets) && sourceItem.targets.length)
+        ? sourceItem.targets.filter(tid => nextItemIds.has(tid))
+        : [];
+      if (validTargets.length === 0 && nextItems.length > 0) {
+        validTargets = nextItems.map(it => it.id);
+      }
 
-      targets.forEach(targetId => {
+      validTargets.forEach(targetId => {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
         const tPort = targetEl.querySelector('.ts-port-in');
-        const tRect = tPort ? tPort.getBoundingClientRect() : targetEl.getBoundingClientRect();
+        const tRect = (tPort && tPort.offsetParent !== null) ? tPort.getBoundingClientRect() : targetEl.getBoundingClientRect();
 
-        const x2 = (tPort ? tRect.left + tPort.width / 2 : tRect.left) - canvasRect.left + canvas.scrollLeft;
-        const y2 = (tRect.top + tRect.height / 2) - canvasRect.top + canvas.scrollTop;
+        const x2 = (tPort ? tPort.left + tPort.width / 2 : tRect.left) - wrapperRect.left;
+        const y2 = (tRect.top + tRect.height / 2) - wrapperRect.top;
 
-        const dx = Math.max(35, (x2 - x1) / 2);
+        if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) return;
+
+        // Curva Bezier estética
+        const dx = Math.max(35, (x2 - x1) * 0.45);
         const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
+        // 1. Línea principal curva con sombra de resplandor
         const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         pathEl.setAttribute('d', pathData);
-        pathEl.setAttribute('stroke', 'url(#ts-grad)');
+        pathEl.setAttribute('stroke', lineColor);
         pathEl.setAttribute('stroke-width', '2.5');
         pathEl.setAttribute('fill', 'none');
-        pathEl.setAttribute('marker-end', 'url(#ts-arrow)');
-        pathEl.setAttribute('opacity', '0.75');
-        pathEl.classList.add('transition-all', 'duration-300');
+        pathEl.setAttribute('stroke-linecap', 'round');
+        pathEl.setAttribute('opacity', '0.85');
+        pathEl.setAttribute('data-source', sourceItem.id);
+        pathEl.setAttribute('data-target', targetId);
+        pathEl.style.filter = `drop-shadow(0 1px 3px ${lineColor}50)`;
+        pathEl.style.transition = 'stroke-width 0.2s, opacity 0.2s, stroke 0.2s';
         svgGroup.appendChild(pathEl);
+
+        // 2. Indicador direccional (flecha hacia el puerto)
+        const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        arrow.setAttribute('points', `${x2 - 8},${y2 - 3.5} ${x2 - 1},${y2} ${x2 - 8},${y2 + 3.5}`);
+        arrow.setAttribute('fill', lineColor);
+        arrow.setAttribute('opacity', '0.9');
+        arrow.setAttribute('data-source', sourceItem.id);
+        arrow.setAttribute('data-target', targetId);
+        arrow.style.transition = 'opacity 0.2s, fill 0.2s';
+        svgGroup.appendChild(arrow);
       });
     });
   }
@@ -399,6 +438,55 @@ function setupEventListeners() {
     canvas.addEventListener('scroll', () => updateSvgConnections(), { passive: true });
   }
   window.addEventListener('resize', () => updateSvgConnections(), { passive: true });
+
+  // Observer de redimensión para recalcular ante cambios de tamaño de tarjetas o carga de fuentes/imágenes
+  const colsWrapper = document.getElementById('ts-columns-wrapper');
+  if (window.ResizeObserver && colsWrapper) {
+    if (_resizeObserver) _resizeObserver.disconnect();
+    _resizeObserver = new ResizeObserver(() => {
+      updateSvgConnections();
+    });
+    _resizeObserver.observe(colsWrapper);
+  }
+
+  // Interacción hover: resaltar conexiones al pasar el mouse por una tarjeta
+  _container.querySelectorAll('.ts-node-card').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      const nodeId = card.id;
+      const paths = _container.querySelectorAll('#ts-svg-paths [data-source], #ts-svg-paths [data-target]');
+      paths.forEach(el => {
+        const isConnected = (el.getAttribute('data-source') === nodeId || el.getAttribute('data-target') === nodeId);
+        if (isConnected) {
+          if (el.tagName === 'path') {
+            el.setAttribute('stroke-width', '3.5');
+            el.setAttribute('opacity', '1');
+          } else {
+            el.setAttribute('opacity', '1');
+          }
+        } else {
+          el.setAttribute('opacity', '0.2');
+        }
+      });
+    });
+    card.addEventListener('mouseleave', () => {
+      const paths = _container.querySelectorAll('#ts-svg-paths [data-source], #ts-svg-paths [data-target]');
+      paths.forEach(el => {
+        if (el.tagName === 'path') {
+          el.setAttribute('stroke-width', '2.5');
+          el.setAttribute('opacity', '0.85');
+        } else {
+          el.setAttribute('opacity', '0.9');
+        }
+      });
+    });
+  });
+
+  // Re-dibujar al cargar imágenes
+  _container.querySelectorAll('img').forEach(img => {
+    if (!img.complete) {
+      img.addEventListener('load', () => updateSvgConnections(), { once: true });
+    }
+  });
 
   // 1. Selector de Stack
   const stackSelect = document.getElementById('ts-stack-select');
