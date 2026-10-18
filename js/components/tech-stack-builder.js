@@ -70,8 +70,15 @@ function createEmptyStack(name, type = 'Web') {
   };
 }
 
-function renderBuilder() {
+function renderBuilder(scrollOpts = {}) {
   if (!_container || !_activeStack) return;
+
+  // Preservar posición de scroll horizontal y vertical previa del canvas
+  const prevCanvas = document.getElementById('ts-canvas-container');
+  const prevScrollLeft = prevCanvas ? prevCanvas.scrollLeft : 0;
+  const prevScrollTop = prevCanvas ? prevCanvas.scrollTop : 0;
+  const prevWinY = window.scrollY;
+  const prevWinX = window.scrollX;
 
   // Garantizar que todos los nodos tengan ID único válido
   (_activeStack.stages || []).forEach((st, sI) => {
@@ -173,6 +180,41 @@ function renderBuilder() {
   `;
 
   setupEventListeners();
+
+  // Restaurar de inmediato y de forma resiliente la posición del canvas
+  const restoreCanvasScroll = () => {
+    const canvas = document.getElementById('ts-canvas-container');
+    if (!canvas) return;
+    if (scrollOpts && scrollOpts.scrollToEnd) {
+      canvas.scrollLeft = canvas.scrollWidth;
+    } else if (scrollOpts && typeof scrollOpts.scrollToStage === 'number') {
+      const colEl = canvas.querySelector(`[data-stage-index="${scrollOpts.scrollToStage}"]`);
+      if (colEl) {
+        const colLeft = colEl.offsetLeft;
+        const colWidth = colEl.offsetWidth;
+        const canvasWidth = canvas.clientWidth;
+        const isAlreadyVisible = (colLeft >= prevScrollLeft && (colLeft + colWidth) <= (prevScrollLeft + canvasWidth));
+        if (isAlreadyVisible) {
+          canvas.scrollLeft = prevScrollLeft;
+        } else {
+          canvas.scrollLeft = Math.max(0, colLeft - (canvasWidth / 2) + (colWidth / 2));
+        }
+      } else {
+        canvas.scrollLeft = prevScrollLeft;
+      }
+      canvas.scrollTop = prevScrollTop;
+    } else {
+      canvas.scrollLeft = prevScrollLeft;
+      canvas.scrollTop = prevScrollTop;
+    }
+    if (window.scrollY !== prevWinY) window.scrollTo(prevWinX, prevWinY);
+  };
+
+  restoreCanvasScroll();
+  requestAnimationFrame(restoreCanvasScroll);
+  setTimeout(restoreCanvasScroll, 40);
+  setTimeout(restoreCanvasScroll, 120);
+
   updateSvgConnections();
   requestAnimationFrame(() => updateSvgConnections());
   setTimeout(() => updateSvgConnections(), 50);
@@ -673,7 +715,7 @@ function setupEventListeners() {
         items: []
       });
       cleanStaleTargets();
-      renderBuilder();
+      renderBuilder({ scrollToEnd: true });
     });
   }
 
@@ -686,7 +728,7 @@ function setupEventListeners() {
         _activeStack.stages[sIdx] = _activeStack.stages[sIdx - 1];
         _activeStack.stages[sIdx - 1] = temp;
         cleanStaleTargets();
-        renderBuilder();
+        renderBuilder({ scrollToStage: sIdx - 1 });
       }
     });
   });
@@ -700,7 +742,7 @@ function setupEventListeners() {
         _activeStack.stages[sIdx] = _activeStack.stages[sIdx + 1];
         _activeStack.stages[sIdx + 1] = temp;
         cleanStaleTargets();
-        renderBuilder();
+        renderBuilder({ scrollToStage: sIdx + 1 });
       }
     });
   });
@@ -716,7 +758,7 @@ function setupEventListeners() {
         items: []
       });
       cleanStaleTargets();
-      renderBuilder();
+      renderBuilder({ scrollToStage: sIdx + 1 });
     });
   });
 
@@ -730,7 +772,7 @@ function setupEventListeners() {
         items: []
       });
       cleanStaleTargets();
-      renderBuilder();
+      renderBuilder({ scrollToStage: 0 });
     });
   });
 
@@ -745,7 +787,7 @@ function setupEventListeners() {
       }
       _activeStack.stages.splice(sIdx, 1);
       cleanStaleTargets();
-      renderBuilder();
+      renderBuilder({ scrollToStage: Math.max(0, sIdx - 1) });
     });
   });
 
@@ -763,7 +805,7 @@ function setupEventListeners() {
       const sIdx = Number(btn.dataset.stageIndex);
       const itIdx = Number(btn.dataset.itemIndex);
       _activeStack.stages[sIdx].items.splice(itIdx, 1);
-      renderBuilder();
+      renderBuilder({ scrollToStage: sIdx });
     });
   });
 
@@ -790,7 +832,7 @@ function setupEventListeners() {
           item.periodo = pObj.periodo || 'mes';
         }
       }
-      renderBuilder();
+      renderBuilder({ scrollToStage: sIdx });
     });
   });
 
@@ -937,7 +979,7 @@ function openAddTechnologyModal(stageIndex) {
 
     _activeStack.stages[stageIndex].items.push(newItem);
     closeModal();
-    renderBuilder();
+    renderBuilder({ scrollToStage: stageIndex });
   });
 }
 
@@ -996,7 +1038,7 @@ function openBranchingModal(stageIndex, itemIndex) {
     document.querySelectorAll('.ts-target-chk:checked').forEach(c => selected.push(c.value));
     item.targets = selected;
     closeModal();
-    renderBuilder();
+    renderBuilder({ scrollToStage: sIdx });
   });
 }
 
