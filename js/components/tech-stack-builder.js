@@ -129,38 +129,6 @@ function ensureStyles() {
     #ts-canvas-container::-webkit-scrollbar-thumb:hover {
       background: #4f46e5;
     }
-    .ts-nav-arrow {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(8px);
-      border: 1.5px solid #94a3b8;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-      color: #4f46e5;
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 40;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      user-select: none;
-    }
-    .ts-nav-arrow:hover {
-      background: #4f46e5;
-      color: #ffffff;
-      border-color: #4f46e5;
-      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45);
-      transform: translateY(-50%) scale(1.15);
-    }
-    .ts-nav-left { left: 14px; }
-    .ts-nav-right { right: 14px; }
   `;
   document.head.appendChild(style);
 }
@@ -215,15 +183,6 @@ function renderBuilder(scrollOpts = {}) {
           <button type="button" id="ts-btn-clone-quote" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100">
             ${icon('content_copy', 16)} Clonar para Cotización
           </button>` : ''}
-          <!-- Navegación rápida horizontal -->
-          <div class="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 text-gray-500 text-xs">
-            <span class="text-[10px] font-bold text-gray-400 px-1">ÁRBOL:</span>
-            <button type="button" id="ts-btn-scroll-start" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold" title="Ir al inicio del árbol (C1)">⏮ C1</button>
-            <button type="button" id="ts-btn-scroll-prev" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-bold" title="Mover a la izquierda">‹</button>
-            <button type="button" id="ts-btn-scroll-next" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-bold" title="Mover a la derecha">›</button>
-            <button type="button" id="ts-btn-scroll-end" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold" title="Ir al final del árbol">Fin ⏭</button>
-          </div>
-
           <button type="button" id="ts-btn-add-col" class="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
             ${icon('view_column', 16)} + Agregar Columna
           </button>
@@ -236,7 +195,7 @@ function renderBuilder(scrollOpts = {}) {
         </div>
       </div>
 
-      <!-- Metadatos de la ramificación -->
+      <!-- Metadatos de la ramificación y Navegación del Árbol -->
       <div class="px-5 py-3 border-b border-gray-100 bg-white flex flex-wrap items-center gap-4 text-xs">
         <div class="flex items-center gap-2 flex-1 min-w-[200px]">
           <span class="text-gray-400 font-medium">Nombre:</span>
@@ -248,26 +207,28 @@ function renderBuilder(scrollOpts = {}) {
             ${renderProjectTypeOptions(_activeStack.project_type || 'Web')}
           </select>
         </div>
+
+        <!-- Navegación rápida horizontal del árbol (desplazamiento suave) -->
+        <div class="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 text-gray-500 text-xs ml-auto">
+          <span class="text-[10px] font-bold text-indigo-600 px-1">🌳 Navegar:</span>
+          <button type="button" id="ts-btn-scroll-start" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold bg-white border border-gray-200" title="Ir al inicio del árbol (C1)">⏮ C1</button>
+          <button type="button" id="ts-btn-scroll-prev" class="px-2.5 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-extrabold bg-white border border-gray-200" title="Mover a la izquierda">◀</button>
+          <button type="button" id="ts-btn-scroll-next" class="px-2.5 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-xs font-extrabold bg-white border border-gray-200" title="Mover a la derecha">▶</button>
+          <button type="button" id="ts-btn-scroll-end" class="px-2 py-1 rounded hover:bg-white hover:text-indigo-600 transition-all text-[11px] font-semibold bg-white border border-gray-200" title="Ir al final del árbol">Fin ⏭</button>
+        </div>
+
         ${!isTI ? `
-        <div class="text-gray-400 text-[11px] italic ml-auto">
-          Los costos y planes son editables por ${esc(_role)}. OTI solo ve la estructura.
+        <div class="text-gray-400 text-[11px] italic">
+          Planes y costos editables
         </div>` : `
-        <div class="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] font-medium ml-auto flex items-center gap-1">
-          ${icon('lock', 13)} Modo OTI: Estructura técnica (Costos ocultos)
+        <div class="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] font-medium flex items-center gap-1">
+          ${icon('lock', 13)} OTI (Costos ocultos)
         </div>`}
       </div>
 
       <!-- Lienzo horizontal con columnas y conexiones SVG -->
-      <div style="position:relative;overflow:hidden;flex:1;display:flex;flex-direction:column">
-        <!-- Botones flotantes de desplazamiento rápido -->
-        <button type="button" id="ts-scroll-left" class="ts-nav-arrow ts-nav-left" title="Desplazar a la izquierda (←)">
-          ‹
-        </button>
-        <button type="button" id="ts-scroll-right" class="ts-nav-arrow ts-nav-right" title="Desplazar a la derecha (→)">
-          ›
-        </button>
-
-        <div class="flex-1 overflow-x-auto overflow-y-auto p-6 bg-slate-50/60 relative select-none min-h-[460px] max-h-[75vh]" id="ts-canvas-container" style="scroll-behavior:smooth">
+      <div style="position:relative;flex:1;display:flex;flex-direction:column">
+        <div class="flex-1 overflow-x-auto overflow-y-visible p-6 pb-10 bg-slate-50/60 relative select-none min-h-[520px]" id="ts-canvas-container" style="scroll-behavior:smooth">
           <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
             <!-- Capa SVG para las líneas de ramificación -->
             <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 10; overflow: visible;">
@@ -728,14 +689,6 @@ function setupEventListeners() {
 
   // Re-dibujar líneas en scroll y resize
   // Botones de navegación horizontal del árbol
-  document.getElementById('ts-scroll-left')?.addEventListener('click', () => {
-    const c = document.getElementById('ts-canvas-container');
-    if (c) c.scrollBy({ left: -380, behavior: 'smooth' });
-  });
-  document.getElementById('ts-scroll-right')?.addEventListener('click', () => {
-    const c = document.getElementById('ts-canvas-container');
-    if (c) c.scrollBy({ left: 380, behavior: 'smooth' });
-  });
   document.getElementById('ts-btn-scroll-prev')?.addEventListener('click', () => {
     const c = document.getElementById('ts-canvas-container');
     if (c) c.scrollBy({ left: -380, behavior: 'smooth' });
