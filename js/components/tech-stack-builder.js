@@ -217,6 +217,37 @@ function renderStageColumn(stage, sIdx, isTI) {
   `;
 }
 
+// Helper para determinar precio y estado: Gratis (0), Indefinido (sin costo definido) o Precio numérico
+function resolvePlanPricing(planObj, fallbackItem) {
+  const p = planObj || {};
+  const hasCosto = p.costo !== null && p.costo !== undefined && p.costo !== '';
+  const hasMax = p.margen_max !== null && p.margen_max !== undefined && p.margen_max !== '';
+
+  if (!hasCosto && !hasMax) {
+    if (fallbackItem) {
+      const itemHasCosto = fallbackItem.costo !== null && fallbackItem.costo !== undefined && fallbackItem.costo !== '';
+      const itemHasMax = fallbackItem.margen_max !== null && fallbackItem.margen_max !== undefined && fallbackItem.margen_max !== '';
+      if (itemHasMax && Number(fallbackItem.margen_max) > 0) return { type: 'price', val: Number(fallbackItem.margen_max) };
+      if (itemHasCosto && Number(fallbackItem.costo) > 0) return { type: 'price', val: Number(fallbackItem.costo) };
+      if ((itemHasCosto && Number(fallbackItem.costo) === 0) || (itemHasMax && Number(fallbackItem.margen_max) === 0)) return { type: 'free', val: 0 };
+    }
+    return { type: 'undefined', val: null };
+  }
+
+  const maxNum = hasMax ? Number(p.margen_max) : null;
+  const costNum = hasCosto ? Number(p.costo) : null;
+
+  if (maxNum !== null && maxNum > 0) return { type: 'price', val: maxNum };
+  if (costNum !== null && costNum > 0) return { type: 'price', val: costNum };
+
+  // Explícitamente 0 es Gratis
+  if ((hasCosto && costNum === 0) || (hasMax && maxNum === 0)) {
+    return { type: 'free', val: 0 };
+  }
+
+  return { type: 'undefined', val: null };
+}
+
 function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
   const avatar = item.image_url
     ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0 shadow-2xs"><img src="${esc(thumbUrl(item.image_url, 64))}" class="max-w-full max-h-full object-contain" alt="${esc(item.name)}"></div>`
@@ -230,23 +261,29 @@ function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
 
   const currentPlan = item.plan_name || 'Free';
   const sym = getSym(item.moneda || 'USD');
+  const periodoStr = item.periodo === 'año' ? 'año' : 'mes';
 
   // Buscar plan activo (coincidencia insensible a mayúsculas/minúsculas)
   const matchedPlan = plans.find(p => (p.name || '').toLowerCase() === (currentPlan || '').toLowerCase()) || plans[0];
 
-  // PRECIO MÁXIMO para debatir con el cliente
-  const maxPriceNum = (matchedPlan && matchedPlan.margen_max !== null && matchedPlan.margen_max !== undefined && Number(matchedPlan.margen_max) > 0)
-    ? Number(matchedPlan.margen_max)
-    : (item.margen_max !== null && item.margen_max !== undefined && Number(item.margen_max) > 0)
-      ? Number(item.margen_max)
-      : (Number(item.costo) || 0);
+  // Cálculo de precio y estado: 0 = Gratis, sin costo = Indefinido, >0 = Precio
+  const activePricing = resolvePlanPricing(matchedPlan, item);
+  let costLabel = 'Indefinido';
+  let badgeClass = 'bg-amber-50 text-amber-800 border border-amber-200';
 
-  const costBaseNum = (matchedPlan && matchedPlan.costo !== null && matchedPlan.costo !== undefined)
+  if (activePricing.type === 'free') {
+    costLabel = 'Gratis';
+    badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  } else if (activePricing.type === 'price') {
+    costLabel = `${sym} ${activePricing.val.toFixed(2)} / ${periodoStr}`;
+    badgeClass = 'bg-slate-900 text-white';
+  }
+
+  const costBaseNum = (matchedPlan && matchedPlan.costo !== null && matchedPlan.costo !== undefined && matchedPlan.costo !== '')
     ? Number(matchedPlan.costo)
-    : (Number(item.costo) || 0);
-
-  const periodoStr = item.periodo === 'año' ? 'año' : 'mes';
-  const maxPriceLabel = maxPriceNum === 0 ? 'Gratis' : `${sym} ${maxPriceNum.toFixed(2)} / ${periodoStr}`;
+    : (item.costo !== null && item.costo !== undefined && item.costo !== '')
+      ? Number(item.costo)
+      : null;
 
   // Next column targets options
   const nextStage = _activeStack.stages[sIdx + 1];
@@ -282,10 +319,13 @@ function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
         <div class="flex items-center gap-1.5 flex-1 min-w-0">
           <select class="ts-card-plan text-[11px] py-1 px-1.5 bg-gray-50 border border-gray-200 rounded font-medium text-gray-700 w-full truncate focus:bg-white focus:border-indigo-400 focus:outline-none" data-stage-index="${sIdx}" data-item-index="${itIdx}">
             ${plans.map(p => {
-              const pMax = (p.margen_max !== null && p.margen_max !== undefined && Number(p.margen_max) > 0)
-                ? Number(p.margen_max)
-                : (Number(p.costo) || 0);
-              const pLabel = pMax === 0 ? 'Gratis' : `${getSym(p.moneda || 'USD')} ${pMax.toFixed(2)}`;
+              const pPricing = resolvePlanPricing(p, null);
+              let pLabel = 'Indefinido';
+              if (pPricing.type === 'free') {
+                pLabel = 'Gratis';
+              } else if (pPricing.type === 'price') {
+                pLabel = `${getSym(p.moneda || 'USD')} ${pPricing.val.toFixed(2)}`;
+              }
               const isSelected = (p.name || '').toLowerCase() === (currentPlan || '').toLowerCase();
               return `<option value="${esc(p.name)}" ${isSelected ? 'selected' : ''}>
                 ${esc(p.name)} (${pLabel})
@@ -294,10 +334,10 @@ function renderNodeCard(item, sIdx, itIdx, isTI, isLast) {
           </select>
         </div>
         <div class="flex flex-col items-end shrink-0">
-          <span class="font-bold text-[10.5px] px-2 py-0.5 rounded ${maxPriceNum === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-900 text-white'} whitespace-nowrap shadow-2xs" title="Precio Máximo de propuesta al cliente para negociación">
-            ${maxPriceLabel}
+          <span class="font-bold text-[10.5px] px-2 py-0.5 rounded ${badgeClass} whitespace-nowrap shadow-2xs" title="${activePricing.type === 'undefined' ? 'Plan sin costo definido' : 'Precio Máximo de propuesta para negociación'}">
+            ${costLabel}
           </span>
-          ${costBaseNum > 0 && costBaseNum < maxPriceNum ? `
+          ${costBaseNum !== null && costBaseNum > 0 && activePricing.type === 'price' && costBaseNum < activePricing.val ? `
           <span class="text-[9px] text-gray-400 font-medium mr-0.5" title="Costo base real de la herramienta">
             Base: ${sym} ${costBaseNum.toFixed(2)}
           </span>` : ''}
@@ -332,6 +372,7 @@ function renderInvestmentFooter() {
   const totalsMax = { USD: 0, PEN: 0, EUR: 0 };
   const totalsBase = { USD: 0, PEN: 0, EUR: 0 };
   let itemCount = 0;
+  let undefinedCount = 0;
 
   (_activeStack.stages || []).forEach(stage => {
     (stage.items || []).forEach(it => {
@@ -343,21 +384,22 @@ function renderInvestmentFooter() {
       const plans = (catalogMatch && Array.isArray(catalogMatch.plans)) ? catalogMatch.plans : [];
       const matchedPlan = plans.find(p => (p.name || '').toLowerCase() === (it.plan_name || '').toLowerCase());
 
-      const maxPrice = (matchedPlan && matchedPlan.margen_max !== null && matchedPlan.margen_max !== undefined && Number(matchedPlan.margen_max) > 0)
-        ? Number(matchedPlan.margen_max)
-        : (it.margen_max !== null && it.margen_max !== undefined && Number(it.margen_max) > 0)
-          ? Number(it.margen_max)
-          : (Number(it.costo) || 0);
+      const pricing = resolvePlanPricing(matchedPlan, it);
+      if (pricing.type === 'undefined') {
+        undefinedCount++;
+      } else if (pricing.type === 'price') {
+        if (totalsMax[m] !== undefined) totalsMax[m] += pricing.val;
+        else totalsMax.USD += pricing.val;
+      }
 
-      const baseCost = (matchedPlan && matchedPlan.costo !== null && matchedPlan.costo !== undefined)
+      const baseCost = (matchedPlan && matchedPlan.costo !== null && matchedPlan.costo !== undefined && matchedPlan.costo !== '')
         ? Number(matchedPlan.costo)
-        : (Number(it.costo) || 0);
+        : (it.costo !== null && it.costo !== undefined && it.costo !== '' ? Number(it.costo) : null);
 
-      if (totalsMax[m] !== undefined) totalsMax[m] += maxPrice;
-      else totalsMax.USD += maxPrice;
-
-      if (totalsBase[m] !== undefined) totalsBase[m] += baseCost;
-      else totalsBase.USD += baseCost;
+      if (baseCost !== null && baseCost > 0) {
+        if (totalsBase[m] !== undefined) totalsBase[m] += baseCost;
+        else totalsBase.USD += baseCost;
+      }
     });
   });
 
@@ -372,7 +414,7 @@ function renderInvestmentFooter() {
             <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400">Precio Máximo de Propuesta (Cliente)</h4>
             <span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30">Para Negociación</span>
           </div>
-          <p class="text-[11px] text-gray-400">${itemCount} tecnologías · Precio tope con margen máximo para debatir con clientes</p>
+          <p class="text-[11px] text-gray-400">${itemCount} tecnologías · Precio tope con margen máximo para debatir con clientes${undefinedCount > 0 ? ` (${undefinedCount} con precio indefinido)` : ''}</p>
         </div>
       </div>
 
@@ -640,13 +682,11 @@ function setupEventListeners() {
       if (catalogMatch && Array.isArray(catalogMatch.plans)) {
         const pObj = catalogMatch.plans.find(p => (p.name || '').toLowerCase() === (planName || '').toLowerCase());
         if (pObj) {
-          item.costo = pObj.costo ?? 0;
-          item.margen_min = pObj.margen_min ?? null;
-          item.margen_max = pObj.margen_max ?? null;
-          const pMax = (pObj.margen_max !== null && pObj.margen_max !== undefined && Number(pObj.margen_max) > 0)
-            ? Number(pObj.margen_max)
-            : (Number(pObj.costo) || 0);
-          item.precio_max = pMax;
+          item.costo = (pObj.costo !== null && pObj.costo !== undefined && pObj.costo !== '') ? Number(pObj.costo) : null;
+          item.margen_min = (pObj.margen_min !== null && pObj.margen_min !== undefined && pObj.margen_min !== '') ? Number(pObj.margen_min) : null;
+          item.margen_max = (pObj.margen_max !== null && pObj.margen_max !== undefined && pObj.margen_max !== '') ? Number(pObj.margen_max) : null;
+          const pricing = resolvePlanPricing(pObj, null);
+          item.precio_max = (pricing.type === 'price') ? pricing.val : (pricing.type === 'free' ? 0 : null);
           item.moneda = pObj.moneda || 'USD';
           item.periodo = pObj.periodo || 'mes';
         }
@@ -769,11 +809,16 @@ function openAddTechnologyModal(stageIndex) {
 
     // Agregar al stage
     const defaultPlan = (Array.isArray(tech.plans) && tech.plans[0]) ? tech.plans[0] : null;
-    const pMax = (defaultPlan && defaultPlan.margen_max !== null && defaultPlan.margen_max !== undefined && Number(defaultPlan.margen_max) > 0)
+    const pricing = resolvePlanPricing(defaultPlan, tech);
+    const pCost = (defaultPlan && defaultPlan.costo !== null && defaultPlan.costo !== undefined && defaultPlan.costo !== '')
+      ? Number(defaultPlan.costo)
+      : (tech.costo !== null && tech.costo !== undefined && tech.costo !== '' ? Number(tech.costo) : null);
+    const pMin = (defaultPlan && defaultPlan.margen_min !== null && defaultPlan.margen_min !== undefined && defaultPlan.margen_min !== '')
+      ? Number(defaultPlan.margen_min)
+      : (tech.margen_min !== null && tech.margen_min !== undefined && tech.margen_min !== '' ? Number(tech.margen_min) : null);
+    const pMax = (defaultPlan && defaultPlan.margen_max !== null && defaultPlan.margen_max !== undefined && defaultPlan.margen_max !== '')
       ? Number(defaultPlan.margen_max)
-      : (tech.margen_max !== null && tech.margen_max !== undefined && Number(tech.margen_max) > 0)
-        ? Number(tech.margen_max)
-        : (defaultPlan ? (Number(defaultPlan.costo) || 0) : (Number(tech.costo) || 0));
+      : (tech.margen_max !== null && tech.margen_max !== undefined && tech.margen_max !== '' ? Number(tech.margen_max) : null);
 
     const newItem = {
       id: 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -782,12 +827,12 @@ function openAddTechnologyModal(stageIndex) {
       category: tech.category || 'tool',
       image_url: tech.image_url || '',
       plan_name: defaultPlan ? defaultPlan.name : 'Free',
-      costo: defaultPlan ? (defaultPlan.costo || 0) : (Number(tech.costo) || 0),
-      margen_min: defaultPlan ? defaultPlan.margen_min : tech.margen_min,
-      margen_max: defaultPlan ? defaultPlan.margen_max : tech.margen_max,
-      precio_max: pMax,
-      moneda: defaultPlan ? (defaultPlan.moneda || 'USD') : (tech.moneda || 'USD'),
-      periodo: defaultPlan ? (defaultPlan.periodo || 'mes') : (tech.periodo || 'mes'),
+      costo: pCost,
+      margen_min: pMin,
+      margen_max: pMax,
+      precio_max: pricing.type === 'price' ? pricing.val : (pricing.type === 'free' ? 0 : null),
+      moneda: (defaultPlan && defaultPlan.moneda) || tech.moneda || 'USD',
+      periodo: (defaultPlan && defaultPlan.periodo) || tech.periodo || 'mes',
       targets: []
     };
 
