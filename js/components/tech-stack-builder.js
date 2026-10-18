@@ -53,6 +53,36 @@ export async function initTechStackBuilder(mountEl, options = {}) {
   }
 }
 
+const PROJECT_TYPE_OPTIONS = [
+  { value: 'Web', label: 'Web' },
+  { value: 'Móvil', label: 'Móvil (App)' },
+  { value: 'API / Backend', label: 'API / Backend' },
+  { value: 'Escritorio', label: 'Escritorio' },
+  { value: 'E-Commerce', label: 'E-Commerce' },
+  { value: 'Full-Stack', label: 'Full-Stack' },
+  { value: 'Multi-Plataforma', label: 'Multi-Plataforma' },
+  { value: 'SaaS / Cloud', label: 'SaaS / Cloud (Suscripción)' },
+  { value: 'Software a Medida', label: 'Software a Medida' },
+  { value: 'ERP / CRM', label: 'ERP / CRM Empresarial' },
+  { value: 'Inteligencia Artificial', label: 'Inteligencia Artificial / ML' },
+  { value: 'Automatización / Bot', label: 'Automatización / Bots / RPA' },
+  { value: 'Infraestructura', label: 'Infraestructura & DevOps' },
+  { value: 'Otro', label: 'Otro (Personalizado)' },
+];
+
+function renderProjectTypeOptions(selectedValue) {
+  let found = false;
+  const opts = PROJECT_TYPE_OPTIONS.map(opt => {
+    const isSel = (opt.value === selectedValue);
+    if (isSel) found = true;
+    return `<option value="${esc(opt.value)}" ${isSel ? 'selected' : ''}>${esc(opt.label)}</option>`;
+  });
+  if (selectedValue && !found) {
+    opts.unshift(`<option value="${esc(selectedValue)}" selected>${esc(selectedValue)}</option>`);
+  }
+  return opts.join('');
+}
+
 function createEmptyStack(name, type = 'Web') {
   return {
     id: 'stack_' + Date.now(),
@@ -140,14 +170,7 @@ function renderBuilder(scrollOpts = {}) {
         <div class="flex items-center gap-2">
           <span class="text-gray-400 font-medium">Tipo:</span>
           <select id="ts-stack-type" class="input py-1 px-2.5 text-xs font-medium">
-            <option value="Web" ${_activeStack.project_type === 'Web' ? 'selected' : ''}>Web</option>
-            <option value="Móvil" ${_activeStack.project_type === 'Móvil' ? 'selected' : ''}>Móvil (App)</option>
-            <option value="API / Backend" ${_activeStack.project_type === 'API / Backend' ? 'selected' : ''}>API / Backend</option>
-            <option value="Escritorio" ${_activeStack.project_type === 'Escritorio' ? 'selected' : ''}>Escritorio</option>
-            <option value="E-Commerce" ${_activeStack.project_type === 'E-Commerce' ? 'selected' : ''}>E-Commerce</option>
-            <option value="Full-Stack" ${_activeStack.project_type === 'Full-Stack' ? 'selected' : ''}>Full-Stack</option>
-            <option value="Multi-Plataforma" ${_activeStack.project_type === 'Multi-Plataforma' ? 'selected' : ''}>Multi-Plataforma</option>
-            <option value="Otro" ${_activeStack.project_type === 'Otro' ? 'selected' : ''}>Otro</option>
+            ${renderProjectTypeOptions(_activeStack.project_type || 'Web')}
           </select>
         </div>
         ${!isTI ? `
@@ -690,7 +713,18 @@ function setupEventListeners() {
   const typeSelect = document.getElementById('ts-stack-type');
   if (typeSelect) {
     typeSelect.addEventListener('change', e => {
-      _activeStack.project_type = e.target.value;
+      let val = e.target.value;
+      if (val === 'Otro') {
+        const custom = prompt('Escribe el tipo de proyecto / solución personalizado:', _activeStack.project_type || '');
+        if (custom && custom.trim()) {
+          val = custom.trim();
+        } else {
+          renderBuilder();
+          return;
+        }
+      }
+      _activeStack.project_type = val;
+      renderBuilder();
     });
   }
 
@@ -1053,15 +1087,11 @@ function openNewStackModal(isQuotation = false) {
       <div>
         <label class="block text-xs font-bold text-gray-700 mb-1">Tipo de Proyecto / Solución:</label>
         <select id="ts-new-type" class="input w-full py-2 px-3 text-xs font-medium">
-          <option value="Web">Web</option>
-          <option value="Móvil">Móvil (App)</option>
-          <option value="API / Backend">API / Backend</option>
-          <option value="Escritorio">Escritorio</option>
-          <option value="E-Commerce">E-Commerce</option>
-          <option value="Full-Stack">Full-Stack</option>
-          <option value="Multi-Plataforma">Multi-Plataforma</option>
-          <option value="Otro">Otro</option>
+          ${renderProjectTypeOptions(_activeStack?.project_type || 'Web')}
         </select>
+        <div id="ts-new-type-custom-wrap" class="mt-2 hidden">
+          <input type="text" id="ts-new-type-custom" class="input w-full py-2 px-3 text-xs font-semibold" placeholder="Escribe el tipo de proyecto o solución personalizado...">
+        </div>
       </div>
 
       <p class="text-xs text-gray-500">
@@ -1077,10 +1107,32 @@ function openNewStackModal(isQuotation = false) {
     </div>
   `, 'sm');
 
+  const typeSel = document.getElementById('ts-new-type');
+  const customWrap = document.getElementById('ts-new-type-custom-wrap');
+  const customInput = document.getElementById('ts-new-type-custom');
+
+  typeSel?.addEventListener('change', () => {
+    if (typeSel.value === 'Otro') {
+      customWrap?.classList.remove('hidden');
+      customInput?.focus();
+    } else {
+      customWrap?.classList.add('hidden');
+    }
+  });
+
   document.getElementById('ts-new-cancel')?.addEventListener('click', closeModal);
   document.getElementById('ts-new-confirm')?.addEventListener('click', async () => {
     const name = document.getElementById('ts-new-name')?.value.trim();
-    const type = document.getElementById('ts-new-type')?.value;
+    let type = typeSel?.value || 'Web';
+    if (type === 'Otro') {
+      const customVal = customInput?.value.trim();
+      if (!customVal) {
+        toast('Ingresa el tipo de solución personalizado', 'warning');
+        customInput?.focus();
+        return;
+      }
+      type = customVal;
+    }
     if (!name) { toast('Ingresa un nombre para el Tech Stack', 'warning'); return; }
 
     const stages = isQuotation ? JSON.parse(JSON.stringify(_activeStack.stages)) : [
