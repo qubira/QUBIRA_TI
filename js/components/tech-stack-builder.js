@@ -156,12 +156,12 @@ function renderBuilder() {
       <div class="flex-1 overflow-x-auto overflow-y-auto p-6 bg-slate-50/60 relative select-none min-h-[460px]" id="ts-canvas-container">
         <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
           <!-- Capa SVG para las líneas de ramificación -->
-          <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 5; overflow: visible;">
+          <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 10; overflow: visible;">
             <g id="ts-svg-paths"></g>
           </svg>
 
           <!-- Columnas del Tech Stack -->
-          <div class="flex items-start gap-8 relative" style="z-index: 10;" id="ts-columns-wrapper">
+          <div class="flex items-start gap-10 relative" id="ts-columns-wrapper">
             ${(_activeStack.stages || []).map((stage, sIdx) => renderStageColumn(stage, sIdx, isTI)).join('')}
           </div>
         </div>
@@ -362,8 +362,8 @@ function updateSvgConnections() {
   if (!svgGroup || !svgLayer || !colsWrapper || !wrapper || !_activeStack) return;
 
   // 1. Sincronizar dimensiones explícitas del SVG en píxeles (para que nunca colapse a 0)
-  const w = Math.max(colsWrapper.scrollWidth, colsWrapper.offsetWidth, 1200);
-  const h = Math.max(colsWrapper.scrollHeight, colsWrapper.offsetHeight, 650);
+  const w = Math.max(colsWrapper.scrollWidth, colsWrapper.offsetWidth, wrapper.scrollWidth || 0, 1200);
+  const h = Math.max(colsWrapper.scrollHeight, colsWrapper.offsetHeight, wrapper.scrollHeight || 0, 650);
   svgLayer.setAttribute('width', w);
   svgLayer.setAttribute('height', h);
   svgLayer.setAttribute('viewBox', `0 0 ${w} ${h}`);
@@ -372,7 +372,7 @@ function updateSvgConnections() {
   svgLayer.style.position = 'absolute';
   svgLayer.style.top = '0px';
   svgLayer.style.left = '0px';
-  svgLayer.style.zIndex = '20';
+  svgLayer.style.zIndex = '10';
   svgLayer.style.pointerEvents = 'none';
   svgLayer.style.overflow = 'visible';
 
@@ -393,10 +393,10 @@ function updateSvgConnections() {
       const sourceEl = document.getElementById(sourceItem.id);
       if (!sourceEl) return;
       const sPort = sourceEl.querySelector('.ts-port-out');
-      const sRect = sPort ? sPort.getBoundingClientRect() : sourceEl.getBoundingClientRect();
+      const sRect = (sPort || sourceEl).getBoundingClientRect();
 
-      const x1 = (sPort ? sRect.left + sRect.width / 2 : sRect.right) - wrapperRect.left;
-      const y1 = (sPort ? sRect.top + sRect.height / 2 : sRect.top + sRect.height / 2) - wrapperRect.top;
+      const x1 = (sPort ? (sRect.left + sRect.width / 2) : sRect.right) - wrapperRect.left;
+      const y1 = (sRect.top + sRect.height / 2) - wrapperRect.top;
 
       let validTargets = (Array.isArray(sourceItem.targets) && sourceItem.targets.length)
         ? sourceItem.targets.filter(tid => nextItemIds.has(tid))
@@ -409,37 +409,30 @@ function updateSvgConnections() {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
         const tPort = targetEl.querySelector('.ts-port-in');
-        const tRect = tPort ? tPort.getBoundingClientRect() : targetEl.getBoundingClientRect();
+        const tRect = (tPort || targetEl).getBoundingClientRect();
 
-        const x2 = (tPort ? tPort.left + tPort.width / 2 : tRect.left) - wrapperRect.left;
-        const y2 = (tPort ? tPort.top + tPort.height / 2 : tRect.top + tRect.height / 2) - wrapperRect.top;
+        const x2 = (tPort ? (tRect.left + tRect.width / 2) : tRect.left) - wrapperRect.left;
+        const y2 = (tRect.top + tRect.height / 2) - wrapperRect.top;
 
+        if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return;
         if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) return;
 
-        // Curva Bezier estética
-        const dx = Math.max(35, (x2 - x1) * 0.45);
+        // Curva Bezier estética punto a punto (de círculo verde a círculo púrpura)
+        const dx = Math.max(20, (x2 - x1) * 0.5);
         const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
-        // 1. Línea principal curva continua y bien visible
+        // Línea principal continua y bien visible
         const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         pathEl.setAttribute('d', pathData);
         pathEl.setAttribute('stroke', lineColor);
-        pathEl.setAttribute('stroke-width', '3');
+        pathEl.setAttribute('stroke-width', '3.5');
         pathEl.setAttribute('fill', 'none');
         pathEl.setAttribute('stroke-linecap', 'round');
         pathEl.setAttribute('opacity', '0.95');
+        pathEl.style.filter = 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.12))';
         pathEl.setAttribute('data-source', sourceItem.id);
         pathEl.setAttribute('data-target', targetId);
         svgGroup.appendChild(pathEl);
-
-        // 2. Indicador direccional (flecha hacia el puerto de entrada)
-        const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        arrow.setAttribute('points', `${x2 - 9},${y2 - 4} ${x2 - 1},${y2} ${x2 - 9},${y2 + 4}`);
-        arrow.setAttribute('fill', lineColor);
-        arrow.setAttribute('opacity', '1');
-        arrow.setAttribute('data-source', sourceItem.id);
-        arrow.setAttribute('data-target', targetId);
-        svgGroup.appendChild(arrow);
       });
     });
   }
@@ -473,26 +466,18 @@ function setupEventListeners() {
       paths.forEach(el => {
         const isConnected = (el.getAttribute('data-source') === nodeId || el.getAttribute('data-target') === nodeId);
         if (isConnected) {
-          if (el.tagName === 'path') {
-            el.setAttribute('stroke-width', '3.5');
-            el.setAttribute('opacity', '1');
-          } else {
-            el.setAttribute('opacity', '1');
-          }
+          el.setAttribute('stroke-width', '4.5');
+          el.setAttribute('opacity', '1');
         } else {
-          el.setAttribute('opacity', '0.2');
+          el.setAttribute('opacity', '0.15');
         }
       });
     });
     card.addEventListener('mouseleave', () => {
       const paths = _container.querySelectorAll('#ts-svg-paths [data-source], #ts-svg-paths [data-target]');
       paths.forEach(el => {
-        if (el.tagName === 'path') {
-          el.setAttribute('stroke-width', '2.5');
-          el.setAttribute('opacity', '0.85');
-        } else {
-          el.setAttribute('opacity', '0.9');
-        }
+        el.setAttribute('stroke-width', '3.5');
+        el.setAttribute('opacity', '0.95');
       });
     });
   });
