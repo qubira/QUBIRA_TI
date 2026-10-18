@@ -227,8 +227,8 @@ function renderBuilder(scrollOpts = {}) {
       </div>
 
       <!-- Lienzo horizontal con columnas y conexiones SVG -->
-      <div style="position:relative;flex:1;display:flex;flex-direction:column">
-        <div class="flex-1 overflow-x-auto overflow-y-visible p-6 pb-10 bg-slate-50/60 relative select-none min-h-[520px]" id="ts-canvas-container" style="scroll-behavior:smooth">
+      <div style="position:relative;flex:1;display:flex;flex-direction:column;min-width:0;width:100%;max-width:100%;overflow:hidden">
+        <div class="flex-1 overflow-x-auto overflow-y-visible p-6 pb-10 bg-slate-50/60 relative select-none min-h-[520px] w-full min-w-0 max-w-full" id="ts-canvas-container" style="scroll-behavior:smooth">
           <div id="ts-content-wrapper" class="relative min-w-max inline-block" style="min-height: 100%;">
             <!-- Capa SVG para las líneas de ramificación -->
             <svg id="ts-svg-layer" class="absolute inset-0 pointer-events-none" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; z-index: 10; overflow: visible;">
