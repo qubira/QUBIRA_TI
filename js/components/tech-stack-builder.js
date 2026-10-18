@@ -181,6 +181,19 @@ function renderBuilder() {
   setTimeout(() => updateSvgConnections(), 1000);
 }
 
+function cleanStaleTargets() {
+  if (!_activeStack || !Array.isArray(_activeStack.stages)) return;
+  _activeStack.stages.forEach((stage, sIdx) => {
+    const nextStage = _activeStack.stages[sIdx + 1];
+    const nextIds = new Set(nextStage ? (nextStage.items || []).map(it => it.id) : []);
+    (stage.items || []).forEach(it => {
+      if (Array.isArray(it.targets) && it.targets.length) {
+        it.targets = it.targets.filter(tid => nextIds.has(tid));
+      }
+    });
+  });
+}
+
 function renderStageColumn(stage, sIdx, isTI) {
   const items = stage.items || [];
   const isLast = sIdx === (_activeStack.stages.length - 1);
@@ -188,19 +201,47 @@ function renderStageColumn(stage, sIdx, isTI) {
   return `
     <div class="w-64 bg-white/95 backdrop-blur rounded-xl border border-gray-200/90 shadow-sm flex flex-col shrink-0 transition-all hover:border-gray-300" data-stage-index="${sIdx}">
       <!-- Encabezado de Columna -->
-      <div class="p-3 border-b border-gray-100 bg-gray-50/80 rounded-t-xl flex items-center justify-between gap-1.5">
-        <div class="flex items-center gap-1.5 overflow-hidden flex-1">
-          <span class="text-[10px] font-bold text-gray-400 bg-gray-200/70 px-1.5 py-0.5 rounded">C${sIdx + 1}</span>
-          <input type="text" class="ts-col-title font-bold text-xs text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:bg-white px-1 py-0.5 rounded transition-all w-full truncate" value="${esc(stage.title)}" data-stage-index="${sIdx}" title="Clic para renombrar columna">
+      <div class="p-2.5 border-b border-gray-100 bg-gray-50/80 rounded-t-xl flex flex-col gap-1.5">
+        <div class="flex items-center justify-between gap-1">
+          <div class="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+            <span class="text-[10px] font-bold text-gray-400 bg-gray-200/70 px-1.5 py-0.5 rounded shrink-0">C${sIdx + 1}</span>
+            <input type="text" class="ts-col-title font-bold text-xs text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:bg-white px-1 py-0.5 rounded transition-all w-full truncate" value="${esc(stage.title)}" data-stage-index="${sIdx}" title="Clic para renombrar columna">
+          </div>
+          <div class="flex items-center gap-0.5 shrink-0">
+            <!-- Mover a la izquierda -->
+            <button type="button" class="ts-btn-move-col-left p-1 rounded transition-all ${sIdx === 0 ? 'text-gray-300 cursor-not-allowed opacity-30' : 'text-gray-500 hover:text-indigo-600 hover:bg-indigo-50'}" data-stage-index="${sIdx}" ${sIdx === 0 ? 'disabled' : ''} title="${sIdx === 0 ? 'Primera columna' : 'Mover columna a la izquierda (←)'}">
+              ${icon('arrow_back', 14)}
+            </button>
+            <!-- Mover a la derecha -->
+            <button type="button" class="ts-btn-move-col-right p-1 rounded transition-all ${isLast ? 'text-gray-300 cursor-not-allowed opacity-30' : 'text-gray-500 hover:text-indigo-600 hover:bg-indigo-50'}" data-stage-index="${sIdx}" ${isLast ? 'disabled' : ''} title="${isLast ? 'Última columna' : 'Mover columna a la derecha (→)'}">
+              ${icon('arrow_forward', 14)}
+            </button>
+            <!-- Añadir tecnología -->
+            <button type="button" class="ts-btn-add-item p-1 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 text-xs font-bold transition-all" data-stage-index="${sIdx}" title="Añadir tecnología a esta columna">
+              ${icon('add_circle', 16)}
+            </button>
+            ${_activeStack.stages.length > 2 ? `
+            <!-- Eliminar columna -->
+            <button type="button" class="ts-btn-del-col p-1 rounded hover:bg-rose-50 text-gray-400 hover:text-rose-600 text-xs transition-all" data-stage-index="${sIdx}" title="Eliminar columna">
+              ${icon('close', 15)}
+            </button>` : ''}
+          </div>
         </div>
-        <div class="flex items-center gap-1 shrink-0">
-          <button type="button" class="ts-btn-add-item p-1 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 text-xs font-bold transition-all" data-stage-index="${sIdx}" title="Añadir tecnología a esta columna">
-            ${icon('add_circle', 16)}
-          </button>
-          ${_activeStack.stages.length > 2 ? `
-          <button type="button" class="ts-btn-del-col p-1 rounded hover:bg-rose-50 text-gray-400 hover:text-rose-600 text-xs transition-all" data-stage-index="${sIdx}" title="Eliminar columna">
-            ${icon('close', 15)}
-          </button>` : ''}
+
+        <!-- Sub-barra para cambiar ubicación o insertar columna aquí -->
+        <div class="flex items-center justify-between text-[10px] text-gray-400 px-0.5 border-t border-gray-100 pt-1">
+          <div class="flex items-center gap-1.5">
+            ${sIdx === 0 ? `
+            <button type="button" class="ts-btn-insert-col-before text-indigo-600 hover:text-indigo-800 font-semibold hover:underline" data-stage-index="${sIdx}" title="Insertar una nueva columna al inicio (antes de C1)">
+              + Antes
+            </button>
+            <span class="text-gray-300">|</span>` : ''}
+            <button type="button" class="ts-btn-insert-col text-indigo-600 hover:text-indigo-800 font-semibold hover:underline flex items-center gap-0.5" data-stage-index="${sIdx}" title="Insertar una nueva columna inmediatamente después de C${sIdx + 1}">
+              ${icon('add', 12)}
+              <span>+ Columna aquí</span>
+            </button>
+          </div>
+          <span class="text-[9px] uppercase font-bold text-gray-400 bg-gray-100 px-1 py-0.2 rounded" title="Posición actual de la columna">C${sIdx + 1}/${_activeStack.stages.length}</span>
         </div>
       </div>
 
@@ -621,20 +662,77 @@ function setupEventListeners() {
     });
   });
 
-  // 5. Botón + Agregar Columna
+  // 5. Botón + Agregar Columna (al final)
   const addColBtn = document.getElementById('ts-btn-add-col');
   if (addColBtn) {
     addColBtn.addEventListener('click', () => {
-      const nextNum = _activeStack.stages.length + 1;
       _activeStack.stages.push({
         id: 'stg_' + Date.now(),
         title: 'HERRAMIENTA',
         category: 'tool',
         items: []
       });
+      cleanStaleTargets();
       renderBuilder();
     });
   }
+
+  // 5b. Mover Columna a la Izquierda (←)
+  _container.querySelectorAll('.ts-btn-move-col-left').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sIdx = Number(btn.dataset.stageIndex);
+      if (sIdx > 0 && _activeStack.stages.length > 1) {
+        const temp = _activeStack.stages[sIdx];
+        _activeStack.stages[sIdx] = _activeStack.stages[sIdx - 1];
+        _activeStack.stages[sIdx - 1] = temp;
+        cleanStaleTargets();
+        renderBuilder();
+      }
+    });
+  });
+
+  // 5c. Mover Columna a la Derecha (→)
+  _container.querySelectorAll('.ts-btn-move-col-right').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sIdx = Number(btn.dataset.stageIndex);
+      if (sIdx < _activeStack.stages.length - 1) {
+        const temp = _activeStack.stages[sIdx];
+        _activeStack.stages[sIdx] = _activeStack.stages[sIdx + 1];
+        _activeStack.stages[sIdx + 1] = temp;
+        cleanStaleTargets();
+        renderBuilder();
+      }
+    });
+  });
+
+  // 5d. Insertar Columna en ubicación específica (después de C_x_)
+  _container.querySelectorAll('.ts-btn-insert-col').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sIdx = Number(btn.dataset.stageIndex);
+      _activeStack.stages.splice(sIdx + 1, 0, {
+        id: 'stg_' + Date.now(),
+        title: 'HERRAMIENTA',
+        category: 'tool',
+        items: []
+      });
+      cleanStaleTargets();
+      renderBuilder();
+    });
+  });
+
+  // 5e. Insertar Columna al inicio (antes de C1)
+  _container.querySelectorAll('.ts-btn-insert-col-before').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _activeStack.stages.unshift({
+        id: 'stg_' + Date.now(),
+        title: 'HERRAMIENTA',
+        category: 'tool',
+        items: []
+      });
+      cleanStaleTargets();
+      renderBuilder();
+    });
+  });
 
   // 6. Botón Eliminar Columna
   _container.querySelectorAll('.ts-btn-del-col').forEach(btn => {
@@ -646,6 +744,7 @@ function setupEventListeners() {
         if (!ok) return;
       }
       _activeStack.stages.splice(sIdx, 1);
+      cleanStaleTargets();
       renderBuilder();
     });
   });
