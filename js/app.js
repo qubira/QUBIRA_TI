@@ -11,6 +11,7 @@ import { render as renderEmails }      from './pages/emails.js';
 import { render as renderCalendario }  from './pages/calendario.js';
 import { render as renderAuditoria }   from './pages/auditoria.js';
 import { render as renderHerramientas } from './pages/herramientas.js';
+import { render as renderInfoTecnico }  from './pages/info-tecnico.js';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
@@ -55,6 +56,7 @@ const NAV = [
   { path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
   { path: '/documents',  iconName: 'article',       label: 'Documentos' },
   { path: '/herramientas', iconName: 'build',       label: 'Herramientas' },
+  { path: '/info-tecnico', iconName: 'memory',      label: 'Info Técnico' },
   { path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
   { path: '/emails',     iconName: 'email',         label: 'Correos' },
   { path: '/auditoria',  iconName: 'fact_check',    label: 'Auditoría',  visible: canViewAudit },
@@ -177,6 +179,7 @@ addRoute('/calendario',      () => renderCalendario());
 addRoute('/auditoria',       () => renderAuditoria());
 addRoute('/documents',       () => renderDocuments());
 addRoute('/herramientas',    () => renderHerramientas());
+addRoute('/info-tecnico',    () => renderInfoTecnico());
 addRoute('/whatsapp',        () => renderWhatsApp());
 addRoute('/emails',          () => renderEmails());
 
