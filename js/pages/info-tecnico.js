@@ -94,7 +94,8 @@ async function load() {
       _selectedTechName = firstWithPlans ? firstWithPlans.name : _allTechs[0].name;
     }
 
-    renderPage();
+    renderPageSkeleton();
+    updateView();
   } catch(err) {
     console.error('Error cargando info técnico:', err);
     const c = document.getElementById('info-tecnico-page');
@@ -102,48 +103,17 @@ async function load() {
   }
 }
 
-function renderPage() {
+/**
+ * Renderiza el esqueleto general una sola vez para que el input de búsqueda
+ * y los filtros no se destruyan al escribir (evita perder el foco).
+ */
+function renderPageSkeleton() {
   const c = document.getElementById('info-tecnico-page');
   if (!c) return;
 
   const toolCount = _allTechs.filter(t => t.category === 'tool').length;
   const langCount = _allTechs.filter(t => t.category === 'language').length;
   const totalCount = _allTechs.length;
-
-  // Filtrar tecnologías por categoría y término de búsqueda
-  const filteredTechs = _allTechs.filter(t => {
-    if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
-    if (_searchQuery) {
-      const q = _searchQuery.toLowerCase();
-      const inName = t.name.toLowerCase().includes(q);
-      const inPlans = _items.some(it => 
-        (it.tech_name || '').toLowerCase() === t.name.toLowerCase() &&
-        ((it.plan_nombre || '').toLowerCase().includes(q) ||
-         (it.descripcion || '').toLowerCase().includes(q) ||
-         (it.limites_tecnicos || '').toLowerCase().includes(q))
-      );
-      if (!inName && !inPlans) return false;
-    }
-    return true;
-  });
-
-  // Asegurar que _selectedTechName apunte a una tecnología válida
-  const currentTech = _allTechs.find(t => t.name.toLowerCase() === (_selectedTechName || '').toLowerCase()) || filteredTechs[0] || null;
-  if (currentTech) _selectedTechName = currentTech.name;
-
-  // Planes disponibles para la tecnología seleccionada
-  const techPlans = currentTech 
-    ? _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === currentTech.name.toLowerCase())
-    : [];
-
-  // Plan activo seleccionado
-  let activePlan = null;
-  if (techPlans.length > 0) {
-    activePlan = techPlans.find(p => p.id === _selectedPlanId) || techPlans[0];
-    _selectedPlanId = activePlan.id;
-  } else {
-    _selectedPlanId = null;
-  }
 
   c.innerHTML = `
     <!-- Encabezado de página -->
@@ -170,7 +140,7 @@ function renderPage() {
 
     <!-- Barra de Filtros, Categorías y Búsqueda Inteligente -->
     <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+      <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0" id="category-pills-bar">
         <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
           _selectedCategory === 'all'
             ? 'bg-primary-600 text-white shadow-sm'
@@ -194,85 +164,204 @@ function renderPage() {
         </button>
       </div>
 
-      <!-- Buscador -->
+      <!-- Buscador (Persistente para no perder foco al escribir) -->
       <div class="relative w-full md:w-80">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
           ${icon('search', 16)}
         </div>
         <input type="text" id="tech-search-input" value="${esc(_searchQuery)}" placeholder="Buscar herramienta o lenguaje..."
+          autocomplete="off"
           class="input pl-9 pr-8 py-1.5 text-xs w-full bg-gray-50 hover:bg-white focus:bg-white border-gray-200 rounded-lg transition-all">
-        ${_searchQuery ? `
-          <button type="button" id="clear-search-btn" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600">
-            ${icon('close', 14)}
-          </button>
-        ` : ''}
+        <button type="button" id="clear-search-btn" class="${_searchQuery ? '' : 'hidden'} absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer" title="Limpiar búsqueda">
+          ${icon('close', 14)}
+        </button>
       </div>
     </div>
 
     <!-- Layout Master-Detail: Tecnologías (Izquierda) + Ficha Técnica (Derecha) -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
-      <!-- Columna Izquierda: Lista de Tecnologías (Catálogo) -->
-      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+      <!-- Columna Izquierda: Lista de Tecnologías (Catálogo)
+           lg:sticky lg:top-4 self-start: NO se baja al scrollear la ficha técnica -->
+      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:sticky lg:top-4 self-start">
         <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-          <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">
-            Tecnologías (${filteredTechs.length})
+          <span class="text-xs font-bold text-gray-700 uppercase tracking-wider" id="tech-count-badge">
+            Tecnologías (${totalCount})
           </span>
           <span class="text-[11px] text-gray-400">Selecciona para ver ficha</span>
         </div>
 
-        <div class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto" id="tech-list-scroll">
-          ${filteredTechs.length === 0 ? `
-            <div class="p-8 text-center text-gray-400 text-xs">
-              No se encontraron tecnologías que coincidan.
-            </div>
-          ` : filteredTechs.map(t => {
-            const isSelected = currentTech && currentTech.name.toLowerCase() === t.name.toLowerCase();
-            const planCount = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase()).length;
-            const avatar = t.image_url
-              ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-1 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(t.image_url, 64))}" class="max-w-full max-h-full object-contain" alt=""></div>`
-              : `<span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0 shadow-sm">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
-
-            return `
-              <div class="tech-item-row p-3 flex items-center gap-3 cursor-pointer transition-colors ${
-                isSelected ? 'bg-primary-50/80 border-l-4 border-primary-600' : 'hover:bg-gray-50'
-              }" data-tech-name="${esc(t.name)}">
-                ${avatar}
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between gap-1">
-                    <span class="text-sm font-semibold text-gray-900 truncate">${esc(t.name)}</span>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
-                      t.category === 'tool' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                    }">
-                      ${t.category === 'tool' ? 'Herramienta' : 'Lenguaje'}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
-                      ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} técnico${planCount === 1 ? '' : 's'}` : 'Sin ficha técnica'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('')}
+        <!-- Scroll independiente para la lista de tecnologías -->
+        <div class="divide-y divide-gray-100 max-h-[calc(100vh-14rem)] overflow-y-auto" id="tech-list-scroll">
+          <!-- Se inyecta con updateView() -->
         </div>
       </div>
 
       <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada -->
-      <div class="lg:col-span-8 flex flex-col gap-5">
-        ${currentTech ? renderTechDetail(currentTech, techPlans, activePlan) : `
-          <div class="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400">
-            <span class="text-4xl block mb-2">🔍</span>
-            <p class="text-sm font-medium text-gray-600">Selecciona una tecnología para ver su información técnica</p>
-          </div>
-        `}
+      <div class="lg:col-span-8 flex flex-col gap-5" id="tech-detail-mount">
+        <!-- Se inyecta con updateView() -->
       </div>
 
     </div>
   `;
 
-  wirePageEvents(currentTech, activePlan);
+  // Listeners de la barra superior y buscador (permanentes)
+  const searchInput = document.getElementById('tech-search-input');
+  const clearBtn = document.getElementById('clear-search-btn');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', e => {
+      _searchQuery = e.target.value;
+      if (clearBtn) {
+        if (_searchQuery) clearBtn.classList.remove('hidden');
+        else clearBtn.classList.add('hidden');
+      }
+      updateView();
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      _searchQuery = '';
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      clearBtn.classList.add('hidden');
+      updateView();
+    });
+  }
+
+  document.querySelectorAll('.category-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _selectedCategory = btn.dataset.cat;
+      // Actualizar estilo visual de las píldoras
+      document.querySelectorAll('.category-pill').forEach(b => {
+        if (b.dataset.cat === _selectedCategory) {
+          b.className = 'category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-primary-600 text-white shadow-sm';
+        } else {
+          b.className = 'category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
+        }
+      });
+      updateView();
+    });
+  });
+
+  document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
+    openPlanModal(null, _selectedTechName || '');
+  });
+}
+
+/**
+ * Actualiza la lista izquierda y el detalle derecho sin tocar el input de búsqueda.
+ */
+function updateView() {
+  const listContainer = document.getElementById('tech-list-scroll');
+  const countBadge = document.getElementById('tech-count-badge');
+  const detailMount = document.getElementById('tech-detail-mount');
+  if (!listContainer || !detailMount) return;
+
+  // Filtrar tecnologías
+  const q = (_searchQuery || '').trim().toLowerCase();
+  const filteredTechs = _allTechs.filter(t => {
+    if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
+    if (q) {
+      const inName = t.name.toLowerCase().includes(q);
+      const inPlans = _items.some(it => 
+        (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase() &&
+        ((it.plan_nombre || '').toLowerCase().includes(q) ||
+         (it.descripcion || '').toLowerCase().includes(q) ||
+         (it.limites_tecnicos || '').toLowerCase().includes(q) ||
+         (it.precio || '').toLowerCase().includes(q))
+      );
+      if (!inName && !inPlans) return false;
+    }
+    return true;
+  });
+
+  // Actualizar contador
+  if (countBadge) {
+    countBadge.textContent = `Tecnologías (${filteredTechs.length})`;
+  }
+
+  // Asegurar que haya una tecnología activa seleccionada
+  let currentTech = _allTechs.find(t => t.name.toLowerCase() === (_selectedTechName || '').toLowerCase());
+  if (!currentTech || !filteredTechs.some(t => t.name.toLowerCase() === currentTech.name.toLowerCase())) {
+    currentTech = filteredTechs[0] || null;
+    if (currentTech) _selectedTechName = currentTech.name;
+  }
+
+  // Renderizar filas de tecnologías en la lista izquierda
+  if (filteredTechs.length === 0) {
+    listContainer.innerHTML = `
+      <div class="p-8 text-center text-gray-400 text-xs">
+        No se encontraron tecnologías que coincidan.
+      </div>
+    `;
+  } else {
+    listContainer.innerHTML = filteredTechs.map(t => {
+      const isSelected = currentTech && currentTech.name.toLowerCase() === t.name.toLowerCase();
+      const planCount = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase()).length;
+      const avatar = t.image_url
+        ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-1 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(t.image_url, 64))}" class="max-w-full max-h-full object-contain" alt=""></div>`
+        : `<span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0 shadow-sm">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
+
+      return `
+        <div class="tech-item-row p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+          isSelected ? 'bg-primary-50/80 border-l-4 border-primary-600' : 'hover:bg-gray-50'
+        }" data-tech-name="${esc(t.name)}">
+          ${avatar}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-sm font-semibold text-gray-900 truncate">${esc(t.name)}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+                t.category === 'tool' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+              }">
+                ${t.category === 'tool' ? 'Herramienta' : 'Lenguaje'}
+              </span>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
+                ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} técnico${planCount === 1 ? '' : 's'}` : 'Sin ficha técnica'}
+              </span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Listener para selección de tecnología
+    listContainer.querySelectorAll('.tech-item-row').forEach(row => {
+      row.addEventListener('click', () => {
+        _selectedTechName = row.dataset.techName;
+        _selectedPlanId = null;
+        updateView();
+      });
+    });
+  }
+
+  // Renderizar detalle de la tecnología en la columna derecha
+  if (!currentTech) {
+    detailMount.innerHTML = `
+      <div class="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400">
+        <span class="text-4xl block mb-2">🔍</span>
+        <p class="text-sm font-medium text-gray-600">No hay tecnologías seleccionadas</p>
+      </div>
+    `;
+    return;
+  }
+
+  const techPlans = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === currentTech.name.toLowerCase());
+  let activePlan = null;
+  if (techPlans.length > 0) {
+    activePlan = techPlans.find(p => p.id === _selectedPlanId) || techPlans[0];
+    _selectedPlanId = activePlan.id;
+  } else {
+    _selectedPlanId = null;
+  }
+
+  detailMount.innerHTML = renderTechDetail(currentTech, techPlans, activePlan);
+  wireDetailEvents(currentTech, activePlan);
 }
 
 function renderTechDetail(tech, plans, activePlan) {
@@ -527,48 +616,13 @@ function renderActivePlanCard(plan, tech) {
   `;
 }
 
-function wirePageEvents(currentTech, activePlan) {
-  // Píldoras de Categoría
-  document.querySelectorAll('.category-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _selectedCategory = btn.dataset.cat;
-      renderPage();
-    });
-  });
-
-  // Búsqueda en tiempo real
-  const searchInput = document.getElementById('tech-search-input');
-  if (searchInput) {
-    searchInput.addEventListener('input', e => {
-      _searchQuery = e.target.value.trim();
-      renderPage();
-    });
-  }
-  document.getElementById('clear-search-btn')?.addEventListener('click', () => {
-    _searchQuery = '';
-    renderPage();
-  });
-
-  // Clic en fila de tecnología
-  document.querySelectorAll('.tech-item-row').forEach(row => {
-    row.addEventListener('click', () => {
-      _selectedTechName = row.dataset.techName;
-      _selectedPlanId = null; // reiniciar selección de plan al cambiar de tecnología
-      renderPage();
-    });
-  });
-
-  // Clic en tab de plan
+function wireDetailEvents(tech, activePlan) {
+  // Tabs de planes dentro de la tecnología seleccionada
   document.querySelectorAll('.plan-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _selectedPlanId = btn.dataset.planId;
-      renderPage();
+      updateView();
     });
-  });
-
-  // Botón Nuevo Plan Global
-  document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
-    openPlanModal(null, currentTech ? currentTech.name : '');
   });
 
   // Botón Agregar Plan para la tecnología actual
@@ -647,7 +701,7 @@ async function deletePlan(id, planNombre) {
     toast('Plan técnico eliminado correctamente', 'success');
     _items = _items.filter(it => it.id !== id);
     _selectedPlanId = null;
-    renderPage();
+    updateView();
   } catch(e) {
     toast('Error al eliminar: ' + (e.message || 'Error de servidor'), 'error');
   }
@@ -913,7 +967,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       }
       _selectedTechName = techName;
       closeModal();
-      renderPage();
+      updateView();
     } catch(err) {
       toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
       saveBtn.disabled = false;
