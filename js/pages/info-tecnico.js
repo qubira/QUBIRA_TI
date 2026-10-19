@@ -505,70 +505,161 @@ function richTextToolbarHtml(targetTextareaId) {
   `;
 }
 
-/**
- * Obtiene todos los planes asociados a una tecnología
- */
+function normalizePlanStr(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(plan|tier|capa|corporativo|estandar)\b/gi, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .trim();
+}
+
+function matchPlanName(nameA, nameB) {
+  const a = (nameA || '').trim().toLowerCase();
+  const b = (nameB || '').trim().toLowerCase();
+  if (a === b) return true;
+  if (!a || !b) return false;
+
+  const na = normalizePlanStr(a);
+  const nb = normalizePlanStr(b);
+  if (na && nb && (na === nb || na.includes(nb) || nb.includes(na))) return true;
+
+  const keywords = ['free', 'gratis', 'launch', 'pro', 'plus', 'advanced', 'scale', 'enterprise', 'team', 'hobby', 'individual', 'business'];
+  for (const kw of keywords) {
+    if (a.includes(kw) && b.includes(kw)) return true;
+  }
+  return false;
+}
+
+function buildMappedPlan(catPlan, info, tech, idx) {
+  const isVirtual = !info;
+  const pName = (info?.plan_nombre || catPlan?.name || (tech.category === 'language' ? tech.name : `Plan ${idx + 1}`)).trim();
+
+  let note = '';
+  if (info?.precio) {
+    const noteMatch = info.precio.match(/\((?:Aprox|12 meses|aprox|según|Licencia|Open Source|Base|usuario)[^)]*\)/i) || 
+                      info.precio.match(/\([^)]+\)$/);
+    if (noteMatch) note = noteMatch[0];
+  }
+
+  const calculatedPrice = catPlan ? formatPlanPrice(catPlan, note) : (info?.precio || '');
+  const propuestaOficial = catPlan ? propuestaLabel(catPlan) : (info?.precio || '');
+
+  const costo = catPlan?.costo !== undefined && catPlan?.costo !== null && catPlan?.costo !== '' ? catPlan.costo : (tech.costo ?? null);
+  const margen_min = catPlan?.margen_min !== undefined && catPlan?.margen_min !== null && catPlan?.margen_min !== '' ? catPlan.margen_min : (tech.margen_min ?? null);
+  const margen_max = catPlan?.margen_max !== undefined && catPlan?.margen_max !== null && catPlan?.margen_max !== '' ? catPlan.margen_max : (tech.margen_max ?? null);
+  const moneda = catPlan?.moneda || tech.moneda || 'PEN';
+  const periodo = catPlan?.periodo || tech.periodo || 'mes';
+
+  return {
+    id: info?.id || `cat-${tech.id || tech.name}-${idx}`,
+    isVirtual,
+    plan_index: idx,
+    tech_id: tech.id || info?.tech_id,
+    tech_name: tech.name,
+    category: tech.category,
+    plan_nombre: pName,
+    precio: calculatedPrice,
+    precio_personalizado: info?.precio || '',
+    propuesta_oficial: propuestaOficial,
+    nota_precio: note,
+    costo,
+    margen_min,
+    margen_max,
+    moneda,
+    periodo,
+    descripcion: info?.descripcion || '',
+    limites_tecnicos: info?.limites_tecnicos || '',
+    cuota_mensual: info?.cuota_mensual || '',
+    limites_archivos: info?.limites_archivos || '',
+    limites_api: info?.limites_api || '',
+    cuentas_usuarios: info?.cuentas_usuarios || '',
+    seguridad_control_acceso: info?.seguridad_control_acceso || '',
+    entrega_dominio: info?.entrega_dominio || '',
+    respaldo_almacenamiento: info?.respaldo_almacenamiento || '',
+    complementos_ia: info?.complementos_ia || '',
+    video: info?.video || '',
+    soporte: info?.soporte || '',
+    agregados: info?.agregados || '',
+    que_no_incluye: info?.que_no_incluye || '',
+    ejemplo_consumo_mensual: info?.ejemplo_consumo_mensual || '',
+    pasa_si_te_pasas_del_limite: info?.pasa_si_te_pasas_del_limite || '',
+    cuando_subir: info?.cuando_subir || '',
+    plan_no_resuelve: info?.plan_no_resuelve || '',
+    campos_extra: info?.campos_extra || []
+  };
+}
+
 function getPlansForTech(tech) {
   if (!tech) return [];
-  const techName = (tech.name || '').toLowerCase();
-  const techId = tech.id;
 
-  // 1. Fichas técnicas registradas en ti.tech_plan_info
-  const fromInfo = _items.filter(it => {
-    if (it.tech_id && techId && String(it.tech_id) === String(techId)) return true;
-    const itName = (it.tech_name || it.producto_nombre || '').toLowerCase();
-    return itName === techName;
+  const techItems = _items.filter(it => {
+    const match = (it.tech_name || it.producto_nombre || '').toLowerCase() === tech.name.toLowerCase() ||
+                  (it.tech_id && tech.id && it.tech_id === tech.id);
+    return !!match;
   });
 
-  // 2. Planes dados de alta en el catálogo
-  const catalogPlans = Array.isArray(tech.plans) ? tech.plans : [];
+  let catalogPlans = [];
+  if (Array.isArray(tech.plans) && tech.plans.length > 0) {
+    catalogPlans = tech.plans
+      .filter(p => p && (p.name !== undefined && p.name !== null && String(p.name).trim() !== ''))
+      .map(p => ({
+        name: String(p.name).trim(),
+        costo: p.costo !== undefined && p.costo !== '' ? p.costo : null,
+        margen_min: p.margen_min !== undefined && p.margen_min !== '' ? p.margen_min : null,
+        margen_max: p.margen_max !== undefined && p.margen_max !== '' ? p.margen_max : null,
+        moneda: p.moneda || tech.moneda || 'PEN',
+        periodo: p.periodo || tech.periodo || 'mes'
+      }));
+  }
 
-  const unified = [...fromInfo];
+  // Caso 1: Catálogo sin planes definidos pero ya existen fichas técnicas en BD
+  if (catalogPlans.length === 0 && techItems.length > 0) {
+    return techItems.map((it, idx) => buildMappedPlan(null, it, tech, idx));
+  }
 
-  catalogPlans.forEach((cp, idx) => {
-    const cpName = (cp.name || '').trim();
-    if (!cpName) return;
+  // Caso 2: Catálogo sin planes y tampoco existen fichas en BD -> 1 plan virtual inicial
+  if (catalogPlans.length === 0 && techItems.length === 0) {
+    return [buildMappedPlan({ name: tech.category === 'language' ? `${tech.name}` : 'Plan Base' }, null, tech, 0)];
+  }
 
-    const exists = unified.some(u => (u.plan_nombre || '').trim().toLowerCase() === cpName.toLowerCase());
-    if (!exists) {
-      unified.push({
-        id: `cat-${tech.id || 'tech'}-${idx}`,
-        isVirtual: true,
-        tech_id: tech.id,
-        tech_name: tech.name,
-        producto_nombre: tech.name,
-        category: tech.category,
-        plan_nombre: cpName,
-        precio: '',
-        costo: null,
-        margen_min: null,
-        margen_max: null,
-        moneda: cp.moneda || 'PEN',
-        periodo: cp.periodo || 'mes',
-        descripcion: '',
-        agregados: '',
-        limites_tecnicos: '',
-        cuota_mensual: '',
-        ejemplo_consumo_mensual: '',
-        limites_archivos: '',
-        limites_api: '',
-        pasa_si_te_pasas_del_limite: '',
-        cuando_subir: '',
-        que_no_incluye: '',
-        plan_no_resuelve: '',
-        cuentas_usuarios: '',
-        seguridad_control_acceso: '',
-        entrega_dominio: '',
-        respaldo_almacenamiento: '',
-        complementos_ia: '',
-        video: '',
-        soporte: '',
-        campos_extra: []
-      });
+  // Caso 3: Existen planes en catálogo. Emparejar con fichas técnicas
+  const availableItems = [...techItems];
+  const mappedPlans = [];
+
+  for (let idx = 0; idx < catalogPlans.length; idx++) {
+    const catPlan = catalogPlans[idx];
+    let matchIdx = availableItems.findIndex(it => (it.plan_nombre || '').trim().toLowerCase() === catPlan.name.trim().toLowerCase());
+
+    if (matchIdx === -1) {
+      matchIdx = availableItems.findIndex(it => matchPlanName(it.plan_nombre, catPlan.name));
     }
+
+    if (matchIdx === -1 && catalogPlans.length === 1 && availableItems.length === 1) {
+      matchIdx = 0;
+    }
+
+    let matchedItem = null;
+    if (matchIdx !== -1) {
+      matchedItem = availableItems.splice(matchIdx, 1)[0];
+    }
+
+    mappedPlans.push(buildMappedPlan(catPlan, matchedItem, tech, idx));
+  }
+
+  // Agregar cualquier ficha técnica extra que no estuvo en el catálogo original
+  availableItems.forEach((it, extraIdx) => {
+    mappedPlans.push(buildMappedPlan(null, it, tech, catalogPlans.length + extraIdx));
   });
 
-  return unified;
+  // Los planes completados (reales) van PRIMERO para que el usuario no vea pantallas vacías
+  mappedPlans.sort((a, b) => {
+    if (!a.isVirtual && b.isVirtual) return -1;
+    if (a.isVirtual && !b.isVirtual) return 1;
+    return 0;
+  });
+
+  return mappedPlans;
 }
 
 export function render() {
@@ -1327,13 +1418,12 @@ async function deletePlan(id, planNombre, techName) {
   try {
     if (id && !String(id).startsWith('cat-')) {
       await api.delete(`/tech-plan-info/${id}`);
-      _items = _items.filter(it => it.id !== id);
     }
 
     toast('Plan técnico eliminado correctamente', 'success');
     _selectedPlanId = null;
     _selectedPlanName = null;
-    updateView();
+    await load();
   } catch(e) {
     toast('Error al eliminar: ' + (e.message || 'Error de servidor'), 'error');
   }
@@ -1663,23 +1753,20 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         campos_extra: _modalCustomFields.filter(f => f.titulo && f.titulo.trim())
       };
 
+      let savedRecord = null;
       if (isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-')) {
-        const updated = await api.put(`/tech-plan-info/${plan.id}`, payload);
+        savedRecord = await api.put(`/tech-plan-info/${plan.id}`, payload);
         toast('Ficha técnica guardada con éxito', 'success');
-        const idx = _items.findIndex(it => it.id === plan.id);
-        if (idx !== -1) _items[idx] = updated;
-        _selectedPlanId = updated.id;
       } else {
-        const created = await api.post('/tech-plan-info', payload);
+        savedRecord = await api.post('/tech-plan-info', payload);
         toast('Nuevo plan técnico creado con éxito', 'success');
-        _items.push(created);
-        _selectedPlanId = created.id;
       }
 
       _selectedTechName = techName;
       _selectedPlanName = planNombre;
+      _selectedPlanId = savedRecord?.id || null;
       closeModal();
-      updateView();
+      await load();
     } catch(err) {
       toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
       saveBtn.disabled = false;
