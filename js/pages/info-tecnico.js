@@ -31,9 +31,8 @@ function thumbUrl(url, size = 64) {
 
 export function render() {
   const main = document.getElementById('main');
-  // En desktop fijamos el contenedor para que el encabezado y la barra de búsqueda sean 100% estáticos
-  main.className = 'flex-1 overflow-y-auto lg:overflow-hidden flex flex-col';
-  main.innerHTML = `<div class="p-6 max-w-7xl mx-auto w-full lg:h-full flex flex-col min-h-0" id="info-tecnico-page">${spinner()}</div>`;
+  main.className = 'flex-1 overflow-y-auto';
+  main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="info-tecnico-page">${spinner()}</div>`;
   load();
 }
 
@@ -118,10 +117,10 @@ function renderPageSkeleton() {
   const totalCount = _allTechs.length;
 
   c.innerHTML = `
-    <!-- Encabezado y Filtros Estáticos (flex-shrink-0: NUNCA se sube) -->
-    <div class="flex-shrink-0 mb-4">
+    <!-- Encabezado y Filtros Sticky (top-0 z-30 bg-gray-50: NO se sube al scrollear) -->
+    <div class="sticky top-0 z-30 bg-gray-50 pt-1 pb-3" style="position: -webkit-sticky; position: sticky; top: 0;">
       <!-- Encabezado de página -->
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
         <div>
           <div class="flex items-center gap-2">
             <span class="text-2xl">⚡</span>
@@ -130,20 +129,20 @@ function renderPageSkeleton() {
               Catálogo de Tecnologías & Planes
             </span>
           </div>
-          <p class="text-sm text-gray-500 mt-1">
+          <p class="text-xs text-gray-500 mt-1">
             Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan.
           </p>
         </div>
 
         <div class="flex items-center gap-3">
-          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm">
+          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm text-xs py-2 px-3.5">
             ${icon('add', 18)} Nuevo Plan Técnico
           </button>
         </div>
       </div>
 
-      <!-- Barra de Filtros, Categorías y Búsqueda Inteligente (Estática) -->
-      <div class="bg-white border border-gray-200 rounded-xl p-3.5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <!-- Barra de Filtros, Categorías y Búsqueda Inteligente (Fija) -->
+      <div class="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0" id="category-pills-bar">
           <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
             _selectedCategory === 'all'
@@ -184,11 +183,11 @@ function renderPageSkeleton() {
     </div>
 
     <!-- Layout Master-Detail: Tecnologías (Izquierda) + Ficha Técnica (Derecha) -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch lg:flex-1 lg:min-h-0">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start mt-1">
       
       <!-- Columna Izquierda: Lista de Tecnologías (Catálogo)
-           Estática y fija, con scroll independiente -->
-      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:h-full max-h-[500px] lg:max-h-none">
+           Fijada debajo de los filtros con scroll interno para recorrer las 55 tecnologías -->
+      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:sticky self-start" style="position: -webkit-sticky; position: sticky; top: 150px;">
         <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
           <span class="text-xs font-bold text-gray-700 uppercase tracking-wider" id="tech-count-badge">
             Tecnologías (${totalCount})
@@ -197,14 +196,14 @@ function renderPageSkeleton() {
         </div>
 
         <!-- Scroll independiente para la lista de tecnologías -->
-        <div class="divide-y divide-gray-100 flex-1 overflow-y-auto" id="tech-list-scroll">
+        <div class="divide-y divide-gray-100 max-h-[calc(100vh-13rem)] overflow-y-auto" id="tech-list-scroll">
           <!-- Se inyecta con updateView() -->
         </div>
       </div>
 
       <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada
-           Scroll independiente fluido -->
-      <div class="lg:col-span-8 flex flex-col gap-5 lg:h-full lg:overflow-y-auto lg:pr-1" id="tech-detail-mount">
+           Scrollea libremente hacia abajo para ver toda la información técnica sin trabarse -->
+      <div class="lg:col-span-8 flex flex-col gap-5 min-w-0" id="tech-detail-mount">
         <!-- Se inyecta con updateView() -->
       </div>
 
