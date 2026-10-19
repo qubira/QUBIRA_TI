@@ -42,7 +42,7 @@ function getCurSym(moneda) {
 }
 
 /**
- * Calcula la etiqueta de propuesta comercial oficial (idéntica a la Imagen 2 - costo-herramientas.js).
+ * Calcula la etiqueta de propuesta comercial oficial (idéntica a la Matriz de Costos OPP - costo-herramientas.js).
  */
 function propuestaLabel(p) {
   if (!p) return 'Indefinido';
@@ -70,7 +70,7 @@ function propuestaLabel(p) {
 }
 
 /**
- * Formatea el precio del plan a partir de sus parámetros de la Imagen 2.
+ * Formatea el precio del plan a partir de sus parámetros de la Matriz de Costos OPP.
  * Si min > 0 y max > min: "$ 50.00 - $ 250.00 / mes"
  * Si min = 0 y max = 0: "$ 0.00 / mes"
  * Con opción de nota complementaria: "(12 meses)" o "(Aprox según consumo)".
@@ -110,12 +110,12 @@ function formatPlanPrice(p, customNote = '') {
 
 /**
  * Obtiene los planes técnicos de una tecnología.
- * Regla de negocio: Los planes, sus costos y márgenes oficiales salen directamente de la Imagen 2 (ti.technology_catalog).
+ * Regla de negocio: Los planes, sus costos y márgenes oficiales salen directamente de la Matriz de Costos OPP (ti.technology_catalog).
  */
 function getPlansForTech(tech) {
   if (!tech) return [];
 
-  // 1. Obtener los planes de la tecnología desde el catálogo (Imagen 2)
+  // 1. Obtener los planes de la tecnología desde el catálogo (Matriz de Costos OPP)
   let catalogPlans = [];
   if (Array.isArray(tech.plans) && tech.plans.length > 0) {
     catalogPlans = tech.plans
@@ -173,7 +173,7 @@ function getPlansForTech(tech) {
       tech_name: tech.name,
       category: tech.category,
       plan_nombre: pName || `Plan ${idx + 1}`,
-      // El precio y costo oficial sale directamente de la Imagen 2
+      // El precio y costo oficial sale directamente de la Matriz de Costos OPP
       precio: calculatedPrice,
       precio_personalizado: info?.precio || '',
       propuesta_oficial: propuestaOficial,
@@ -277,7 +277,7 @@ async function load() {
       tool: Array.isArray(tools) ? tools : []
     };
 
-    // Unificar catálogo completo con información de logo, categoría, planes y costos de la Imagen 2
+    // Unificar catálogo completo con información de logo, categoría, planes y costos de la Matriz de Costos OPP
     const techMap = new Map();
     [..._catalog.language, ..._catalog.tool].forEach(t => {
       techMap.set((t.name || '').toLowerCase(), {
@@ -373,7 +373,7 @@ function renderPageSkeleton() {
 
         <div class="flex items-center gap-2.5">
           <button type="button" id="btn-open-image-2-top" class="btn-secondary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3">
-            💰 Matriz de Costos OPP (Imagen 2)
+            💰 Matriz de Costos OPP
           </button>
           <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3.5">
             ${icon('add', 18)} Nuevo Plan Técnico
@@ -574,7 +574,7 @@ function updateView() {
             </div>
             <div class="flex items-center gap-2 mt-0.5">
               <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
-                ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} (Imagen 2)` : 'Sin planes'}
+                ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} registrados` : 'Sin planes'}
               </span>
             </div>
           </div>
@@ -625,7 +625,7 @@ function renderTechDetail(tech, plans, activePlan) {
     : `<span class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-base font-bold text-indigo-700 shrink-0 shadow-sm">${esc((tech.name || '?').charAt(0).toUpperCase())}</span>`;
 
   return `
-    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes (Imagen 2) -->
+    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes (Matriz de Costos OPP) -->
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
         <div class="flex items-center gap-3">
@@ -653,7 +653,7 @@ function renderTechDetail(tech, plans, activePlan) {
         </div>
       </div>
 
-      <!-- Selector de Planes (Tabs horizontales - Salen directamente de la Imagen 2) -->
+      <!-- Selector de Planes (Tabs horizontales - Salen directamente de la Matriz de Costos OPP) -->
       <div class="pt-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">PLANES TÉCNICOS REGISTRADOS:</span>
@@ -722,11 +722,11 @@ function renderActivePlanCard(plan, tech) {
         </div>
       </div>
 
-      <!-- Barra Informativa de Sincronización con Imagen 2 (Matriz de Costos OPP) -->
+      <!-- Barra Informativa de Sincronización con Matriz de Costos OPP -->
       <div class="bg-indigo-50/50 border-b border-indigo-100 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div class="flex items-center gap-4 flex-wrap">
           <div class="flex items-center gap-1.5">
-            <span class="text-indigo-600 font-bold">🔗 Sincronizado de Imagen 2:</span>
+            <span class="text-indigo-600 font-bold">🔗 Matriz de Costos OPP:</span>
           </div>
           <div>
             <span class="text-gray-500">Costo Base:</span>
@@ -751,13 +751,13 @@ function renderActivePlanCard(plan, tech) {
         </button>
       </div>
 
-      <!-- Si el plan es virtual (está en Imagen 2 pero sin límites aún en tech_plan_info) -->
+      <!-- Si el plan es virtual (está en catálogo pero sin límites aún en tech_plan_info) -->
       ${plan.isVirtual ? `
         <div class="m-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span class="text-xl">ℹ️</span>
             <div>
-              <strong>Plan importado de la Matriz de Costos (Imagen 2)</strong>
+              <strong>Plan registrado en la Matriz de Costos OPP</strong>
               <p class="text-amber-800 mt-0.5">Este plan ya tiene precio oficial. Haz clic en "Editar Plan & Costos" para completar su ficha de límites técnicos, cuotas y políticas.</p>
             </div>
           </div>
@@ -964,7 +964,7 @@ function wireDetailEvents(tech, activePlan) {
     });
   });
 
-  // Botones para abrir Imagen 2
+  // Botones para abrir Matriz de Costos OPP
   const openImage2 = () => openTechCostModal(() => load());
   document.getElementById('btn-open-image-2-detail')?.addEventListener('click', openImage2);
   document.querySelectorAll('.btn-open-image-2-inline').forEach(btn => {
@@ -1008,7 +1008,7 @@ Qubira Tech Hub
 }
 
 async function deletePlan(id, planNombre, techName) {
-  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}" de "${techName}"? Esta acción se actualizará en la Matriz de Costos (Imagen 2) y en la Ficha Técnica.`)) {
+  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}" de "${techName}"? Esta acción se actualizará en la Matriz de Costos OPP y en la Ficha Técnica.`)) {
     return;
   }
   try {
@@ -1040,7 +1040,7 @@ async function deletePlan(id, planNombre, techName) {
 }
 
 /* ============================================================
-   MODAL DE CREACIÓN / EDICIÓN (Sincronizado con Imagen 2)
+   MODAL DE CREACIÓN / EDICIÓN
    ============================================================ */
 function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'tool', defaultTechId = '') {
   const isEdit = !!plan;
@@ -1053,7 +1053,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
   const initialCategory = plan ? (plan.category || 'tool') : defaultCategory;
   const initialTechId = plan ? (plan.tech_id || '') : defaultTechId;
 
-  // Parámetros de costo provenientes de Imagen 2
+  // Parámetros de costo
   const initialMoneda = plan?.moneda || 'PEN';
   const initialCosto = plan?.costo !== null && plan?.costo !== undefined ? plan.costo : '';
   const initialMin = plan?.margen_min !== null && plan?.margen_min !== undefined ? plan.margen_min : '';
@@ -1067,7 +1067,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       <!-- Selector de Pestañas del Modal -->
       <div class="flex items-center gap-1 border-b border-gray-200 pb-2 overflow-x-auto text-xs font-bold">
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
-          1. General & Costos (Imagen 2)
+          1. General & Costos
         </button>
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
           2. Límites & Cuotas
@@ -1083,7 +1083,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         </button>
       </div>
 
-      <!-- PESTAÑA 1: BÁSICO & COSTOS DE IMAGEN 2 -->
+      <!-- PESTAÑA 1: BÁSICO & COSTOS -->
       <div id="tab-pane-basic" class="modal-tab-pane space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1107,11 +1107,11 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
           <input type="text" id="mp-plan-nombre" required value="${esc(plan?.plan_nombre || '')}" placeholder="Ej: Free Tier, Launch Plan, Team, Pro, Producción..." class="input text-xs w-full">
         </div>
 
-        <!-- Parámetros Oficiales de Costo (Sincronizado con Imagen 2) -->
+        <!-- Parámetros Oficiales de Costo -->
         <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-              💰 Costos y Márgenes (Sincronizado con Imagen 2)
+              💰 Costos y Márgenes (Matriz OPP)
             </span>
             <span id="mp-live-propuesta" class="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
               ${esc(plan ? plan.precio : 'S/ 0.00 / mes')}
@@ -1360,7 +1360,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
     };
 
     try {
-      // 1. Sincronizar con la Imagen 2 (ti.technology_catalog)
+      // 1. Sincronizar con la Matriz de Costos OPP (ti.technology_catalog)
       if (matchedTech && matchedTech.id) {
         let currentPlans = Array.isArray(matchedTech.plans) ? [...matchedTech.plans] : [];
         if (isEdit && plan?.plan_nombre) {
@@ -1423,13 +1423,13 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
 
       if (isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-')) {
         const updated = await api.put(`/tech-plan-info/${plan.id}`, payload);
-        toast('Plan y costos actualizados con éxito en Imagen 2', 'success');
+        toast('Plan y costos actualizados con éxito', 'success');
         const idx = _items.findIndex(it => it.id === plan.id);
         if (idx !== -1) _items[idx] = updated;
         _selectedPlanId = updated.id;
       } else {
         const created = await api.post('/tech-plan-info', payload);
-        toast('Nuevo plan creado y sincronizado con Imagen 2', 'success');
+        toast('Nuevo plan técnico creado con éxito', 'success');
         _items.push(created);
         _selectedPlanId = created.id;
       }
