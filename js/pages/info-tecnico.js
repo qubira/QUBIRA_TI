@@ -397,11 +397,7 @@ function renderPageSkeleton() {
           </p>
         </div>
 
-        <div class="flex items-center gap-2.5">
-          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3.5">
-            ${icon('add', 18)} Nuevo Plan Técnico
-          </button>
-        </div>
+        <div class="flex items-center gap-2.5"></div>
       </div>
 
       <!-- Barra de Filtros, Categorías y Búsqueda -->
@@ -494,9 +490,7 @@ function renderPageSkeleton() {
     });
   });
 
-  document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
-    openPlanModal(null, _selectedTechName || '', 'tool');
-  });
+
 }
 
 function updateTechListOnly() {
@@ -701,11 +695,6 @@ function renderTechDetail(tech, plans, activePlan) {
           </div>
         </div>
 
-        <div class="flex items-center gap-2 shrink-0">
-          <button type="button" id="btn-add-plan-for-tech" class="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-2xs" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
-            ${icon('add', 14)} Agregar Plan
-          </button>
-        </div>
       </div>
 
       <!-- Selector de Planes (Tabs horizontales) -->
@@ -716,10 +705,7 @@ function renderTechDetail(tech, plans, activePlan) {
 
         ${plans.length === 0 ? `
           <div class="bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
-            <p class="text-xs text-gray-500 mb-2">Esta tecnología aún no tiene planes técnicos registrados en el sistema.</p>
-            <button type="button" id="btn-create-first-plan" class="btn-primary text-xs py-1 px-3" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
-              + Crear Primer Plan Técnico
-            </button>
+            <p class="text-xs text-gray-500">Esta tecnología aún no tiene planes técnicos registrados en el sistema.</p>
           </div>
         ` : `
           <div class="flex items-center gap-2 overflow-x-auto pb-1" id="plan-tabs-bar">
@@ -991,15 +977,7 @@ function wireDetailEvents(tech, activePlan) {
     });
   }
 
-  // Botón Agregar Plan para la tecnología actual
-  document.getElementById('btn-add-plan-for-tech')?.addEventListener('click', (e) => {
-    const btn = e.currentTarget;
-    openPlanModal(null, btn.dataset.techName, btn.dataset.techCategory, btn.dataset.techId);
-  });
-  document.getElementById('btn-create-first-plan')?.addEventListener('click', (e) => {
-    const btn = e.currentTarget;
-    openPlanModal(null, btn.dataset.techName, btn.dataset.techCategory, btn.dataset.techId);
-  });
+
 
   if (activePlan) {
     wireCardActions(tech, activePlan);
