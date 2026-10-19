@@ -1718,12 +1718,23 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
   document.getElementById('tech-plan-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const saveBtn = document.getElementById('btn-modal-save');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = `${spinner(14)} Guardando...`;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `${spinner(14)} Guardando...`;
+    }
 
-    const techName = document.getElementById('mp-tech-name').value.trim();
-    const planNombre = document.getElementById('mp-plan-nombre').value.trim();
-    const category = document.getElementById('mp-category').value;
+    const techName = (document.getElementById('mp-tech-name')?.value || '').trim();
+    const planNombre = (document.getElementById('mp-plan-nombre')?.value || '').trim();
+    const category = document.getElementById('mp-category')?.value || 'tool';
+
+    if (!techName || !planNombre) {
+      toast('Por favor completa el Nombre de la Herramienta y del Plan', 'warning');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
+      }
+      return;
+    }
 
     let matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
 
@@ -1735,34 +1746,45 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         producto_nombre: techName,
         category: category,
         plan_nombre: planNombre,
-        descripcion: document.getElementById('mp-descripcion').value.trim(),
-        agregados: document.getElementById('mp-agregados').value.trim(),
-        limites_tecnicos: document.getElementById('mp-limites-tecnicos').value.trim(),
-        cuota_mensual: document.getElementById('mp-cuota-mensual').value.trim(),
-        ejemplo_consumo_mensual: document.getElementById('mp-ejemplo-consumo').value.trim(),
-        limites_archivos: document.getElementById('mp-limites-archivos').value.trim(),
-        limites_api: document.getElementById('mp-limites-api').value.trim(),
-        pasa_si_te_pasas_del_limite: document.getElementById('mp-pasa-si-te-pasas').value.trim(),
-        cuando_subir: document.getElementById('mp-cuando-subir').value.trim(),
-        que_no_incluye: document.getElementById('mp-que-no-incluye').value.trim(),
-        plan_no_resuelve: document.getElementById('mp-plan-no-resuelve').value.trim(),
-        cuentas_usuarios: document.getElementById('mp-cuentas-usuarios').value.trim(),
-        seguridad_control_acceso: document.getElementById('mp-seguridad').value.trim(),
-        entrega_dominio: document.getElementById('mp-entrega-dominio').value.trim(),
-        respaldo_almacenamiento: document.getElementById('mp-respaldo').value.trim(),
-        complementos_ia: document.getElementById('mp-complementos-ia').value.trim(),
-        video: document.getElementById('mp-video').value.trim(),
-        soporte: document.getElementById('mp-soporte').value.trim(),
+        descripcion: (document.getElementById('mp-descripcion')?.value || '').trim(),
+        agregados: (document.getElementById('mp-agregados')?.value || '').trim(),
+        limites_tecnicos: (document.getElementById('mp-limites-tecnicos')?.value || '').trim(),
+        cuota_mensual: (document.getElementById('mp-cuota-mensual')?.value || '').trim(),
+        ejemplo_consumo_mensual: (document.getElementById('mp-ejemplo-consumo')?.value || '').trim(),
+        limites_archivos: (document.getElementById('mp-limites-archivos')?.value || '').trim(),
+        limites_api: (document.getElementById('mp-limites-api')?.value || '').trim(),
+        pasa_si_te_pasas_del_limite: (document.getElementById('mp-pasa-si-te-pasas')?.value || '').trim(),
+        cuando_subir: (document.getElementById('mp-cuando-subir')?.value || '').trim(),
+        que_no_incluye: (document.getElementById('mp-que-no-incluye')?.value || '').trim(),
+        plan_no_resuelve: (document.getElementById('mp-plan-no-resuelve')?.value || '').trim(),
+        cuentas_usuarios: (document.getElementById('mp-cuentas-usuarios')?.value || '').trim(),
+        seguridad_control_acceso: (document.getElementById('mp-seguridad')?.value || '').trim(),
+        entrega_dominio: (document.getElementById('mp-entrega-dominio')?.value || '').trim(),
+        respaldo_almacenamiento: (document.getElementById('mp-respaldo')?.value || '').trim(),
+        complementos_ia: (document.getElementById('mp-complementos-ia')?.value || '').trim(),
+        video: (document.getElementById('mp-video')?.value || '').trim(),
+        soporte: (document.getElementById('mp-soporte')?.value || '').trim(),
         campos_extra: _modalCustomFields.filter(f => f.titulo && f.titulo.trim())
       };
 
       let savedRecord = null;
-      if (isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-')) {
-        savedRecord = await api.put(`/tech-plan-info/${plan.id}`, payload);
-        toast('Ficha técnica guardada con éxito', 'success');
+      const shouldUsePut = isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-');
+      if (shouldUsePut) {
+        try {
+          savedRecord = await api.put(`/tech-plan-info/${plan.id}`, payload);
+          toast('Ficha técnica guardada con éxito en la base de datos', 'success');
+        } catch (putErr) {
+          console.warn('PUT falló, intentando POST:', putErr);
+          if (putErr.message?.includes('no encontrada') || putErr.response?.data?.error?.includes('no encontrada') || putErr.status === 404) {
+            savedRecord = await api.post('/tech-plan-info', payload);
+            toast('Ficha técnica guardada con éxito en la base de datos', 'success');
+          } else {
+            throw putErr;
+          }
+        }
       } else {
         savedRecord = await api.post('/tech-plan-info', payload);
-        toast('Nuevo plan técnico creado con éxito', 'success');
+        toast('Nuevo plan técnico creado con éxito en la base de datos', 'success');
       }
 
       _selectedTechName = techName;
@@ -1771,9 +1793,12 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       closeModal();
       await load();
     } catch(err) {
+      console.error('[INFO-TECNICO SAVE ERROR]:', err);
       toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
-      saveBtn.disabled = false;
-      saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
+      }
     }
   });
 }
