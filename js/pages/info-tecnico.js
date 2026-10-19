@@ -1124,8 +1124,11 @@ function renderActivePlanCard(plan, tech) {
           <button type="button" class="btn-primary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-edit-plan" data-plan-id="${esc(plan.id)}">
             ${icon('edit', 14)} Editar Plan
           </button>
-          <button type="button" class="text-xs px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg flex items-center justify-center transition-colors shadow-2xs btn-delete-plan cursor-pointer" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}" title="Eliminar Plan">
-            <span class="material-icons text-white" style="font-size:16px;line-height:1;color:#ffffff !important">delete</span>
+          <button type="button" class="btn-delete-plan text-xs px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}" title="Eliminar este plan">
+            <svg class="w-4 h-4 text-white shrink-0" style="color:#ffffff !important;stroke:#ffffff !important;" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span style="color:#ffffff !important;">Eliminar Plan</span>
           </button>
         </div>
       </div>
