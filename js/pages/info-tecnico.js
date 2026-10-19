@@ -204,11 +204,291 @@ function renderRichContent(rawStr) {
 }
 
 /**
+ * Helper para normalizar títulos de secciones de ChatGPT (ignora emojis, tildes, números y signos)
+ */
+function normalizeHeading(str) {
+  return (str || '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '') // strip emojis
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .toLowerCase()
+    .replace(/^#+\s*/, '') // strip markdown h1-h6
+    .replace(/^\d+[\.\)\-]\s*/, '') // strip leading numbers like "1.", "2)", "3 -"
+    .replace(/[¿?¡!*_\-:()\[\]]+/g, ' ') // replace punctuation, question marks, brackets
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Convierte una tabla HTML copiada del navegador o ChatGPT a sintaxis Markdown
+ */
+function htmlTableToMarkdown(html) {
+  if (!html || !html.includes('<table')) return null;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) return null;
+
+    const rows = Array.from(table.querySelectorAll('tr'));
+    if (rows.length === 0) return null;
+
+    const parsedRows = rows.map(tr => {
+      const cells = Array.from(tr.querySelectorAll('th, td'));
+      return cells.map(td => td.textContent.trim().replace(/\|/g, '\\|').replace(/\s+/g, ' '));
+    }).filter(row => row.length > 0 && row.some(c => c.length > 0));
+
+    if (parsedRows.length === 0) return null;
+
+    const maxCols = Math.max(...parsedRows.map(r => r.length));
+    if (maxCols < 2) return null;
+
+    const normalizedRows = parsedRows.map(r => {
+      while (r.length < maxCols) r.push('');
+      return r;
+    });
+
+    const header = normalizedRows[0];
+    const separator = new Array(maxCols).fill('---');
+    const body = normalizedRows.slice(1);
+
+    const mdLines = [
+      `| ${header.join(' | ')} |`,
+      `| ${separator.join(' | ')} |`,
+      ...body.map(r => `| ${r.join(' | ')} |`)
+    ];
+
+    return mdLines.join('\n');
+  } catch (e) {
+    console.error('Error parsing HTML table to Markdown:', e);
+    return null;
+  }
+}
+
+/**
+ * Convierte texto separado por tabulaciones (copiado de celdas o tablas) a sintaxis Markdown
+ */
+function tsvToMarkdown(text) {
+  if (!text || !text.includes('\t')) return null;
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+
+  const parsedRows = lines.map(line => line.split('\t').map(c => c.trim().replace(/\|/g, '\\|')));
+  const hasMultiCol = parsedRows.some(r => r.length >= 2);
+  if (!hasMultiCol) return null;
+
+  const maxCols = Math.max(...parsedRows.map(r => r.length));
+  if (maxCols < 2) return null;
+
+  const normalizedRows = parsedRows.map(r => {
+    while (r.length < maxCols) r.push('');
+    return r;
+  });
+
+  const header = normalizedRows[0];
+  const separator = new Array(maxCols).fill('---');
+  const body = normalizedRows.slice(1);
+
+  const mdLines = [
+    `| ${header.join(' | ')} |`,
+    `| ${separator.join(' | ')} |`,
+    ...body.map(r => `| ${r.join(' | ')} |`)
+  ];
+
+  return mdLines.join('\n');
+}
+
+/**
+ * Elimina automáticamente el título de sección si el usuario copió desde el encabezado en ChatGPT
+ */
+function stripRedundantHeader(text, fieldId) {
+  if (!text || typeof text !== 'string') return text;
+  let cleaned = text.trim();
+
+  const titleKeywords = {
+    'mp-descripcion': ['descripcion', 'resumen', 'general', 'objetivo'],
+    'mp-agregados': ['agregados', 'beneficios', 'caracteristicas', 'ventajas'],
+    'mp-limites-tecnicos': ['limites tecnicos', 'capacidades', 'limites'],
+    'mp-cuota-mensual': ['cuota mensual', 'cuota', 'cuotas'],
+    'mp-ejemplo-consumo': ['ejemplo de consumo', 'consumo mensual', 'consumo estimado'],
+    'mp-limites-archivos': ['limites de archivos', 'archivos', 'almacenamiento'],
+    'mp-limites-api': ['limites de api', 'api', 'endpoints', 'peticiones'],
+    'mp-pasa-si-te-pasas': ['que pasa si te pasas', 'exceso de consumo', 'sobrepasar', 'exceso'],
+    'mp-cuando-subir': ['cuando subir', 'escalar', 'escalamiento', 'subir de plan'],
+    'mp-que-no-incluye': ['que no incluye', 'no incluye', 'exclusiones'],
+    'mp-plan-no-resuelve': ['lo que el plan no resuelve', 'plan no resuelve', 'no resuelve', 'alcance'],
+    'mp-cuentas-usuarios': ['cuentas y usuarios', 'cuentas', 'usuarios'],
+    'mp-seguridad': ['seguridad y control de acceso', 'seguridad', 'control de acceso'],
+    'mp-entrega-dominio': ['entrega y dominio', 'entrega', 'dominio'],
+    'mp-respaldo': ['respaldo y almacenamiento', 'respaldo', 'backups', 'copias de seguridad'],
+    'mp-complementos-ia': ['complementos ia', 'ia', 'inteligencia artificial'],
+    'mp-video': ['video y multimedia', 'video', 'multimedia', 'streaming'],
+    'mp-soporte': ['soporte tecnico', 'soporte', 'sla']
+  };
+
+  const keywords = titleKeywords[fieldId] || [];
+
+  const firstLineEnd = cleaned.indexOf('\n');
+  if (firstLineEnd !== -1) {
+    const firstLine = cleaned.substring(0, firstLineEnd).trim();
+    const normalized = normalizeHeading(firstLine);
+    const matchesKeyword = keywords.some(kw => normalized.includes(kw));
+    if (matchesKeyword) {
+      cleaned = cleaned.substring(firstLineEnd + 1).trim();
+    }
+  } else {
+    const colonIdx = cleaned.indexOf(':');
+    if (colonIdx !== -1) {
+      const prefix = cleaned.substring(0, colonIdx);
+      const normalized = normalizeHeading(prefix);
+      const matchesKeyword = keywords.some(kw => normalized.includes(kw));
+      if (matchesKeyword) {
+        cleaned = cleaned.substring(colonIdx + 1).trim();
+      }
+    }
+  }
+
+  return cleaned;
+}
+
+/**
+ * Da formato inteligente al texto pegado:
+ * - Detecta y convierte tablas HTML o tabuladas a Markdown.
+ * - Elimina encabezados repetitivos del prompt o respuesta de ChatGPT.
+ * - Estandariza viñetas (•).
+ */
+function smartFormatPastedText(text, fieldId = '', html = '') {
+  if (!text && !html) return '';
+
+  if (html && html.includes('<table')) {
+    const tableMd = htmlTableToMarkdown(html);
+    if (tableMd) return tableMd;
+  }
+
+  let cleaned = (text || '').replace(/\r\n/g, '\n');
+
+  if (fieldId) {
+    cleaned = stripRedundantHeader(cleaned, fieldId);
+  }
+
+  if (cleaned.includes('\t')) {
+    const tableMd = tsvToMarkdown(cleaned);
+    if (tableMd) return tableMd;
+  }
+
+  const lines = cleaned.split('\n');
+  const formattedLines = lines.map(line => {
+    const bulletMatch = line.match(/^\s*([•\*\-]|o|\d+\.)\s*(.*)$/);
+    if (bulletMatch && bulletMatch[1] !== '1.' && bulletMatch[1] !== '2.' && !/^\d+\./.test(bulletMatch[1])) {
+      return `• ${bulletMatch[2]}`;
+    }
+    return line;
+  });
+
+  return formattedLines.join('\n').trim();
+}
+
+/**
+ * Parser inteligente de respuestas completas de ChatGPT:
+ * Extrae hasta 18 secciones diferentes y llena todas las 5 pestañas automáticamente.
+ */
+function parseChatGptResponse(raw) {
+  const result = {};
+  if (!raw || typeof raw !== 'string') return result;
+
+  const text = raw.replace(/\r\n/g, '\n').trim();
+
+  const sectionDefinitions = [
+    { key: 'plan_nombre', match: (h) => /^(nombre\s*del\s*plan|plan|herramienta)$/i.test(h) || /^nombre/i.test(h) },
+    { key: 'descripcion', match: (h) => /^descripcion(\s*del\s*plan)?$/i.test(h) || /^resumen(\s*general)?$/i.test(h) },
+    { key: 'agregados', match: (h) => /^(agregados\s*(y|&)\s*beneficios|beneficios\s*(y|&)\s*agregados|beneficios|caracteristicas(\s*principales)?|ventajas)/i.test(h) },
+    { key: 'limites_tecnicos', match: (h) => /^(limites\s*tecnicos(\s*(y|&)\s*capacidades)?|capacidades\s*tecnicas|limites)$/i.test(h) },
+    { key: 'pasa_si_te_pasas_del_limite', match: (h) => /^(que\s*pasa\s*si\s*te\s*pasas(\s*del\s*limite)?|exceso\s*de\s*consumo|sobrepasar\s*limites)/i.test(h) },
+    { key: 'cuando_subir', match: (h) => /^(cuando\s*subir(\s*de\s*plan)?|escalamiento(\s*y\s*crecimiento)?|escalar(\s*plan)?)/i.test(h) },
+    { key: 'que_no_incluye', match: (h) => /^(que\s*no\s*incluye|no\s*incluye|exclusiones(\s*del\s*plan)?)/i.test(h) },
+    { key: 'plan_no_resuelve', match: (h) => /^(lo\s*que\s*el\s*plan\s*no\s*resuelve|plan\s*no\s*resuelve|que\s*no\s*resuelve|alcance\s*no\s*cubierto)/i.test(h) },
+    { key: 'cuentas_usuarios', match: (h) => /^(cuentas\s*(y|&)\s*usuarios|usuarios\s*(y|&)\s*accesos|cuentas(\s*de\s*usuario)?)$/i.test(h) },
+    { key: 'seguridad_control_acceso', match: (h) => /^(seguridad\s*(y|&)\s*control\s*de\s*acceso|seguridad|control\s*de\s*acceso)$/i.test(h) },
+    { key: 'entrega_dominio', match: (h) => /^(entrega\s*(y|&)\s*dominio|dominio\s*(y|&)\s*despliegue|entrega(\s*del\s*servicio)?)$/i.test(h) },
+    { key: 'respaldo_almacenamiento', match: (h) => /^(respaldo\s*(y|&)\s*almacenamiento|copias\s*de\s*seguridad|backups(\s*(y|&)\s*almacenamiento)?)$/i.test(h) },
+    { key: 'complementos_ia', match: (h) => /^(complementos\s*ia|ia(\s*(y|&)\s*machine\s*learning)?|inteligencia\s*artificial)$/i.test(h) },
+    { key: 'video', match: (h) => /^(video\s*(y|&)\s*multimedia|multimedia|streaming(\s*y\s*video)?)$/i.test(h) },
+    { key: 'soporte', match: (h) => /^(soporte\s*tecnico|sla\s*(y|&)\s*soporte|soporte|atencion\s*tecnica)$/i.test(h) },
+    { key: 'cuota_mensual', match: (h) => /^(cuota\s*mensual|cuotas?\s*de\s*uso)$/i.test(h) },
+    { key: 'ejemplo_consumo_mensual', match: (h) => /^(ejemplo\s*de\s*consumo(\s*mensual)?|consumo\s*estimado)$/i.test(h) },
+    { key: 'limites_archivos', match: (h) => /^(limites?\s*de\s*archivos?|almacenamiento\s*de\s*archivos?)$/i.test(h) },
+    { key: 'limites_api', match: (h) => /^(limites?\s*de\s*api|cuota\s*api|peticiones\s*api)$/i.test(h) },
+  ];
+
+  const lines = text.split('\n');
+  let currentKey = null;
+  let currentLines = [];
+
+  function flush() {
+    if (currentKey && currentLines.length > 0) {
+      let val = currentLines.join('\n').trim();
+      if (val.includes('\t')) {
+        const mdTable = tsvToMarkdown(val);
+        if (mdTable) val = mdTable;
+      }
+      result[currentKey] = val;
+    }
+    currentLines = [];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const normalized = normalizeHeading(trimmed);
+
+    let matchedKey = null;
+    for (const sec of sectionDefinitions) {
+      if (sec.match(normalized)) {
+        matchedKey = sec.key;
+        break;
+      }
+    }
+
+    if (matchedKey) {
+      flush();
+      currentKey = matchedKey;
+    } else if (currentKey) {
+      currentLines.push(line);
+    }
+  }
+  flush();
+
+  if (result.limites_tecnicos) {
+    const ltLines = result.limites_tecnicos.split('\n');
+    for (const line of ltLines) {
+      const match = line.match(/\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|/);
+      if (match) {
+        const col1 = normalizeHeading(match[1]);
+        const col2 = match[2].trim();
+        if (col1.includes('archivo') && !result.limites_archivos) {
+          result.limites_archivos = col2;
+        } else if (col1.includes('api') && !result.limites_api) {
+          result.limites_api = col2;
+        } else if (col1.includes('cuota') && !result.cuota_mensual) {
+          result.cuota_mensual = col2;
+        } else if (col1.includes('consumo') && !result.ejemplo_consumo_mensual) {
+          result.ejemplo_consumo_mensual = col2;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Barra de herramientas compacta para campos de texto y textareas en el modal
  */
 function richTextToolbarHtml(targetTextareaId) {
   return `
     <div class="flex items-center gap-1.5 py-1">
+      <button type="button" class="btn-rt-paste text-[11px] px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Pegar formateando tablas y viñetas automáticamente">
+        📋 Pegar
+      </button>
       <button type="button" class="btn-rt-table text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Insertar estructura de tabla">
         📊 Tabla
       </button>
@@ -1076,23 +1356,58 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
   showModal(isEdit ? `Editar Ficha Técnica — ${plan.plan_nombre}` : 'Nuevo Plan Técnico', `
     <form id="tech-plan-form" class="space-y-4">
       
-      <!-- Selector de Pestañas del Modal -->
-      <div class="flex items-center gap-1 border-b border-gray-200 pb-2 overflow-x-auto text-xs font-bold">
-        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
-          1. General
+      <!-- Selector de Pestañas del Modal + Botón ChatGPT -->
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
+        <div class="flex items-center gap-1 overflow-x-auto text-xs font-bold py-0.5">
+          <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
+            1. General
+          </button>
+          <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
+            2. Límites & Cuotas
+          </button>
+          <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="rules">
+            3. Reglas & Escala
+          </button>
+          <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="infra">
+            4. Infra & Media
+          </button>
+          <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="custom">
+            5. Campos Extra
+          </button>
+        </div>
+
+        <button type="button" id="btn-toggle-chatgpt-box" class="shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer">
+          ⚡ Pegar Todo de ChatGPT
         </button>
-        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
-          2. Límites & Cuotas
-        </button>
-        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="rules">
-          3. Reglas & Escala
-        </button>
-        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="infra">
-          4. Infra & Media
-        </button>
-        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="custom">
-          5. Campos Extra
-        </button>
+      </div>
+
+      <!-- Panel Desplegable: Pegar Todo de ChatGPT -->
+      <div id="chatgpt-importer-box" class="hidden bg-linear-to-br from-emerald-50/90 via-teal-50/50 to-indigo-50/70 p-3.5 rounded-xl border border-emerald-200 shadow-sm space-y-2.5 transition-all">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-800 font-bold text-xs flex items-center gap-1">
+              ⚡ Importador Inteligente de ChatGPT / IA
+            </span>
+            <span class="text-[11px] text-gray-600">Pega aquí toda la respuesta de ChatGPT y auto-llenaremos las 5 pestañas</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" id="btn-chatgpt-paste-clipboard" class="text-[11px] px-2.5 py-1 rounded bg-white hover:bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300 shadow-2xs flex items-center gap-1 transition-all">
+              📋 Pegar del Portapapeles
+            </button>
+            <button type="button" id="btn-close-chatgpt-box" class="text-gray-400 hover:text-gray-700 text-sm p-1 leading-none rounded cursor-pointer" title="Cerrar panel">✕</button>
+          </div>
+        </div>
+
+        <textarea id="chatgpt-bulk-text" rows="5" class="input text-xs w-full bg-white font-mono text-[11.5px] placeholder:text-gray-400" placeholder="Pega aquí la respuesta completa de ChatGPT...&#10;Ejemplo:&#10;1. Nombre del plan: .NET Pro&#10;2. Descripción del plan...&#10;3. ✨ Agregados y beneficios...&#10;4. Límites técnicos y capacidades (con tabla)...&#10;5. ¿Qué pasa si te pasas?..."></textarea>
+
+        <div class="flex items-center justify-between gap-2">
+          <span id="chatgpt-parse-status" class="text-[11px] font-medium text-gray-600">
+            💡 Copia el mensaje completo de ChatGPT y pulsa el botón verde para autocompletar.
+          </span>
+          <button type="button" id="btn-run-chatgpt-import" class="shrink-0 text-xs px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer">
+            ✨ Auto-completar Campos (5 Pestañas)
+          </button>
+        </div>
       </div>
 
       <!-- PESTAÑA 1: BÁSICO -->
@@ -1429,6 +1744,172 @@ function wireRichTextToolbars() {
       wrapSelection(target, '**', '**', 'texto en negrita');
     });
   });
+
+  // Botón Pegar Formateado en la barra de cada textarea
+  document.querySelectorAll('.btn-rt-paste').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      try {
+        let text = '';
+        let html = '';
+        if (navigator.clipboard && navigator.clipboard.read) {
+          try {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+              if (item.types.includes('text/html')) {
+                const blob = await item.getType('text/html');
+                html = await blob.text();
+              }
+              if (item.types.includes('text/plain')) {
+                const blob = await item.getType('text/plain');
+                text = await blob.text();
+              }
+            }
+          } catch (clipErr) {
+            text = await navigator.clipboard.readText();
+          }
+        } else if (navigator.clipboard && navigator.clipboard.readText) {
+          text = await navigator.clipboard.readText();
+        }
+
+        if (!text && !html) {
+          toast('El portapapeles está vacío', 'warning');
+          return;
+        }
+
+        const formatted = smartFormatPastedText(text, target.id, html);
+        insertAtCursor(target, formatted || text);
+        toast('📋 Contenido pegado y formateado', 'success', 2000);
+      } catch (err) {
+        console.warn('Clipboard read error:', err);
+        target.focus();
+        toast('Usa Ctrl + V para pegar en el campo', 'info');
+      }
+    });
+  });
+
+  // Interceptor de pegado automático inteligente para TODOS los textareas del formulario del plan
+  const textareas = document.querySelectorAll('#tech-plan-form textarea');
+  textareas.forEach(textarea => {
+    textarea.addEventListener('paste', (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const html = clipboardData.getData('text/html') || '';
+      const text = clipboardData.getData('text/plain') || '';
+
+      const formatted = smartFormatPastedText(text, textarea.id, html);
+
+      if (formatted && formatted !== text) {
+        e.preventDefault();
+        insertAtCursor(textarea, formatted);
+        toast('📋 Pegado con formato inteligente aplicado', 'info', 2000);
+      }
+    });
+  });
+
+  // Wiring del panel inteligente "Pegar Todo de ChatGPT"
+  const btnToggleChatGpt = document.getElementById('btn-toggle-chatgpt-box');
+  const chatGptBox = document.getElementById('chatgpt-importer-box');
+  const btnCloseChatGpt = document.getElementById('btn-close-chatgpt-box');
+  const btnClipPaste = document.getElementById('btn-chatgpt-paste-clipboard');
+  const btnRunImport = document.getElementById('btn-run-chatgpt-import');
+  const chatGptBulkText = document.getElementById('chatgpt-bulk-text');
+  const chatGptStatus = document.getElementById('chatgpt-parse-status');
+
+  if (btnToggleChatGpt && chatGptBox) {
+    btnToggleChatGpt.addEventListener('click', () => {
+      chatGptBox.classList.toggle('hidden');
+      if (!chatGptBox.classList.contains('hidden')) {
+        chatGptBulkText?.focus();
+      }
+    });
+  }
+
+  if (btnCloseChatGpt && chatGptBox) {
+    btnCloseChatGpt.addEventListener('click', () => {
+      chatGptBox.classList.add('hidden');
+    });
+  }
+
+  if (btnClipPaste && chatGptBulkText) {
+    btnClipPaste.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            chatGptBulkText.value = text;
+            chatGptBulkText.dispatchEvent(new Event('input'));
+            toast('Texto copiado del portapapeles', 'info', 1500);
+          } else {
+            toast('El portapapeles está vacío', 'warning');
+          }
+        }
+      } catch (err) {
+        toast('Usa Ctrl+V para pegar directamente en el área de texto', 'info');
+      }
+    });
+  }
+
+  if (btnRunImport && chatGptBulkText) {
+    btnRunImport.addEventListener('click', () => {
+      const rawText = chatGptBulkText.value.trim();
+      if (!rawText) {
+        toast('Pega primero el texto de ChatGPT en el área indicada', 'warning');
+        chatGptBulkText.focus();
+        return;
+      }
+
+      const parsed = parseChatGptResponse(rawText);
+      const fieldMap = {
+        plan_nombre: 'mp-plan-nombre',
+        descripcion: 'mp-descripcion',
+        agregados: 'mp-agregados',
+        limites_tecnicos: 'mp-limites-tecnicos',
+        cuota_mensual: 'mp-cuota-mensual',
+        ejemplo_consumo_mensual: 'mp-ejemplo-consumo',
+        limites_archivos: 'mp-limites-archivos',
+        limites_api: 'mp-limites-api',
+        pasa_si_te_pasas_del_limite: 'mp-pasa-si-te-pasas',
+        cuando_subir: 'mp-cuando-subir',
+        que_no_incluye: 'mp-que-no-incluye',
+        plan_no_resuelve: 'mp-plan-no-resuelve',
+        cuentas_usuarios: 'mp-cuentas-usuarios',
+        seguridad_control_acceso: 'mp-seguridad',
+        entrega_dominio: 'mp-entrega-dominio',
+        respaldo_almacenamiento: 'mp-respaldo',
+        complementos_ia: 'mp-complementos-ia',
+        video: 'mp-video',
+        soporte: 'mp-soporte'
+      };
+
+      let filledCount = 0;
+      Object.entries(fieldMap).forEach(([key, elementId]) => {
+        const val = parsed[key];
+        const el = document.getElementById(elementId);
+        if (el && val && String(val).trim()) {
+          el.value = String(val).trim();
+          el.dispatchEvent(new Event('input'));
+          el.dispatchEvent(new Event('change'));
+          // Resaltado visual sutil en verde para confirmar los campos completados
+          el.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50/20');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-emerald-400', 'bg-emerald-50/20'), 2500);
+          filledCount++;
+        }
+      });
+
+      if (filledCount > 0) {
+        toast(`✅ ¡Éxito! Se autocompletaron ${filledCount} campos en las 5 pestañas.`, 'success', 4000);
+        if (chatGptStatus) {
+          chatGptStatus.innerHTML = `<span class="text-emerald-700 font-bold">✅ Se autocompletaron ${filledCount} campos correctamente.</span>`;
+        }
+        chatGptBox.classList.add('hidden');
+      } else {
+        toast('No se detectaron secciones conocidas en el texto pegado. Verifica el formato.', 'warning', 3500);
+      }
+    });
+  }
 }
 
 function wireModalTabs() {
