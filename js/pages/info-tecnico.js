@@ -1,9 +1,12 @@
 import { api } from '../api.js';
 import { toast, showModal, closeModal, spinner, icon } from '../utils.js';
 
-let _items = [];
-let _products = [];
-let _selectedProduct = 'all';
+let _items = []; // Fichas técnicas registradas (ti.tech_plan_info)
+let _catalog = { language: [], tool: [] }; // Catálogo completo (ti.technology_catalog)
+let _allTechs = []; // Array unificado de tecnologías
+let _selectedCategory = 'all'; // 'all' | 'tool' | 'language'
+let _selectedTechName = null; // Nombre de tecnología seleccionada actualmente
+let _selectedPlanId = null; // ID del plan seleccionado actualmente
 let _searchQuery = '';
 let _currentTabInModal = 'basic';
 let _modalCustomFields = [];
@@ -18,6 +21,14 @@ function esc(str) {
     .replace(/'/g, '&#039;');
 }
 
+function thumbUrl(url, size = 64) {
+  if (!url) return '';
+  if (typeof url === 'string' && url.includes('res.cloudinary.com') && url.includes('/image/upload/') && !url.includes('/image/upload/w_')) {
+    return url.replace('/image/upload/', `/image/upload/w_${size},h_${size},c_fit,f_auto,q_auto/`);
+  }
+  return url;
+}
+
 export function render() {
   const main = document.getElementById('main');
   main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="info-tecnico-page">${spinner()}</div>`;
@@ -26,24 +37,66 @@ export function render() {
 
 async function load() {
   try {
-    const [infoRows, projectsRes] = await Promise.all([
+    const [infoRows, langs, tools] = await Promise.all([
       api.get('/tech-plan-info'),
-      api.get('/projects').catch(() => [])
+      api.get('/technology-catalog', { category: 'language' }).catch(() => []),
+      api.get('/technology-catalog', { category: 'tool' }).catch(() => [])
     ]);
 
     _items = Array.isArray(infoRows) ? infoRows : [];
-    
-    // Extraer lista única de productos
-    const prodsSet = new Set();
-    _items.forEach(it => { if (it.producto_nombre) prodsSet.add(it.producto_nombre); });
-    if (Array.isArray(projectsRes)) {
-      projectsRes.forEach(p => { if (p.name) prodsSet.add(p.name); });
+    _catalog = {
+      language: Array.isArray(langs) ? langs : [],
+      tool: Array.isArray(tools) ? tools : []
+    };
+
+    // Unificar catálogo completo con información de logo y categoría
+    const techMap = new Map();
+    [..._catalog.language, ..._catalog.tool].forEach(t => {
+      techMap.set((t.name || '').toLowerCase(), {
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        image_url: t.image_url || '',
+        plans: Array.isArray(t.plans) ? t.plans : []
+      });
+    });
+
+    // Agregar cualquier tecnología que esté en info-tecnico y no esté en catálogo
+    _items.forEach(it => {
+      const key = (it.tech_name || it.producto_nombre || '').toLowerCase();
+      if (key && !techMap.has(key)) {
+        techMap.set(key, {
+          id: it.tech_id || null,
+          name: it.tech_name || it.producto_nombre,
+          category: it.category || 'tool',
+          image_url: it.image_url || '',
+          plans: []
+        });
+      }
+    });
+
+    _allTechs = Array.from(techMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    // Si hay parámetro en hash (ej: #/info-tecnico?tech=AWS), seleccionarlo
+    const hash = window.location.hash || '';
+    if (hash.includes('tech=')) {
+      const match = hash.match(/tech=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeURIComponent(match[1]);
+        const exists = _allTechs.find(t => t.name.toLowerCase() === decoded.toLowerCase());
+        if (exists) _selectedTechName = exists.name;
+      }
     }
-    _products = Array.from(prodsSet).sort();
+
+    // Por defecto seleccionar la primera tecnología con planes o la primera del catálogo
+    if (!_selectedTechName && _allTechs.length > 0) {
+      const firstWithPlans = _allTechs.find(t => _items.some(it => (it.tech_name || '').toLowerCase() === t.name.toLowerCase()));
+      _selectedTechName = firstWithPlans ? firstWithPlans.name : _allTechs[0].name;
+    }
 
     renderPage();
   } catch(err) {
-    console.error('Error cargando info tecnico:', err);
+    console.error('Error cargando info técnico:', err);
     const c = document.getElementById('info-tecnico-page');
     if (c) c.innerHTML = '<p class="text-center text-gray-400 py-16">Error al cargar la información técnica</p>';
   }
@@ -53,862 +106,883 @@ function renderPage() {
   const c = document.getElementById('info-tecnico-page');
   if (!c) return;
 
-  const filtered = _items.filter(it => {
-    if (_selectedProduct !== 'all' && (it.producto_nombre || '').toLowerCase() !== _selectedProduct.toLowerCase()) {
-      return false;
-    }
+  const toolCount = _allTechs.filter(t => t.category === 'tool').length;
+  const langCount = _allTechs.filter(t => t.category === 'language').length;
+  const totalCount = _allTechs.length;
+
+  // Filtrar tecnologías por categoría y término de búsqueda
+  const filteredTechs = _allTechs.filter(t => {
+    if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
     if (_searchQuery) {
       const q = _searchQuery.toLowerCase();
-      const inBasic = (it.producto_nombre || '').toLowerCase().includes(q) ||
-                      (it.plan_nombre || '').toLowerCase().includes(q) ||
-                      (it.precio || '').toLowerCase().includes(q) ||
-                      (it.descripcion || '').toLowerCase().includes(q);
-      const inLimits = (it.limites_tecnicos || '').toLowerCase().includes(q) ||
-                       (it.limites_api || '').toLowerCase().includes(q) ||
-                       (it.limites_archivos || '').toLowerCase().includes(q) ||
-                       (it.cuentas_usuarios || '').toLowerCase().includes(q);
-      const inTools = JSON.stringify(it.herramientas || []).toLowerCase().includes(q);
-      const inExtras = JSON.stringify(it.campos_extra || []).toLowerCase().includes(q);
-      if (!inBasic && !inLimits && !inTools && !inExtras) return false;
+      const inName = t.name.toLowerCase().includes(q);
+      const inPlans = _items.some(it => 
+        (it.tech_name || '').toLowerCase() === t.name.toLowerCase() &&
+        ((it.plan_nombre || '').toLowerCase().includes(q) ||
+         (it.descripcion || '').toLowerCase().includes(q) ||
+         (it.limites_tecnicos || '').toLowerCase().includes(q))
+      );
+      if (!inName && !inPlans) return false;
     }
     return true;
   });
 
-  // Agrupar por producto
-  const grouped = {};
-  filtered.forEach(it => {
-    const prod = it.producto_nombre || 'General';
-    if (!grouped[prod]) grouped[prod] = [];
-    grouped[prod].push(it);
-  });
+  // Asegurar que _selectedTechName apunte a una tecnología válida
+  const currentTech = _allTechs.find(t => t.name.toLowerCase() === (_selectedTechName || '').toLowerCase()) || filteredTechs[0] || null;
+  if (currentTech) _selectedTechName = currentTech.name;
+
+  // Planes disponibles para la tecnología seleccionada
+  const techPlans = currentTech 
+    ? _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === currentTech.name.toLowerCase())
+    : [];
+
+  // Plan activo seleccionado
+  let activePlan = null;
+  if (techPlans.length > 0) {
+    activePlan = techPlans.find(p => p.id === _selectedPlanId) || techPlans[0];
+    _selectedPlanId = activePlan.id;
+  } else {
+    _selectedPlanId = null;
+  }
 
   c.innerHTML = `
     <!-- Encabezado de página -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
       <div>
         <div class="flex items-center gap-2">
-          <span class="text-2xl">🧠</span>
+          <span class="text-2xl">⚡</span>
           <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Info Técnico</h1>
           <span class="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-200">
-            Fichas Técnicas & Planes
+            Catálogo de Tecnologías & Planes
           </span>
         </div>
         <p class="text-sm text-gray-500 mt-1">
-          Consulta rápida y gestión de herramientas, lenguajes, límites técnicos y políticas por plan de producto.
+          Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan.
         </p>
       </div>
 
       <div class="flex items-center gap-3">
-        <button type="button" id="btn-nuevo-plan" class="btn btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold shadow-sm rounded-lg">
-          ${icon('add', 18)}
-          <span>Nuevo Plan / Ficha Técnica</span>
+        <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm">
+          ${icon('add', 18)} Nuevo Plan Técnico
         </button>
       </div>
     </div>
 
-    <!-- Barra de Filtros y Búsqueda -->
-    <div class="bg-white p-4 rounded-xl border border-gray-200/80 shadow-2xs mb-6 space-y-3">
-      <div class="flex flex-col md:flex-row items-center gap-3">
-        <div class="relative flex-1 w-full">
-          <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-            ${icon('search', 18)}
+    <!-- Barra de Filtros, Categorías y Búsqueda Inteligente -->
+    <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+          _selectedCategory === 'all'
+            ? 'bg-primary-600 text-white shadow-sm'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }" data-cat="all">
+          🌐 Todas (${totalCount})
+        </button>
+        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+          _selectedCategory === 'tool'
+            ? 'bg-primary-600 text-white shadow-sm'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }" data-cat="tool">
+          🛠️ Herramientas (${toolCount})
+        </button>
+        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+          _selectedCategory === 'language'
+            ? 'bg-primary-600 text-white shadow-sm'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }" data-cat="language">
+          💻 Lenguajes (${langCount})
+        </button>
+      </div>
+
+      <!-- Buscador -->
+      <div class="relative w-full md:w-80">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+          ${icon('search', 16)}
+        </div>
+        <input type="text" id="tech-search-input" value="${esc(_searchQuery)}" placeholder="Buscar herramienta o lenguaje..."
+          class="input pl-9 pr-8 py-1.5 text-xs w-full bg-gray-50 hover:bg-white focus:bg-white border-gray-200 rounded-lg transition-all">
+        ${_searchQuery ? `
+          <button type="button" id="clear-search-btn" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600">
+            ${icon('close', 14)}
+          </button>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Layout Master-Detail: Tecnologías (Izquierda) + Ficha Técnica (Derecha) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      
+      <!-- Columna Izquierda: Lista de Tecnologías (Catálogo) -->
+      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+        <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">
+            Tecnologías (${filteredTechs.length})
           </span>
-          <input type="text" id="it-search-input" value="${esc(_searchQuery)}" placeholder="🔍 Buscar por producto, plan, herramienta, lenguaje, límite, API, cuota..."
-            class="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
+          <span class="text-[11px] text-gray-400">Selecciona para ver ficha</span>
         </div>
 
-        <div class="w-full md:w-64">
-          <select id="it-product-filter" class="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none">
-            <option value="all">📁 Todos los Productos (${_products.length})</option>
-            ${_products.map(p => `
-              <option value="${esc(p)}" ${_selectedProduct.toLowerCase() === p.toLowerCase() ? 'selected' : ''}>
-                ${esc(p)}
-              </option>
-            `).join('')}
-          </select>
-        </div>
-      </div>
-
-      <!-- Quick Product Pills -->
-      <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-gray-600">
-        <span class="font-semibold shrink-0 text-gray-400">Filtrar:</span>
-        <button type="button" class="px-2.5 py-1 rounded-md font-medium transition-colors shrink-0 ${_selectedProduct === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}" data-prod="all">
-          Todos (${_items.length})
-        </button>
-        ${_products.slice(0, 8).map(p => {
-          const count = _items.filter(x => (x.producto_nombre || '').toLowerCase() === p.toLowerCase()).length;
-          const isAct = _selectedProduct.toLowerCase() === p.toLowerCase();
-          return `
-            <button type="button" class="px-2.5 py-1 rounded-md font-medium transition-colors shrink-0 ${isAct ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}" data-prod="${esc(p)}">
-              ${esc(p)} <span class="opacity-70">(${count})</span>
-            </button>
-          `;
-        }).join('')}
-      </div>
-    </div>
-
-    <!-- Lista de Fichas Técnicas -->
-    <div id="it-list-container" class="space-y-8">
-      ${Object.keys(grouped).length === 0 ? `
-        <div class="bg-white rounded-xl border border-gray-200/80 p-12 text-center text-gray-400">
-          <div class="text-4xl mb-3">🔍</div>
-          <h3 class="text-base font-semibold text-gray-700">No se encontraron fichas técnicas</h3>
-          <p class="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-            No hay planes registrados que coincidan con la búsqueda. Puedes crear un nuevo plan con el botón superior.
-          </p>
-        </div>
-      ` : Object.entries(grouped).map(([prodName, plans]) => `
-        <div class="space-y-4">
-          <!-- Separador de Producto -->
-          <div class="flex items-center gap-3 border-b border-gray-200 pb-2">
-            <span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
-              🏢
-            </span>
-            <div>
-              <h2 class="text-lg font-bold text-gray-900">${esc(prodName)}</h2>
-              <span class="text-xs text-gray-500 font-medium">${plans.length} plan${plans.length === 1 ? '' : 'es'} configurado${plans.length === 1 ? '' : 's'}</span>
+        <div class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto" id="tech-list-scroll">
+          ${filteredTechs.length === 0 ? `
+            <div class="p-8 text-center text-gray-400 text-xs">
+              No se encontraron tecnologías que coincidan.
             </div>
-          </div>
+          ` : filteredTechs.map(t => {
+            const isSelected = currentTech && currentTech.name.toLowerCase() === t.name.toLowerCase();
+            const planCount = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase()).length;
+            const avatar = t.image_url
+              ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-1 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(t.image_url, 64))}" class="max-w-full max-h-full object-contain" alt=""></div>`
+              : `<span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0 shadow-sm">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
 
-          <!-- Cards de Planes del Producto -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            ${plans.map(renderPlanCard).join('')}
-          </div>
+            return `
+              <div class="tech-item-row p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+                isSelected ? 'bg-primary-50/80 border-l-4 border-primary-600' : 'hover:bg-gray-50'
+              }" data-tech-name="${esc(t.name)}">
+                ${avatar}
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-sm font-semibold text-gray-900 truncate">${esc(t.name)}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+                      t.category === 'tool' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                    }">
+                      ${t.category === 'tool' ? 'Herramienta' : 'Lenguaje'}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
+                      ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} técnico${planCount === 1 ? '' : 's'}` : 'Sin ficha técnica'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
-      `).join('')}
+      </div>
+
+      <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada -->
+      <div class="lg:col-span-8 flex flex-col gap-5">
+        ${currentTech ? renderTechDetail(currentTech, techPlans, activePlan) : `
+          <div class="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400">
+            <span class="text-4xl block mb-2">🔍</span>
+            <p class="text-sm font-medium text-gray-600">Selecciona una tecnología para ver su información técnica</p>
+          </div>
+        `}
+      </div>
+
     </div>
   `;
 
-  // Listeners
-  document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => openPlanModal(null));
-
-  const searchInp = document.getElementById('it-search-input');
-  if (searchInp) {
-    searchInp.addEventListener('input', e => {
-      _searchQuery = e.target.value;
-      renderPage();
-      const updated = document.getElementById('it-search-input');
-      if (updated) {
-        updated.focus();
-        updated.setSelectionRange(updated.value.length, updated.value.length);
-      }
-    });
-  }
-
-  document.getElementById('it-product-filter')?.addEventListener('change', e => {
-    _selectedProduct = e.target.value;
-    renderPage();
-  });
-
-  c.querySelectorAll('[data-prod]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _selectedProduct = btn.dataset.prod;
-      renderPage();
-    });
-  });
-
-  // Acciones en tarjetas: editar, eliminar, duplicar, copiar
-  c.querySelectorAll('.btn-edit-plan').forEach(b => {
-    b.addEventListener('click', () => {
-      const item = _items.find(x => x.id === b.dataset.id);
-      if (item) openPlanModal(item);
-    });
-  });
-
-  c.querySelectorAll('.btn-delete-plan').forEach(b => {
-    b.addEventListener('click', () => deletePlan(b.dataset.id));
-  });
-
-  c.querySelectorAll('.btn-clone-plan').forEach(b => {
-    b.addEventListener('click', () => clonePlan(b.dataset.id));
-  });
-
-  c.querySelectorAll('.btn-copy-plan').forEach(b => {
-    b.addEventListener('click', () => copyPlanToClipboard(b.dataset.id));
-  });
+  wirePageEvents(currentTech, activePlan);
 }
 
-function renderPlanCard(it) {
-  const tools = Array.isArray(it.herramientas) ? it.herramientas : [];
-  const extras = Array.isArray(it.campos_extra) ? it.campos_extra : [];
+function renderTechDetail(tech, plans, activePlan) {
+  const avatar = tech.image_url
+    ? `<div class="w-12 h-12 rounded-xl bg-white border border-gray-200 p-2 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(tech.image_url, 128))}" class="max-w-full max-h-full object-contain" alt=""></div>`
+    : `<span class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-base font-bold text-indigo-700 shrink-0 shadow-sm">${esc((tech.name || '?').charAt(0).toUpperCase())}</span>`;
 
   return `
-    <div class="card bg-white border border-gray-200/80 rounded-xl shadow-2xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between" id="card-${it.id}">
-      <!-- Header de la tarjeta -->
-      <div class="p-5 border-b border-gray-100 bg-linear-to-r from-gray-50/50 to-white">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap mb-1">
-              <span class="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-md">
-                ${esc(it.producto_nombre)}
-              </span>
-              <span class="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
-                ${esc(it.categoria || 'Web')}
+    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes -->
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          ${avatar}
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-xl font-bold text-gray-900">${esc(tech.name)}</h2>
+              <span class="text-xs px-2 py-0.5 rounded-full font-bold uppercase ${
+                tech.category === 'tool' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+              }">
+                ${tech.category === 'tool' ? 'Herramienta' : 'Lenguaje'}
               </span>
             </div>
-            <h3 class="text-lg font-bold text-gray-900 truncate" title="${esc(it.plan_nombre)}">
-              ${esc(it.plan_nombre)}
-            </h3>
-          </div>
-
-          <div class="text-right shrink-0">
-            <span class="text-xs text-gray-500 block">Inversión Plan</span>
-            <div class="text-base font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg">
-              ${esc(it.precio || 'Consultar')}
-            </div>
+            <p class="text-xs text-gray-500 mt-0.5">Especificación técnica oficial y parámetros para propuestas y desarrollo.</p>
           </div>
         </div>
 
-        ${it.descripcion ? `
-          <p class="text-xs text-gray-600 mt-2 line-clamp-2">
-            ${esc(it.descripcion)}
-          </p>
-        ` : ''}
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" id="btn-add-plan-for-tech" class="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
+            ${icon('add', 14)} Agregar Plan
+          </button>
+        </div>
+      </div>
 
-        <!-- Stack de herramientas y lenguajes -->
-        ${tools.length > 0 ? `
-          <div class="flex items-center gap-1.5 flex-wrap mt-3 pt-2 border-t border-gray-100">
-            <span class="text-[10.5px] font-semibold text-gray-400 shrink-0">Stack:</span>
-            ${tools.map(t => {
-              const name = typeof t === 'string' ? t : (t.name || 'Tool');
-              const ic = typeof t === 'object' && t.icon ? t.icon : '⚡';
+      <!-- Selector de Planes (Tabs horizontales) -->
+      <div class="pt-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">Planes Técnicos Registrados:</span>
+        </div>
+
+        ${plans.length === 0 ? `
+          <div class="bg-gray-50 rounded-lg p-6 text-center border border-dashed border-gray-200">
+            <p class="text-xs text-gray-500 mb-2">Esta tecnología aún no tiene planes técnicos registrados en el sistema.</p>
+            <button type="button" id="btn-create-first-plan" class="btn-primary text-xs py-1 px-3" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
+              + Crear Primer Plan Técnico
+            </button>
+          </div>
+        ` : `
+          <div class="flex items-center gap-2 overflow-x-auto pb-1">
+            ${plans.map(p => {
+              const isActive = activePlan && activePlan.id === p.id;
               return `
-                <span class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-700 bg-gray-100 border border-gray-200/60 px-2 py-0.5 rounded-md">
-                  <span>${ic}</span> <span>${esc(name)}</span>
-                </span>
+                <button type="button" class="plan-tab-btn px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-2 shrink-0 ${
+                  isActive 
+                    ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }" data-plan-id="${esc(p.id)}">
+                  <span>${esc(p.plan_nombre)}</span>
+                  ${p.precio ? `<span class="text-[10px] opacity-80 font-normal">(${esc(p.precio)})</span>` : ''}
+                </button>
               `;
             }).join('')}
           </div>
-        ` : ''}
+        `}
+      </div>
+    </div>
+
+    <!-- Si hay un plan activo, renderizar la ficha técnica completa -->
+    ${activePlan ? renderActivePlanCard(activePlan, tech) : ''}
+  `;
+}
+
+function renderActivePlanCard(plan, tech) {
+  const customFields = Array.isArray(plan.campos_extra) ? plan.campos_extra : [];
+
+  return `
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      
+      <!-- Barra de Acciones del Plan -->
+      <div class="bg-gradient-to-r from-gray-50 to-white px-5 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-gray-500 uppercase">Ficha del Plan:</span>
+          <span class="text-sm font-bold text-gray-900">${esc(plan.plan_nombre)}</span>
+          ${plan.precio ? `
+            <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs px-2.5 py-0.5 rounded-full">
+              ${esc(plan.precio)}
+            </span>
+          ` : ''}
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-copy-plan" data-plan-id="${esc(plan.id)}" title="Copiar resumen técnico">
+            ${icon('content_copy', 14)} Copiar Ficha
+          </button>
+          <button type="button" class="btn-primary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-edit-plan" data-plan-id="${esc(plan.id)}">
+            ${icon('edit', 14)} Editar
+          </button>
+          <button type="button" class="btn-danger text-xs px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-1 btn-delete-plan" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}">
+            ${icon('delete', 14)}
+          </button>
+        </div>
       </div>
 
-      <!-- Cuerpo con Grid de Especificaciones Técnicas -->
-      <div class="p-5 space-y-4 flex-1 text-xs">
-        <!-- 1. Límites y Capacidad -->
-        <div class="bg-gray-50/70 p-3 rounded-lg border border-gray-100 space-y-2">
-          <div class="font-bold text-gray-800 flex items-center gap-1.5 text-xs text-indigo-700">
-            <span>⚡</span> <span>Límites Técnicos & Cuotas</span>
+      <!-- Contenido de los 19 Campos Técnicos -->
+      <div class="p-6 space-y-6">
+
+        <!-- 1. Precios y Cuotas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50/60 p-4 rounded-xl border border-gray-100">
+          <div>
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Precio Referencial</span>
+            <p class="text-sm font-bold text-gray-900">${esc(plan.precio || 'Sin especificar')}</p>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11.5px]">
-            <div>
-              <span class="font-semibold text-gray-500 block">Límites Técnicos:</span>
-              <span class="text-gray-800 font-medium">${esc(it.limites_tecnicos || 'No especificado')}</span>
+          <div>
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Cuota Mensual</span>
+            <p class="text-sm text-gray-800">${esc(plan.cuota_mensual || 'Sin especificar')}</p>
+          </div>
+          <div>
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Ejemplo de Consumo Mensual</span>
+            <p class="text-sm text-gray-800">${esc(plan.ejemplo_consumo_mensual || 'Sin especificar')}</p>
+          </div>
+        </div>
+
+        <!-- 2. Descripción General y Agregados -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl border border-gray-100 bg-white">
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Descripción del Plan</span>
+            <p class="text-xs text-gray-700 leading-relaxed">${esc(plan.descripcion || 'Sin descripción')}</p>
+          </div>
+          <div class="p-4 rounded-xl border border-gray-100 bg-white">
+            <span class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">✨ Agregados & Beneficios</span>
+            <p class="text-xs text-gray-700 leading-relaxed">${esc(plan.agregados || 'Sin agregados registrados')}</p>
+          </div>
+        </div>
+
+        <!-- 3. Límites Técnicos, Archivos y API -->
+        <div class="border border-gray-100 rounded-xl p-4 bg-white">
+          <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            ${icon('tune', 16)} Límites Técnicos y Capacidades
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-50/70 p-3 rounded-lg">
+              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites Técnicos</span>
+              <p class="text-xs text-gray-800">${esc(plan.limites_tecnicos || 'Sin límite especificado')}</p>
             </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Cuota Mensual:</span>
-              <span class="text-gray-800 font-medium">${esc(it.cuota_mensual || 'No especificado')}</span>
+            <div class="bg-gray-50/70 p-3 rounded-lg">
+              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites de Archivos</span>
+              <p class="text-xs text-gray-800">${esc(plan.limites_archivos || 'Sin límite especificado')}</p>
             </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Límites de Archivos:</span>
-              <span class="text-gray-800 font-medium">${esc(it.limites_archivos || 'No especificado')}</span>
-            </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Límites de API:</span>
-              <span class="text-gray-800 font-medium">${esc(it.limites_api || 'No especificado')}</span>
+            <div class="bg-gray-50/70 p-3 rounded-lg">
+              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites de API</span>
+              <p class="text-xs text-gray-800">${esc(plan.limites_api || 'Sin límite especificado')}</p>
             </div>
           </div>
         </div>
 
-        <!-- 2. Usuarios, Seguridad & Dominio -->
-        <div class="bg-gray-50/70 p-3 rounded-lg border border-gray-100 space-y-2">
-          <div class="font-bold text-gray-800 flex items-center gap-1.5 text-xs text-indigo-700">
-            <span>🔒</span> <span>Cuentas, Seguridad & Despliegue</span>
+        <!-- 4. Reglas Críticas (Qué pasa si te pasas, Cuándo subir, Qué no incluye) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4">
+            <h4 class="text-xs font-bold text-amber-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              ⚠️ ¿Qué pasa si te pasas del límite?
+            </h4>
+            <p class="text-xs text-amber-950 leading-relaxed">
+              ${esc(plan.pasa_si_te_pasas_del_limite || 'No hay política de sobreuso definida.')}
+            </p>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11.5px]">
-            <div>
-              <span class="font-semibold text-gray-500 block">Cuentas y Usuarios:</span>
-              <span class="text-gray-800 font-medium">${esc(it.cuentas_usuarios || 'No especificado')}</span>
-            </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Entrega y Dominio:</span>
-              <span class="text-gray-800 font-medium">${esc(it.entrega_dominio || 'No especificado')}</span>
-            </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Seguridad & Acceso:</span>
-              <span class="text-gray-800 font-medium">${esc(it.seguridad_control_acceso || 'No especificado')}</span>
-            </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Respaldo & Almacenamiento:</span>
-              <span class="text-gray-800 font-medium">${esc(it.respaldo_almacenamiento || 'No especificado')}</span>
-            </div>
+
+          <div class="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-4">
+            <h4 class="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              🚀 ¿Cuándo subir de plan?
+            </h4>
+            <p class="text-xs text-indigo-950 leading-relaxed">
+              ${esc(plan.cuando_subir || 'No se han definido disparadores de escalamiento.')}
+            </p>
           </div>
         </div>
 
-        <!-- 3. IA, Video & Soporte -->
-        <div class="bg-gray-50/70 p-3 rounded-lg border border-gray-100 space-y-2">
-          <div class="font-bold text-gray-800 flex items-center gap-1.5 text-xs text-indigo-700">
-            <span>🤖</span> <span>Multimedia, IA & Soporte</span>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-rose-50/60 border border-rose-200/80 rounded-xl p-4">
+            <h4 class="text-xs font-bold text-rose-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              🚫 Qué NO Incluye
+            </h4>
+            <p class="text-xs text-rose-950 leading-relaxed">
+              ${esc(plan.que_no_incluye || 'No se registraron exclusiones explícitas.')}
+            </p>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11.5px]">
-            <div>
-              <span class="font-semibold text-gray-500 block">Complementos IA:</span>
-              <span class="text-gray-800 font-medium">${esc(it.complementos_ia || 'No especificado')}</span>
-            </div>
-            <div>
-              <span class="font-semibold text-gray-500 block">Video:</span>
-              <span class="text-gray-800 font-medium">${esc(it.video || 'No especificado')}</span>
-            </div>
-            <div class="md:col-span-2">
-              <span class="font-semibold text-gray-500 block">Soporte & SLA:</span>
-              <span class="text-gray-800 font-medium">${esc(it.soporte || 'No especificado')}</span>
-            </div>
+
+          <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              ❌ Lo que el plan NO resuelve
+            </h4>
+            <p class="text-xs text-gray-700 leading-relaxed">
+              ${esc(plan.plan_no_resuelve || 'Sin restricciones de alcance documentadas.')}
+            </p>
           </div>
         </div>
 
-        <!-- 4. Políticas de Escalabilidad & Alcance -->
-        <details class="group border border-gray-200/80 rounded-lg p-2.5 bg-white transition-all text-xs">
-          <summary class="font-semibold text-gray-700 cursor-pointer flex items-center justify-between select-none">
-            <span class="flex items-center gap-1.5 text-indigo-600">
-              <span>📋</span> <span>Políticas, Agregados y Exclusiones</span>
-            </span>
-            <span class="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-gray-100 space-y-2 text-[11.5px]">
-            ${it.agregados ? `<div><strong class="text-emerald-700">Agregados:</strong> <span class="text-gray-700">${esc(it.agregados)}</span></div>` : ''}
-            ${it.que_no_incluye ? `<div><strong class="text-rose-700">Qué no incluye:</strong> <span class="text-gray-700">${esc(it.que_no_incluye)}</span></div>` : ''}
-            ${it.ejemplo_consumo_mensual ? `<div><strong class="text-blue-700">Ejemplo de Consumo Mensual:</strong> <span class="text-gray-700">${esc(it.ejemplo_consumo_mensual)}</span></div>` : ''}
-            ${it.pasa_si_te_pasas_del_limite ? `<div><strong class="text-amber-700">¿Qué pasa si te pasas del límite?:</strong> <span class="text-gray-700">${esc(it.pasa_si_te_pasas_del_limite)}</span></div>` : ''}
-            ${it.cuando_subir ? `<div><strong class="text-indigo-700">¿Cuándo subir de plan?:</strong> <span class="text-gray-700">${esc(it.cuando_subir)}</span></div>` : ''}
-            ${it.plan_no_resuelve ? `<div><strong class="text-gray-700">Lo que el plan no resuelve:</strong> <span class="text-gray-700">${esc(it.plan_no_resuelve)}</span></div>` : ''}
-          </div>
-        </details>
-
-        <!-- 5. Campos Personalizados Dinámicos -->
-        ${extras.length > 0 ? `
-          <div class="border border-dashed border-gray-300 rounded-lg p-2.5 bg-gray-50/50 space-y-2">
-            <div class="font-semibold text-gray-700 text-xs flex items-center gap-1">
-              <span>✨</span> <span>Campos Personalizados (${extras.length}):</span>
+        <!-- 5. Infraestructura, Usuarios, Seguridad, Media & Soporte -->
+        <div class="border border-gray-100 rounded-xl p-4 bg-white">
+          <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
+            Infraestructura, Multimedia & Soporte
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Cuentas y Usuarios</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.cuentas_usuarios || '—')}</p>
             </div>
-            <div class="grid grid-cols-1 gap-1.5 text-[11px]">
-              ${extras.map(f => `
-                <div class="flex items-start gap-2 bg-white p-1.5 rounded border border-gray-200/60">
-                  <span class="font-bold text-gray-700 shrink-0">${esc(f.titulo || 'Campo')}:</span>
-                  <span class="text-gray-600">${esc(f.valor || '—')}</span>
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Seguridad y Control de Acceso</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.seguridad_control_acceso || '—')}</p>
+            </div>
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Entrega y Dominio</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.entrega_dominio || '—')}</p>
+            </div>
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Respaldo y Almacenamiento</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.respaldo_almacenamiento || '—')}</p>
+            </div>
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Complementos IA</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.complementos_ia || '—')}</p>
+            </div>
+            <div class="p-2.5 bg-gray-50/60 rounded-lg">
+              <span class="text-[10.5px] font-semibold text-gray-500 block">Video & Streaming</span>
+              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.video || '—')}</p>
+            </div>
+          </div>
+          <div class="mt-3 p-2.5 bg-indigo-50/50 rounded-lg border border-indigo-100/60">
+            <span class="text-[10.5px] font-bold text-indigo-900 block">🎧 Nivel de Soporte Técnico</span>
+            <p class="text-xs text-indigo-950 mt-0.5">${esc(plan.soporte || 'Soporte estándar')}</p>
+          </div>
+        </div>
+
+        <!-- 6. Campos Dinámicos Personalizados -->
+        ${customFields.length > 0 ? `
+          <div class="border border-purple-100 rounded-xl p-4 bg-purple-50/30">
+            <h4 class="text-xs font-bold text-purple-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              ⚡ Campos Personalizados Dinámicos (${customFields.length})
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              ${customFields.map(f => `
+                <div class="p-3 bg-white rounded-lg border border-purple-100 shadow-2xs">
+                  <span class="text-[11px] font-bold text-purple-800 block">${esc(f.titulo || 'Campo')}</span>
+                  <p class="text-xs text-gray-700 mt-1 leading-relaxed">${esc(f.valor || '')}</p>
                 </div>
               `).join('')}
             </div>
           </div>
         ` : ''}
-      </div>
 
-      <!-- Footer de Acciones (ADG / OTI) -->
-      <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-2">
-        <button type="button" class="btn-copy-plan btn btn-outline btn-xs inline-flex items-center gap-1 text-xs text-gray-600 hover:text-indigo-600" data-id="${it.id}" title="Copiar resumen al portapapeles">
-          <span>📋</span> <span>Copiar Ficha</span>
-        </button>
-
-        <div class="flex items-center gap-2">
-          <button type="button" class="btn-clone-plan btn btn-outline btn-xs inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900" data-id="${it.id}" title="Duplicar como nuevo plan">
-            <span>📑</span> <span>Duplicar</span>
-          </button>
-          <button type="button" class="btn-edit-plan btn btn-primary btn-xs inline-flex items-center gap-1 text-xs" data-id="${it.id}">
-            ${icon('edit', 14)} <span>Editar</span>
-          </button>
-          <button type="button" class="btn-delete-plan btn btn-danger btn-xs inline-flex items-center gap-1 text-xs" data-id="${it.id}" title="Eliminar este plan">
-            ${icon('delete', 14)}
-          </button>
-        </div>
       </div>
     </div>
   `;
 }
 
-function openPlanModal(item) {
-  const isEditing = !!item;
-  const initial = item || {
-    producto_nombre: _selectedProduct !== 'all' ? _selectedProduct : (_products[0] || 'QUOFFICE'),
-    plan_nombre: '',
-    categoria: 'SaaS / ERP Cloud',
-    precio: '',
-    descripcion: '',
-    limites_tecnicos: '',
-    agregados: '',
-    que_no_incluye: '',
-    ejemplo_consumo_mensual: '',
-    pasa_si_te_pasas_del_limite: '',
-    cuando_subir: '',
-    cuota_mensual: '',
-    limites_archivos: '',
-    limites_api: '',
-    cuentas_usuarios: '',
-    seguridad_control_acceso: '',
-    entrega_dominio: '',
-    respaldo_almacenamiento: '',
-    complementos_ia: '',
-    video: '',
-    soporte: '',
-    plan_no_resuelve: '',
-    herramientas: [],
-    campos_extra: []
-  };
+function wirePageEvents(currentTech, activePlan) {
+  // Píldoras de Categoría
+  document.querySelectorAll('.category-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _selectedCategory = btn.dataset.cat;
+      renderPage();
+    });
+  });
 
+  // Búsqueda en tiempo real
+  const searchInput = document.getElementById('tech-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', e => {
+      _searchQuery = e.target.value.trim();
+      renderPage();
+    });
+  }
+  document.getElementById('clear-search-btn')?.addEventListener('click', () => {
+    _searchQuery = '';
+    renderPage();
+  });
+
+  // Clic en fila de tecnología
+  document.querySelectorAll('.tech-item-row').forEach(row => {
+    row.addEventListener('click', () => {
+      _selectedTechName = row.dataset.techName;
+      _selectedPlanId = null; // reiniciar selección de plan al cambiar de tecnología
+      renderPage();
+    });
+  });
+
+  // Clic en tab de plan
+  document.querySelectorAll('.plan-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _selectedPlanId = btn.dataset.planId;
+      renderPage();
+    });
+  });
+
+  // Botón Nuevo Plan Global
+  document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
+    openPlanModal(null, currentTech ? currentTech.name : '');
+  });
+
+  // Botón Agregar Plan para la tecnología actual
+  document.getElementById('btn-add-plan-for-tech')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    openPlanModal(null, btn.dataset.techName, btn.dataset.techCategory, btn.dataset.techId);
+  });
+  document.getElementById('btn-create-first-plan')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    openPlanModal(null, btn.dataset.techName, btn.dataset.techCategory, btn.dataset.techId);
+  });
+
+  // Acciones en la ficha activa
+  document.querySelectorAll('.btn-edit-plan').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const plan = _items.find(p => p.id === btn.dataset.planId);
+      if (plan) openPlanModal(plan);
+    });
+  });
+
+  document.querySelectorAll('.btn-delete-plan').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deletePlan(btn.dataset.planId, btn.dataset.planName);
+    });
+  });
+
+  document.querySelectorAll('.btn-copy-plan').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const plan = _items.find(p => p.id === btn.dataset.planId);
+      if (plan) copyPlanToClipboard(plan);
+    });
+  });
+}
+
+function copyPlanToClipboard(p) {
+  const custom = (p.campos_extra || []).map(f => `• ${f.titulo}: ${f.valor}`).join('\n');
+  const text = `
+📋 FICHA TÉCNICA — ${p.tech_name || p.producto_nombre || ''} [${p.plan_nombre}]
+--------------------------------------------------
+💰 Precio: ${p.precio || 'N/A'}
+📊 Cuota Mensual: ${p.cuota_mensual || 'N/A'}
+📝 Descripción: ${p.descripcion || 'N/A'}
+✨ Agregados: ${p.agregados || 'N/A'}
+⚙️ Límites Técnicos: ${p.limites_tecnicos || 'N/A'}
+📁 Límites Archivos: ${p.limites_archivos || 'N/A'}
+🔌 Límites API: ${p.limites_api || 'N/A'}
+👥 Cuentas/Usuarios: ${p.cuentas_usuarios || 'N/A'}
+⚠️ ¿Qué pasa si te pasas?: ${p.pasa_si_te_pasas_del_limite || 'N/A'}
+🚀 ¿Cuándo subir?: ${p.cuando_subir || 'N/A'}
+🚫 Qué no incluye: ${p.que_no_incluye || 'N/A'}
+❌ Lo que no resuelve: ${p.plan_no_resuelve || 'N/A'}
+🔒 Seguridad: ${p.seguridad_control_acceso || 'N/A'}
+🌐 Dominio/Entrega: ${p.entrega_dominio || 'N/A'}
+💾 Respaldo: ${p.respaldo_almacenamiento || 'N/A'}
+🤖 IA: ${p.complementos_ia || 'N/A'}
+🎥 Video: ${p.video || 'N/A'}
+🎧 Soporte: ${p.soporte || 'N/A'}
+${custom ? `\nCampos Dinámicos:\n${custom}` : ''}
+--------------------------------------------------
+Qubira Tech Hub
+  `.trim();
+
+  navigator.clipboard.writeText(text).then(() => {
+    toast('Ficha técnica copiada al portapapeles', 'success');
+  }).catch(() => {
+    toast('No se pudo copiar automáticamente', 'error');
+  });
+}
+
+async function deletePlan(id, planNombre) {
+  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}"? Esta acción no se puede deshacer.`)) {
+    return;
+  }
+  try {
+    await api.delete(`/tech-plan-info/${id}`);
+    toast('Plan técnico eliminado correctamente', 'success');
+    _items = _items.filter(it => it.id !== id);
+    _selectedPlanId = null;
+    renderPage();
+  } catch(e) {
+    toast('Error al eliminar: ' + (e.message || 'Error de servidor'), 'error');
+  }
+}
+
+/* ============================================================
+   MODAL DE CREACIÓN / EDICIÓN (5 Pestañas + Gestor Dinámico)
+   ============================================================ */
+function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'tool', defaultTechId = '') {
+  const isEdit = !!plan;
   _currentTabInModal = 'basic';
-  _modalCustomFields = Array.isArray(initial.campos_extra) ? JSON.parse(JSON.stringify(initial.campos_extra)) : [];
-  let modalTools = Array.isArray(initial.herramientas) ? JSON.parse(JSON.stringify(initial.herramientas)) : [];
+  _modalCustomFields = isEdit && Array.isArray(plan.campos_extra)
+    ? JSON.parse(JSON.stringify(plan.campos_extra))
+    : [];
 
-  const modalHtml = `
-    <div class="max-w-4xl w-full flex flex-col max-h-[90vh]">
-      <!-- Modal Header -->
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">${isEditing ? '✏️' : '✨'}</span>
-          <h2 class="text-lg font-bold text-gray-900">
-            ${isEditing ? `Editar Ficha Técnica: ${esc(initial.plan_nombre)}` : 'Nueva Ficha Técnica de Plan'}
-          </h2>
-        </div>
-        <button type="button" id="it-modal-close" class="text-gray-400 hover:text-gray-600 p-1">✕</button>
-      </div>
+  const initialTechName = plan ? (plan.tech_name || plan.producto_nombre || '') : defaultTechName;
+  const initialCategory = plan ? (plan.category || 'tool') : defaultCategory;
+  const initialTechId = plan ? (plan.tech_id || '') : defaultTechId;
 
-      <!-- Navigation Tabs inside modal -->
-      <div class="flex items-center border-b border-gray-200 bg-gray-50 px-6 gap-2 overflow-x-auto text-xs">
-        <button type="button" class="tab-btn py-3 px-3 font-semibold border-b-2 text-indigo-600 border-indigo-600 transition-colors" data-tab="basic">
-          1. Básico & Stack
+  showModal(isEdit ? `Editar Ficha Técnica — ${plan.plan_nombre}` : 'Nuevo Plan Técnico', `
+    <form id="tech-plan-form" class="space-y-4">
+      
+      <!-- Selector de Pestañas del Modal -->
+      <div class="flex items-center gap-1 border-b border-gray-200 pb-2 overflow-x-auto text-xs font-bold">
+        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
+          1. General
         </button>
-        <button type="button" class="tab-btn py-3 px-3 font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition-colors" data-tab="limits">
+        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
           2. Límites & Cuotas
         </button>
-        <button type="button" class="tab-btn py-3 px-3 font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition-colors" data-tab="scope">
-          3. Alcance & Seguridad
+        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="rules">
+          3. Reglas & Escala
         </button>
-        <button type="button" class="tab-btn py-3 px-3 font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition-colors" data-tab="scale">
-          4. Multimedia, IA & Soporte
+        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="infra">
+          4. Infra & Media
         </button>
-        <button type="button" class="tab-btn py-3 px-3 font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 transition-colors" data-tab="extras">
-          5. Campos Dinámicos (${_modalCustomFields.length})
+        <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="custom">
+          5. Campos Extra
         </button>
       </div>
 
-      <!-- Modal Body (Form) -->
-      <form id="it-plan-form" class="flex-1 overflow-y-auto p-6 space-y-4">
-        <!-- TAB 1: BÁSICO & STACK -->
-        <div id="tab-pane-basic" class="tab-pane space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Producto Asignado *</label>
-              <input type="text" id="it-f-producto" required value="${esc(initial.producto_nombre)}" list="it-prod-datalist"
-                placeholder="Ej. QUOFFICE, QubiraFact, Sistema Web..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-              <datalist id="it-prod-datalist">
-                ${_products.map(p => `<option value="${esc(p)}"></option>`).join('')}
-              </datalist>
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Nombre del Plan *</label>
-              <input type="text" id="it-f-plan" required value="${esc(initial.plan_nombre)}"
-                placeholder="Ej. Plan Starter, Plan Pro, Plan Enterprise..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Precio / Inversión</label>
-              <input type="text" id="it-f-precio" value="${esc(initial.precio)}"
-                placeholder="Ej. $ 150.00 / mes o S/ 550.00 / mes"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Categoría / Tipo</label>
-              <input type="text" id="it-f-categoria" value="${esc(initial.categoria || 'Web')}"
-                placeholder="Ej. SaaS / ERP Cloud, Facturación, Web, Móvil..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-            </div>
-          </div>
-
+      <!-- PESTAÑA 1: BÁSICO & PRECIOS -->
+      <div id="tab-pane-basic" class="modal-tab-pane space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Descripción del Plan</label>
-            <textarea id="it-f-descripcion" rows="2" placeholder="Resumen general del alcance y objetivo técnico de este plan..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">${esc(initial.descripcion)}</textarea>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Herramienta / Lenguaje *</label>
+            <input type="text" list="tech-names-list" id="mp-tech-name" required value="${esc(initialTechName)}" placeholder="Ej: AWS, NEON, Docker, React, Python..." class="input text-xs w-full">
+            <datalist id="tech-names-list">
+              ${_allTechs.map(t => `<option value="${esc(t.name)}">${esc(t.category === 'tool' ? '🛠️ Herramienta' : '💻 Lenguaje')}</option>`).join('')}
+            </datalist>
           </div>
-
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">Herramientas y Lenguajes Asociados</label>
-              <span class="text-[11px] text-gray-400">Separar por comas para agregar rápido</span>
-            </div>
-            <input type="text" id="it-f-tools-raw" value="${esc(toolsToString(modalTools))}"
-              placeholder="Ej. React, Node.js, PostgreSQL, Vercel Pro, Cloudinary, Docker"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+            <label class="block text-xs font-bold text-gray-700 mb-1">Categoría</label>
+            <select id="mp-category" class="input text-xs w-full">
+              <option value="tool" ${initialCategory === 'tool' ? 'selected' : ''}>🛠️ Herramienta</option>
+              <option value="language" ${initialCategory === 'language' ? 'selected' : ''}>💻 Lenguaje</option>
+            </select>
           </div>
         </div>
 
-        <!-- TAB 2: LÍMITES & CUOTAS -->
-        <div id="tab-pane-limits" class="tab-pane hidden space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Límites Técnicos</label>
-              <textarea id="it-f-lim-tec" rows="2" placeholder="Ej. Concurrencia máxima, peticiones por minuto, CPU/RAM asignada..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.limites_tecnicos)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Cuota Mensual</label>
-              <textarea id="it-f-cuota-mes" rows="2" placeholder="Ej. Límite global mensual de transacciones, 100,000 peticiones API..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.cuota_mensual)}</textarea>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Nombre del Plan *</label>
+            <input type="text" id="mp-plan-nombre" required value="${esc(plan?.plan_nombre || '')}" placeholder="Ej: Free Tier, Launch Plan, Team, Pro..." class="input text-xs w-full">
           </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Límites de Archivos</label>
-              <textarea id="it-f-lim-files" rows="2" placeholder="Ej. Máx 25 MB por archivo, 50 GB almacenamiento total en la nube..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.limites_archivos)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Límites de API</label>
-              <textarea id="it-f-lim-api" rows="2" placeholder="Ej. 120 req/min, webhooks incluidos, claves sandbox y producción..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.limites_api)}</textarea>
-            </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Precio Referencial</label>
+            <input type="text" id="mp-precio" value="${esc(plan?.precio || '')}" placeholder="Ej: $ 19.00 / mes o S/ 70.00 / mes" class="input text-xs w-full">
           </div>
+        </div>
 
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Descripción del Plan</label>
+          <textarea id="mp-descripcion" rows="2" class="input text-xs w-full" placeholder="Objetivo y resumen de uso de esta herramienta o plan...">${esc(plan?.descripcion || '')}</textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Agregados & Beneficios</label>
+          <textarea id="mp-agregados" rows="2" class="input text-xs w-full" placeholder="Beneficios incluidos, plugins, módulos o bonos especiales...">${esc(plan?.agregados || '')}</textarea>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 2: LÍMITES Y CUOTAS -->
+      <div id="tab-pane-limits" class="modal-tab-pane space-y-3 hidden">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Límites Técnicos</label>
+          <textarea id="mp-limites-tecnicos" rows="2" class="input text-xs w-full" placeholder="Capacidades de cómputo, vCPU, RAM, suspensión, concurrencia...">${esc(plan?.limites_tecnicos || '')}</textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Cuota Mensual</label>
+            <input type="text" id="mp-cuota-mensual" value="${esc(plan?.cuota_mensual || '')}" placeholder="Ej: 100,000 reqs/mes, 10 GB ancho de banda..." class="input text-xs w-full">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Ejemplo de Consumo Mensual</label>
+            <input type="text" id="mp-ejemplo-consumo" value="${esc(plan?.ejemplo_consumo_mensual || '')}" placeholder="Ej: 5,000 visitas/mes, 100 consultas/día..." class="input text-xs w-full">
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Límites de Archivos</label>
+            <input type="text" id="mp-limites-archivos" value="${esc(plan?.limites_archivos || '')}" placeholder="Ej: 10 MB por imagen, 500 MB total..." class="input text-xs w-full">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Límites de API</label>
+            <input type="text" id="mp-limites-api" value="${esc(plan?.limites_api || '')}" placeholder="Ej: 60 peticiones/min, 2 webhooks..." class="input text-xs w-full">
+          </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 3: REGLAS Y ESCALAMIENTO -->
+      <div id="tab-pane-rules" class="modal-tab-pane space-y-3 hidden">
+        <div>
+          <label class="block text-xs font-bold text-amber-800 mb-1">⚠️ ¿Qué pasa si te pasas del límite?</label>
+          <textarea id="mp-pasa-si-te-pasas" rows="2" class="input text-xs w-full border-amber-200 bg-amber-50/30" placeholder="¿Cobro extra, bloqueo temporal, soft-limit, degradación?">${esc(plan?.pasa_si_te_pasas_del_limite || '')}</textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-indigo-800 mb-1">🚀 ¿Cuándo subir de plan?</label>
+          <textarea id="mp-cuando-subir" rows="2" class="input text-xs w-full border-indigo-200 bg-indigo-50/30" placeholder="Criterios y señales claras para escalar a un plan superior...">${esc(plan?.cuando_subir || '')}</textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-rose-800 mb-1">🚫 Qué NO incluye</label>
+            <textarea id="mp-que-no-incluye" rows="2" class="input text-xs w-full border-rose-200 bg-rose-50/30" placeholder="Exclusiones clave del servicio...">${esc(plan?.que_no_incluye || '')}</textarea>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">❌ Lo que el plan NO resuelve</label>
+            <textarea id="mp-plan-no-resuelve" rows="2" class="input text-xs w-full" placeholder="Límites de responsabilidad técnica o funcional...">${esc(plan?.plan_no_resuelve || '')}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- PESTAÑA 4: INFRAESTRUCTURA & MEDIA -->
+      <div id="tab-pane-infra" class="modal-tab-pane space-y-3 hidden">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">Cuentas y Usuarios</label>
-            <input type="text" id="it-f-cuentas-users" value="${esc(initial.cuentas_usuarios)}"
-              placeholder="Ej. 5 cuentas de usuario administrador, ilimitados clientes de consulta"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+            <input type="text" id="mp-cuentas-usuarios" value="${esc(plan?.cuentas_usuarios || '')}" placeholder="Ej: 3 usuarios administradores, 10 colaboradores..." class="input text-xs w-full">
           </div>
-        </div>
-
-        <!-- TAB 3: ALCANCE & SEGURIDAD -->
-        <div id="tab-pane-scope" class="tab-pane hidden space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Agregados (Features incluidos)</label>
-              <textarea id="it-f-agregados" rows="2" placeholder="Módulos adicionales, integraciones activas, exportadores..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.agregados)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Qué No Incluye</label>
-              <textarea id="it-f-no-incluye" rows="2" placeholder="Límites de alcance o integraciones excluidas en este tier..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.que_no_incluye)}</textarea>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Seguridad y Control de Acceso</label>
-              <textarea id="it-f-seguridad" rows="2" placeholder="Ej. JWT, 2FA, RBAC roles, SSL/TLS, auditoría inmutable de logs..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.seguridad_control_acceso)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Entrega y Dominio</label>
-              <textarea id="it-f-dominio" rows="2" placeholder="Ej. Subdominio *.qubira.app o dominio propio del cliente con SSL..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.entrega_dominio)}</textarea>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Respaldo y Almacenamiento</label>
-              <textarea id="it-f-respaldo" rows="2" placeholder="Ej. Backups diarios automáticos a las 02:00 AM, retención de 30 días..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.respaldo_almacenamiento)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Lo que el Plan No Resuelve</label>
-              <textarea id="it-f-no-resuelve" rows="2" placeholder="Requerimientos o expectativas que este plan explícitamente no abarca..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.plan_no_resuelve)}</textarea>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 4: MULTIMEDIA, IA & SOPORTE -->
-        <div id="tab-pane-scale" class="tab-pane hidden space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Complementos IA</label>
-              <textarea id="it-f-ia" rows="2" placeholder="Ej. Asistente con GPT-4o mini, 500 consultas mensuales, OCR de facturas..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.complementos_ia)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Video</label>
-              <textarea id="it-f-video" rows="2" placeholder="Ej. Videos incrustados YouTube/Vimeo o streaming adaptativo de hasta 20GB..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.video)}</textarea>
-            </div>
-          </div>
-
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Soporte & Canales</label>
-            <input type="text" id="it-f-soporte" value="${esc(initial.soporte)}"
-              placeholder="Ej. Soporte 24/7 WhatsApp y tickets, SLA de 45 minutos..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Ejemplo de Consumo Mensual</label>
-              <textarea id="it-f-ej-consumo" rows="2" placeholder="Ej. 100 ventas/día, 5,000 comprobantes/mes..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.ejemplo_consumo_mensual)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">¿Qué pasa si te pasas del límite?</label>
-              <textarea id="it-f-over-limit" rows="2" placeholder="Ej. Cobro adicional de $ 0.50 por millar o alerta sin corte..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.pasa_si_te_pasas_del_limite)}</textarea>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">¿Cuándo subir de plan?</label>
-              <textarea id="it-f-upgrade-when" rows="2" placeholder="Ej. Al superar 5 sucursales o 50,000 visitas/mes..."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">${esc(initial.cuando_subir)}</textarea>
-            </div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Seguridad y Control de Acceso</label>
+            <input type="text" id="mp-seguridad" value="${esc(plan?.seguridad_control_acceso || '')}" placeholder="Ej: 2FA obligatorio, SSL TLS 1.3, RBAC, IP Allowlist..." class="input text-xs w-full">
           </div>
         </div>
-
-        <!-- TAB 5: CAMPOS PERSONALIZADOS DINÁMICOS -->
-        <div id="tab-pane-extras" class="tab-pane hidden space-y-4">
-          <div class="flex items-center justify-between pb-2 border-b border-gray-200">
-            <div>
-              <h4 class="font-bold text-gray-900 text-sm">Campos Adicionales Dinámicos</h4>
-              <p class="text-xs text-gray-500">Agrega cualquier especificación o variable técnica personalizada para este plan.</p>
-            </div>
-            <button type="button" id="btn-add-modal-custom-field" class="btn btn-outline btn-sm inline-flex items-center gap-1.5 text-xs text-indigo-600 font-bold border-indigo-200 hover:bg-indigo-50">
-              <span>+</span> <span>Agregar Campo Personalizado</span>
-            </button>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Entrega y Dominio</label>
+            <input type="text" id="mp-entrega-dominio" value="${esc(plan?.entrega_dominio || '')}" placeholder="Ej: Subdominio cloud o CNAME personalizado..." class="input text-xs w-full">
           </div>
-
-          <div id="modal-custom-fields-list" class="space-y-3">
-            <!-- Renderizado dinámico -->
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Respaldo y Almacenamiento</label>
+            <input type="text" id="mp-respaldo" value="${esc(plan?.respaldo_almacenamiento || '')}" placeholder="Ej: Copias automáticas diarias con 7 días retención..." class="input text-xs w-full">
           </div>
         </div>
-      </form>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Complementos IA</label>
+            <input type="text" id="mp-complementos-ia" value="${esc(plan?.complementos_ia || '')}" placeholder="Ej: pgvector, 10,000 tokens/mes, OpenAI GPT-4o..." class="input text-xs w-full">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Video & Multimedia</label>
+            <input type="text" id="mp-video" value="${esc(plan?.video || '')}" placeholder="Ej: HLS streaming, max 100 MB por video..." class="input text-xs w-full">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Soporte Técnico</label>
+          <input type="text" id="mp-soporte" value="${esc(plan?.soporte || '')}" placeholder="Ej: Email y tickets SLA 4h hábiles, o soporte comunitario..." class="input text-xs w-full">
+        </div>
+      </div>
 
-      <!-- Modal Footer -->
-      <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-        <button type="button" id="it-modal-cancel" class="btn btn-outline text-sm">Cancelar</button>
-        <button type="button" id="it-modal-save" class="btn btn-primary text-sm px-6 py-2 font-bold shadow-sm inline-flex items-center gap-2">
-          ${icon('check', 16)} <span>Guardar Ficha Técnica</span>
+      <!-- PESTAÑA 5: CAMPOS PERSONALIZADOS DINÁMICOS -->
+      <div id="tab-pane-custom" class="modal-tab-pane space-y-3 hidden">
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-gray-500">
+            Libertad total para agregar cualquier especificación o atributo técnico adicional a esta herramienta.
+          </p>
+          <button type="button" id="btn-add-modal-custom-field" class="btn-secondary text-xs px-2.5 py-1">
+            + Agregar Campo Dinámico
+          </button>
+        </div>
+
+        <div id="modal-custom-fields-container" class="space-y-2 max-h-60 overflow-y-auto pt-1">
+          <!-- Renderizado dinámico -->
+        </div>
+      </div>
+
+      <!-- Footer Modal -->
+      <div class="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+        <button type="button" id="btn-modal-cancel" class="btn-secondary text-xs">Cancelar</button>
+        <button type="submit" id="btn-modal-save" class="btn-primary text-xs flex items-center gap-1.5">
+          ${icon('save', 14)} ${isEdit ? 'Guardar Cambios' : 'Crear Plan'}
         </button>
       </div>
-    </div>
-  `;
+    </form>
+  `, '2xl');
 
-  showModal(modalHtml);
+  wireModalTabs();
+  renderModalCustomFields();
 
-  // Tab switching inside modal
-  const modalEl = document.querySelector('.modal-content, [role="dialog"]') || document.body;
-  modalEl.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      modalEl.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('text-indigo-600', 'border-indigo-600');
-        b.classList.add('text-gray-500', 'border-transparent');
-      });
-      btn.classList.remove('text-gray-500', 'border-transparent');
-      btn.classList.add('text-indigo-600', 'border-indigo-600');
-
-      modalEl.querySelectorAll('.tab-pane').forEach(p => p.classList.add('hidden'));
-      const activePane = modalEl.querySelector(`#tab-pane-${tab}`);
-      if (activePane) activePane.classList.remove('hidden');
-    });
-  });
-
-  // Render initial custom fields
-  renderModalCustomFieldsList();
-
-  modalEl.querySelector('#btn-add-modal-custom-field')?.addEventListener('click', () => {
-    _modalCustomFields.push({
-      id: 'fld_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-      titulo: '',
-      valor: ''
-    });
-    renderModalCustomFieldsList();
-  });
-
-  modalEl.querySelector('#it-modal-close')?.addEventListener('click', closeModal);
-  modalEl.querySelector('#it-modal-cancel')?.addEventListener('click', closeModal);
-
-  modalEl.querySelector('#it-modal-save')?.addEventListener('click', async () => {
-    const prod = modalEl.querySelector('#it-f-producto')?.value.trim();
-    const plan = modalEl.querySelector('#it-f-plan')?.value.trim();
-
-    if (!prod || !plan) {
-      toast('warning', 'Campos requeridos', 'Debes ingresar el Producto Asignado y el Nombre del Plan.');
-      return;
+  // Autocompletar categoría si el usuario escribe o selecciona una tecnología conocida
+  document.getElementById('mp-tech-name')?.addEventListener('change', (e) => {
+    const val = (e.target.value || '').trim().toLowerCase();
+    const found = _allTechs.find(t => t.name.toLowerCase() === val);
+    if (found && found.category) {
+      document.getElementById('mp-category').value = found.category;
     }
+  });
 
-    // Parse tools from input
-    const toolsRaw = modalEl.querySelector('#it-f-tools-raw')?.value.trim() || '';
-    const parsedTools = toolsRaw
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .map(name => ({ name, category: 'tool', icon: '⚡' }));
+  document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
 
-    // Read custom fields values
-    const customFieldsFinal = [];
-    modalEl.querySelectorAll('.custom-field-row').forEach(row => {
-      const t = row.querySelector('.cf-title')?.value.trim() || '';
-      const v = row.querySelector('.cf-value')?.value.trim() || '';
-      if (t || v) {
-        customFieldsFinal.push({ id: row.dataset.id || 'cf_' + Date.now(), titulo: t, valor: v });
-      }
-    });
+  document.getElementById('tech-plan-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('btn-modal-save');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `${spinner(14)} Guardando...`;
+
+    const techName = document.getElementById('mp-tech-name').value.trim();
+    const planNombre = document.getElementById('mp-plan-nombre').value.trim();
+    const category = document.getElementById('mp-category').value;
+
+    const matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
 
     const payload = {
-      producto_nombre: prod,
-      plan_nombre: plan,
-      categoria: modalEl.querySelector('#it-f-categoria')?.value.trim() || 'Web',
-      precio: modalEl.querySelector('#it-f-precio')?.value.trim() || '',
-      descripcion: modalEl.querySelector('#it-f-descripcion')?.value.trim() || '',
-      herramientas: parsedTools,
-      limites_tecnicos: modalEl.querySelector('#it-f-lim-tec')?.value.trim() || '',
-      cuota_mensual: modalEl.querySelector('#it-f-cuota-mes')?.value.trim() || '',
-      limites_archivos: modalEl.querySelector('#it-f-lim-files')?.value.trim() || '',
-      limites_api: modalEl.querySelector('#it-f-lim-api')?.value.trim() || '',
-      cuentas_usuarios: modalEl.querySelector('#it-f-cuentas-users')?.value.trim() || '',
-      agregados: modalEl.querySelector('#it-f-agregados')?.value.trim() || '',
-      que_no_incluye: modalEl.querySelector('#it-f-no-incluye')?.value.trim() || '',
-      seguridad_control_acceso: modalEl.querySelector('#it-f-seguridad')?.value.trim() || '',
-      entrega_dominio: modalEl.querySelector('#it-f-dominio')?.value.trim() || '',
-      respaldo_almacenamiento: modalEl.querySelector('#it-f-respaldo')?.value.trim() || '',
-      plan_no_resuelve: modalEl.querySelector('#it-f-no-resuelve')?.value.trim() || '',
-      complementos_ia: modalEl.querySelector('#it-f-ia')?.value.trim() || '',
-      video: modalEl.querySelector('#it-f-video')?.value.trim() || '',
-      soporte: modalEl.querySelector('#it-f-soporte')?.value.trim() || '',
-      ejemplo_consumo_mensual: modalEl.querySelector('#it-f-ej-consumo')?.value.trim() || '',
-      pasa_si_te_pasas_del_limite: modalEl.querySelector('#it-f-over-limit')?.value.trim() || '',
-      cuando_subir: modalEl.querySelector('#it-f-upgrade-when')?.value.trim() || '',
-      campos_extra: customFieldsFinal
+      tech_id: matchedTech ? matchedTech.id : (initialTechId || null),
+      tech_name: techName,
+      producto_nombre: techName,
+      category: category,
+      plan_nombre: planNombre,
+      precio: document.getElementById('mp-precio').value.trim(),
+      descripcion: document.getElementById('mp-descripcion').value.trim(),
+      agregados: document.getElementById('mp-agregados').value.trim(),
+      limites_tecnicos: document.getElementById('mp-limites-tecnicos').value.trim(),
+      cuota_mensual: document.getElementById('mp-cuota-mensual').value.trim(),
+      ejemplo_consumo_mensual: document.getElementById('mp-ejemplo-consumo').value.trim(),
+      limites_archivos: document.getElementById('mp-limites-archivos').value.trim(),
+      limites_api: document.getElementById('mp-limites-api').value.trim(),
+      pasa_si_te_pasas_del_limite: document.getElementById('mp-pasa-si-te-pasas').value.trim(),
+      cuando_subir: document.getElementById('mp-cuando-subir').value.trim(),
+      que_no_incluye: document.getElementById('mp-que-no-incluye').value.trim(),
+      plan_no_resuelve: document.getElementById('mp-plan-no-resuelve').value.trim(),
+      cuentas_usuarios: document.getElementById('mp-cuentas-usuarios').value.trim(),
+      seguridad_control_acceso: document.getElementById('mp-seguridad').value.trim(),
+      entrega_dominio: document.getElementById('mp-entrega-dominio').value.trim(),
+      respaldo_almacenamiento: document.getElementById('mp-respaldo').value.trim(),
+      complementos_ia: document.getElementById('mp-complementos-ia').value.trim(),
+      video: document.getElementById('mp-video').value.trim(),
+      soporte: document.getElementById('mp-soporte').value.trim(),
+      campos_extra: _modalCustomFields.filter(f => f.titulo && f.titulo.trim())
     };
 
     try {
-      if (isEditing) {
-        await api.put(`/tech-plan-info/${item.id}`, payload);
-        toast('success', 'Plan Actualizado', `La ficha técnica de ${plan} se actualizó con éxito.`);
+      if (isEdit) {
+        const updated = await api.put(`/tech-plan-info/${plan.id}`, payload);
+        toast('Ficha técnica actualizada con éxito', 'success');
+        const idx = _items.findIndex(it => it.id === plan.id);
+        if (idx !== -1) _items[idx] = updated;
+        _selectedPlanId = updated.id;
       } else {
-        await api.post('/tech-plan-info', payload);
-        toast('success', 'Plan Creado', `La ficha técnica de ${plan} para ${prod} fue creada.`);
+        const created = await api.post('/tech-plan-info', payload);
+        toast('Nuevo plan técnico creado con éxito', 'success');
+        _items.push(created);
+        _selectedPlanId = created.id;
       }
+      _selectedTechName = techName;
       closeModal();
-      load();
+      renderPage();
     } catch(err) {
-      toast('error', 'Error al guardar', err.message || 'No se pudo guardar la ficha técnica.');
+      toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `${icon('save', 14)} Guardar`;
     }
   });
 }
 
-function renderModalCustomFieldsList() {
-  const container = document.getElementById('modal-custom-fields-list');
+function wireModalTabs() {
+  document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      _currentTabInModal = tab;
+      document.querySelectorAll('.modal-tab-btn').forEach(b => {
+        b.classList.remove('active', 'text-primary-600', 'bg-primary-50');
+        b.classList.add('text-gray-500');
+      });
+      btn.classList.add('active', 'text-primary-600', 'bg-primary-50');
+      btn.classList.remove('text-gray-500');
+
+      document.querySelectorAll('.modal-tab-pane').forEach(p => p.classList.add('hidden'));
+      document.getElementById(`tab-pane-${tab}`)?.classList.remove('hidden');
+    });
+  });
+
+  document.getElementById('btn-add-modal-custom-field')?.addEventListener('click', () => {
+    _modalCustomFields.push({ id: 'fld_' + Date.now(), titulo: '', valor: '' });
+    renderModalCustomFields();
+  });
+}
+
+function renderModalCustomFields() {
+  const container = document.getElementById('modal-custom-fields-container');
   if (!container) return;
 
   if (_modalCustomFields.length === 0) {
     container.innerHTML = `
-      <div class="p-6 border border-dashed border-gray-200 rounded-lg text-center text-gray-400 text-xs">
-        No hay campos adicionales configurados aún. Haz clic en "+ Agregar Campo Personalizado" para añadir especificaciones personalizadas.
-      </div>
+      <p class="text-xs text-gray-400 py-4 text-center">No hay campos dinámicos adicionales creados.</p>
     `;
     return;
   }
 
-  container.innerHTML = _modalCustomFields.map((cf, idx) => `
-    <div class="custom-field-row flex items-start gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200" data-id="${cf.id}">
-      <span class="text-xs font-bold text-gray-400 pt-2 shrink-0">#${idx + 1}</span>
-      <div class="w-1/3 shrink-0">
-        <label class="block text-[11px] font-bold text-gray-600 mb-1">Título del Campo</label>
-        <input type="text" value="${esc(cf.titulo)}" placeholder="Ej. Hardware, SLA, SUNAT..."
-          class="cf-title w-full px-3 py-1.5 border border-gray-300 rounded text-xs bg-white outline-none">
-      </div>
-      <div class="flex-1 min-w-0">
-        <label class="block text-[11px] font-bold text-gray-600 mb-1">Contenido / Especificación</label>
-        <textarea rows="1" placeholder="Descripción detallada o valor..."
-          class="cf-value w-full px-3 py-1.5 border border-gray-300 rounded text-xs bg-white outline-none">${esc(cf.valor)}</textarea>
-      </div>
-      <button type="button" class="btn-remove-cf text-red-500 hover:text-red-700 p-1.5 mt-5 rounded hover:bg-red-50 transition-colors" data-idx="${idx}" title="Eliminar campo">
-        ✕
+  container.innerHTML = _modalCustomFields.map((f, idx) => `
+    <div class="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+      <input type="text" class="input text-xs w-1/3 modal-cf-title" data-idx="${idx}" placeholder="Nombre del campo (ej: Versión, RAM...)" value="${esc(f.titulo)}">
+      <input type="text" class="input text-xs flex-1 modal-cf-value" data-idx="${idx}" placeholder="Valor o especificación..." value="${esc(f.valor)}">
+      <button type="button" class="btn-danger p-1 text-gray-400 hover:text-rose-600 modal-cf-del" data-idx="${idx}" title="Eliminar campo">
+        ${icon('delete', 16)}
       </button>
     </div>
   `).join('');
 
-  container.querySelectorAll('.btn-remove-cf').forEach(b => {
-    b.addEventListener('click', () => {
-      const idx = Number(b.dataset.idx);
-      _modalCustomFields.splice(idx, 1);
-      renderModalCustomFieldsList();
+  container.querySelectorAll('.modal-cf-title').forEach(inp => {
+    inp.addEventListener('input', e => {
+      _modalCustomFields[e.target.dataset.idx].titulo = e.target.value;
     });
   });
-}
 
-function toolsToString(tools) {
-  if (!Array.isArray(tools)) return '';
-  return tools.map(t => (typeof t === 'string' ? t : (t.name || ''))).filter(Boolean).join(', ');
-}
+  container.querySelectorAll('.modal-cf-value').forEach(inp => {
+    inp.addEventListener('input', e => {
+      _modalCustomFields[e.target.dataset.idx].valor = e.target.value;
+    });
+  });
 
-async function deletePlan(id) {
-  const item = _items.find(x => x.id === id);
-  if (!confirm(`¿Estás seguro de eliminar el plan "${item ? item.plan_nombre : 'seleccionado'}"? Esta acción no se puede deshacer.`)) return;
-  try {
-    await api.delete(`/tech-plan-info/${id}`);
-    toast('success', 'Plan Eliminado', 'La ficha técnica fue eliminada del sistema.');
-    load();
-  } catch(err) {
-    toast('error', 'Error al eliminar', err.message);
-  }
-}
-
-async function clonePlan(id) {
-  const item = _items.find(x => x.id === id);
-  if (!item) return;
-
-  const clonePayload = {
-    ...item,
-    plan_nombre: `${item.plan_nombre} (Copia)`,
-    id: undefined
-  };
-
-  try {
-    await api.post('/tech-plan-info', clonePayload);
-    toast('success', 'Plan Duplicado', `Se creó una copia de "${item.plan_nombre}".`);
-    load();
-  } catch(err) {
-    toast('error', 'Error al duplicar', err.message);
-  }
-}
-
-function copyPlanToClipboard(id) {
-  const it = _items.find(x => x.id === id);
-  if (!it) return;
-
-  const toolsStr = toolsToString(it.herramientas);
-  const text = `
-📌 FICHA TÉCNICA: ${it.producto_nombre} - ${it.plan_nombre}
-💰 Precio / Inversión: ${it.precio || 'Consultar'}
-🏷️ Categoría: ${it.categoria || 'Web'}
-💻 Stack: ${toolsStr || 'Estándar'}
-
-📝 DESCRIPCIÓN:
-${it.descripcion || '—'}
-
-⚡ LÍMITES TÉCNICOS & CAPACIDAD:
-- Límites Técnicos: ${it.limites_tecnicos || '—'}
-- Cuota Mensual: ${it.cuota_mensual || '—'}
-- Límites de Archivos: ${it.limites_archivos || '—'}
-- Límites de API: ${it.limites_api || '—'}
-- Cuentas y Usuarios: ${it.cuentas_usuarios || '—'}
-
-🔒 SEGURIDAD & INFRAESTRUCTURA:
-- Seguridad y Control de Acceso: ${it.seguridad_control_acceso || '—'}
-- Entrega y Dominio: ${it.entrega_dominio || '—'}
-- Respaldo y Almacenamiento: ${it.respaldo_almacenamiento || '—'}
-
-🤖 MULTIMEDIA & SOPORTE:
-- Complementos IA: ${it.complementos_ia || '—'}
-- Video: ${it.video || '—'}
-- Soporte: ${it.soporte || '—'}
-
-📈 ESCALABILIDAD & POLÍTICAS:
-- Agregados: ${it.agregados || '—'}
-- Qué No Incluye: ${it.que_no_incluye || '—'}
-- Ejemplo de Consumo Mensual: ${it.ejemplo_consumo_mensual || '—'}
-- ¿Qué pasa si te pasas del límite?: ${it.pasa_si_te_pasas_del_limite || '—'}
-- ¿Cuándo subir de plan?: ${it.cuando_subir || '—'}
-- Lo que el plan no resuelve: ${it.plan_no_resuelve || '—'}
-${(it.campos_extra || []).map(f => `• ${f.titulo}: ${f.valor}`).join('\n')}
-
-🏢 Qubira Tech Solutions · Ficha Técnica
-`.trim();
-
-  navigator.clipboard.writeText(text).then(() => {
-    toast('success', 'Ficha Copiada', 'La información técnica fue copiada al portapapeles.');
-  }).catch(() => {
-    toast('info', 'Texto generado', 'No se pudo copiar automáticamente.');
+  container.querySelectorAll('.modal-cf-del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = Number(btn.dataset.idx);
+      _modalCustomFields.splice(idx, 1);
+      renderModalCustomFields();
+    });
   });
 }
