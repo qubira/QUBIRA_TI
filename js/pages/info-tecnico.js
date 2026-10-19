@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { toast, showModal, closeModal, spinner, icon } from '../utils.js';
+import { openTechCostModal } from './costo-herramientas.js';
 
 let _items = []; // Fichas técnicas registradas (ti.tech_plan_info)
 let _catalog = { language: [], tool: [] }; // Catálogo completo (ti.technology_catalog)
@@ -7,6 +8,7 @@ let _allTechs = []; // Array unificado de tecnologías
 let _selectedCategory = 'all'; // 'all' | 'tool' | 'language'
 let _selectedTechName = null; // Nombre de tecnología seleccionada actualmente
 let _selectedPlanId = null; // ID del plan seleccionado actualmente
+let _selectedPlanName = null; // Nombre del plan seleccionado actualmente
 let _searchQuery = '';
 let _currentTabInModal = 'basic';
 let _modalCustomFields = [];
@@ -27,6 +29,231 @@ function thumbUrl(url, size = 64) {
     return url.replace('/image/upload/', `/image/upload/w_${size},h_${size},c_fit,f_auto,q_auto/`);
   }
   return url;
+}
+
+const CURRENCY_SYMBOLS = {
+  PEN: 'S/',
+  USD: '$',
+  EUR: '€',
+};
+
+function getCurSym(moneda) {
+  return CURRENCY_SYMBOLS[moneda] || (moneda === 'USD' ? '$' : 'S/');
+}
+
+/**
+ * Calcula la etiqueta de propuesta comercial oficial (idéntica a la Imagen 2 - costo-herramientas.js).
+ */
+function propuestaLabel(p) {
+  if (!p) return 'Indefinido';
+  const hasCost = p.costo !== null && p.costo !== '' && p.costo !== undefined;
+  const hasMin = p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined;
+  const hasMax = p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined;
+  if (!hasMin && !hasMax && !hasCost) return 'Indefinido';
+
+  const sym = getCurSym(p.moneda);
+  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
+  const min = Number(p.margen_min) || 0;
+  const max = Number(p.margen_max) || 0;
+  const costo = Number(p.costo) || 0;
+
+  // Precio Máximo para debatir precios con clientes
+  const pMax = max > 0 ? max : costo;
+  if (pMax === 0 && min === 0 && costo === 0) return 'Gratis';
+
+  const fMax = Number(pMax).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (min > 0 && min < pMax) {
+    const fMin = Number(min).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${sym} ${fMax}${periodoStr} (Mín: ${sym} ${fMin})`;
+  }
+  return `${sym} ${fMax}${periodoStr}`;
+}
+
+/**
+ * Formatea el precio del plan a partir de sus parámetros de la Imagen 2.
+ * Si min > 0 y max > min: "$ 50.00 - $ 250.00 / mes"
+ * Si min = 0 y max = 0: "$ 0.00 / mes"
+ * Con opción de nota complementaria: "(12 meses)" o "(Aprox según consumo)".
+ */
+function formatPlanPrice(p, customNote = '') {
+  if (!p) return 'A cotizar';
+  const sym = getCurSym(p.moneda);
+  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
+  const min = (p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined) ? Number(p.margen_min) : null;
+  const max = (p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined) ? Number(p.margen_max) : null;
+  const costo = (p.costo !== null && p.costo !== '' && p.costo !== undefined) ? Number(p.costo) : null;
+
+  let priceStr = '';
+  if (min === null && max === null && costo === null) {
+    priceStr = 'A cotizar';
+  } else {
+    const numMin = min || 0;
+    const numMax = max !== null && max !== undefined ? max : (costo || 0);
+
+    if (numMin === 0 && numMax === 0 && (costo === 0 || costo === null)) {
+      priceStr = `${sym} 0.00${periodoStr}`;
+    } else if (numMin > 0 && numMax > numMin) {
+      const fMin = numMin.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      priceStr = `${sym} ${fMin} - ${sym} ${fMax}${periodoStr}`;
+    } else {
+      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      priceStr = `${sym} ${fMax}${periodoStr}`;
+    }
+  }
+
+  if (customNote && customNote.trim()) {
+    priceStr += ` ${customNote.trim()}`;
+  }
+  return priceStr;
+}
+
+/**
+ * Obtiene los planes técnicos de una tecnología.
+ * Regla de negocio: Los planes, sus costos y márgenes oficiales salen directamente de la Imagen 2 (ti.technology_catalog).
+ */
+function getPlansForTech(tech) {
+  if (!tech) return [];
+
+  // 1. Obtener los planes de la tecnología desde el catálogo (Imagen 2)
+  let catalogPlans = [];
+  if (Array.isArray(tech.plans) && tech.plans.length > 0) {
+    catalogPlans = tech.plans
+      .filter(p => p && (p.name !== undefined && p.name !== null && String(p.name).trim() !== ''))
+      .map(p => ({
+        name: String(p.name).trim(),
+        costo: p.costo !== undefined && p.costo !== '' ? p.costo : null,
+        margen_min: p.margen_min !== undefined && p.margen_min !== '' ? p.margen_min : null,
+        margen_max: p.margen_max !== undefined && p.margen_max !== '' ? p.margen_max : null,
+        moneda: p.moneda || tech.moneda || 'PEN',
+        periodo: p.periodo || tech.periodo || 'mes'
+      }));
+  }
+
+  // Si no tiene array de planes pero tiene costo/margen en la fila del catálogo (ej. Lenguajes o herramientas de plan único)
+  if (catalogPlans.length === 0) {
+    catalogPlans = [{
+      name: tech.category === 'language' ? `${tech.name}` : 'Plan Base',
+      costo: tech.costo !== undefined && tech.costo !== '' ? tech.costo : null,
+      margen_min: tech.margen_min !== undefined && tech.margen_min !== '' ? tech.margen_min : null,
+      margen_max: tech.margen_max !== undefined && tech.margen_max !== '' ? tech.margen_max : null,
+      moneda: tech.moneda || 'PEN',
+      periodo: tech.periodo || 'mes'
+    }];
+  }
+
+  // 2. Asociar cada plan con su ficha técnica registrada en _items (ti.tech_plan_info)
+  const mappedPlans = catalogPlans.map((catPlan, idx) => {
+    const pName = (catPlan.name || '').trim();
+    // Buscar si ya existe una ficha técnica registrada con este nombre de plan
+    const info = _items.find(it => {
+      const matchTech = (it.tech_name || it.producto_nombre || '').toLowerCase() === tech.name.toLowerCase() ||
+                        (it.tech_id && tech.id && it.tech_id === tech.id);
+      if (!matchTech) return false;
+      const itPlanName = (it.plan_nombre || '').trim();
+      return itPlanName.toLowerCase() === pName.toLowerCase() || (catalogPlans.length === 1 && !itPlanName);
+    });
+
+    // Extraer nota complementaria en paréntesis de info.precio si existe (ej. "(12 meses)", "(Aprox según consumo)")
+    let note = '';
+    if (info?.precio) {
+      const noteMatch = info.precio.match(/\((?:Aprox|12 meses|aprox|según|Licencia|Open Source|Base|usuario)[^)]*\)/i) || 
+                        info.precio.match(/\([^)]+\)$/);
+      if (noteMatch) note = noteMatch[0];
+    }
+
+    const calculatedPrice = formatPlanPrice(catPlan, note);
+    const propuestaOficial = propuestaLabel(catPlan);
+
+    return {
+      id: info?.id || `cat-${tech.id || tech.name}-${idx}`,
+      isVirtual: !info,
+      plan_index: idx,
+      tech_id: tech.id || info?.tech_id,
+      tech_name: tech.name,
+      category: tech.category,
+      plan_nombre: pName || `Plan ${idx + 1}`,
+      // El precio y costo oficial sale directamente de la Imagen 2
+      precio: calculatedPrice,
+      precio_personalizado: info?.precio || '',
+      propuesta_oficial: propuestaOficial,
+      nota_precio: note,
+      costo: catPlan.costo,
+      margen_min: catPlan.margen_min,
+      margen_max: catPlan.margen_max,
+      moneda: catPlan.moneda || tech.moneda || 'PEN',
+      periodo: catPlan.periodo || tech.periodo || 'mes',
+      // Ficha técnica (19 campos oficiales)
+      descripcion: info?.descripcion || '',
+      limites_tecnicos: info?.limites_tecnicos || '',
+      cuota_mensual: info?.cuota_mensual || '',
+      limites_archivos: info?.limites_archivos || '',
+      limites_api: info?.limites_api || '',
+      cuentas_usuarios: info?.cuentas_usuarios || '',
+      seguridad_control_acceso: info?.seguridad_control_acceso || '',
+      entrega_dominio: info?.entrega_dominio || '',
+      respaldo_almacenamiento: info?.respaldo_almacenamiento || '',
+      complementos_ia: info?.complementos_ia || '',
+      video: info?.video || '',
+      soporte: info?.soporte || '',
+      agregados: info?.agregados || '',
+      que_no_incluye: info?.que_no_incluye || '',
+      ejemplo_consumo_mensual: info?.ejemplo_consumo_mensual || '',
+      pasa_si_te_pasas_del_limite: info?.pasa_si_te_pasas_del_limite || '',
+      cuando_subir: info?.cuando_subir || '',
+      plan_no_resuelve: info?.plan_no_resuelve || '',
+      campos_extra: info?.campos_extra || []
+    };
+  });
+
+  // Agregar cualquier plan que esté en _items pero no en tech.plans
+  _items.forEach((it, extraIdx) => {
+    const matchTech = (it.tech_name || it.producto_nombre || '').toLowerCase() === tech.name.toLowerCase() ||
+                      (it.tech_id && tech.id && it.tech_id === tech.id);
+    if (!matchTech) return;
+    const itName = (it.plan_nombre || '').trim();
+    const alreadyMapped = mappedPlans.some(mp => mp.plan_nombre.toLowerCase() === itName.toLowerCase());
+    if (!alreadyMapped) {
+      mappedPlans.push({
+        id: it.id,
+        isVirtual: false,
+        plan_index: catalogPlans.length + extraIdx,
+        tech_id: tech.id || it.tech_id,
+        tech_name: tech.name,
+        category: tech.category,
+        plan_nombre: itName || 'Plan Especial',
+        precio: it.precio || 'A cotizar',
+        precio_personalizado: it.precio || '',
+        propuesta_oficial: it.precio || '',
+        costo: null,
+        margen_min: null,
+        margen_max: null,
+        moneda: tech.moneda || 'PEN',
+        periodo: tech.periodo || 'mes',
+        descripcion: it.descripcion || '',
+        limites_tecnicos: it.limites_tecnicos || '',
+        cuota_mensual: it.cuota_mensual || '',
+        limites_archivos: it.limites_archivos || '',
+        limites_api: it.limites_api || '',
+        cuentas_usuarios: it.cuentas_usuarios || '',
+        seguridad_control_acceso: it.seguridad_control_acceso || '',
+        entrega_dominio: it.entrega_dominio || '',
+        respaldo_almacenamiento: it.respaldo_almacenamiento || '',
+        complementos_ia: it.complementos_ia || '',
+        video: it.video || '',
+        soporte: it.soporte || '',
+        agregados: it.agregados || '',
+        que_no_incluye: it.que_no_incluye || '',
+        ejemplo_consumo_mensual: it.ejemplo_consumo_mensual || '',
+        pasa_si_te_pasas_del_limite: it.pasa_si_te_pasas_del_limite || '',
+        cuando_subir: it.cuando_subir || '',
+        plan_no_resuelve: it.plan_no_resuelve || '',
+        campos_extra: it.campos_extra || []
+      });
+    }
+  });
+
+  return mappedPlans;
 }
 
 export function render() {
@@ -50,7 +277,7 @@ async function load() {
       tool: Array.isArray(tools) ? tools : []
     };
 
-    // Unificar catálogo completo con información de logo y categoría
+    // Unificar catálogo completo con información de logo, categoría, planes y costos de la Imagen 2
     const techMap = new Map();
     [..._catalog.language, ..._catalog.tool].forEach(t => {
       techMap.set((t.name || '').toLowerCase(), {
@@ -58,6 +285,11 @@ async function load() {
         name: t.name,
         category: t.category,
         image_url: t.image_url || '',
+        costo: t.costo,
+        margen_min: t.margen_min,
+        margen_max: t.margen_max,
+        moneda: t.moneda || 'PEN',
+        periodo: t.periodo || 'mes',
         plans: Array.isArray(t.plans) ? t.plans : []
       });
     });
@@ -71,7 +303,12 @@ async function load() {
           name: it.tech_name || it.producto_nombre,
           category: it.category || 'tool',
           image_url: it.image_url || '',
-          plans: []
+          costo: null,
+          margen_min: null,
+          margen_max: null,
+          moneda: 'PEN',
+          periodo: 'mes',
+          plans: [{ name: it.plan_nombre || 'Plan Base', costo: null, margen_min: null, margen_max: null, moneda: 'PEN', periodo: 'mes' }]
         });
       }
     });
@@ -91,7 +328,7 @@ async function load() {
 
     // Por defecto seleccionar la primera tecnología con planes o la primera del catálogo
     if (!_selectedTechName && _allTechs.length > 0) {
-      const firstWithPlans = _allTechs.find(t => _items.some(it => (it.tech_name || '').toLowerCase() === t.name.toLowerCase()));
+      const firstWithPlans = _allTechs.find(t => getPlansForTech(t).length > 0);
       _selectedTechName = firstWithPlans ? firstWithPlans.name : _allTechs[0].name;
     }
 
@@ -130,12 +367,15 @@ function renderPageSkeleton() {
             </span>
           </div>
           <p class="text-xs text-gray-500 mt-1">
-            Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan.
+            Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan (sincronizado con la Matriz de Costos OPP).
           </p>
         </div>
 
-        <div class="flex items-center gap-3">
-          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm text-xs py-2 px-3.5">
+        <div class="flex items-center gap-2.5">
+          <button type="button" id="btn-open-image-2-top" class="btn-secondary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3">
+            💰 Matriz de Costos OPP (Imagen 2)
+          </button>
+          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3.5">
             ${icon('add', 18)} Nuevo Plan Técnico
           </button>
         </div>
@@ -255,6 +495,12 @@ function renderPageSkeleton() {
   document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
     openPlanModal(null, _selectedTechName || '');
   });
+
+  document.getElementById('btn-open-image-2-top')?.addEventListener('click', () => {
+    openTechCostModal(() => {
+      load();
+    });
+  });
 }
 
 /**
@@ -272,12 +518,12 @@ function updateView() {
     if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
     if (q) {
       const inName = t.name.toLowerCase().includes(q);
-      const inPlans = _items.some(it => 
-        (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase() &&
-        ((it.plan_nombre || '').toLowerCase().includes(q) ||
-         (it.descripcion || '').toLowerCase().includes(q) ||
-         (it.limites_tecnicos || '').toLowerCase().includes(q) ||
-         (it.precio || '').toLowerCase().includes(q))
+      const plans = getPlansForTech(t);
+      const inPlans = plans.some(p => 
+        p.plan_nombre.toLowerCase().includes(q) ||
+        p.descripcion.toLowerCase().includes(q) ||
+        p.limites_tecnicos.toLowerCase().includes(q) ||
+        p.precio.toLowerCase().includes(q)
       );
       if (!inName && !inPlans) return false;
     }
@@ -306,7 +552,8 @@ function updateView() {
   } else {
     listContainer.innerHTML = filteredTechs.map(t => {
       const isSelected = currentTech && currentTech.name.toLowerCase() === t.name.toLowerCase();
-      const planCount = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === t.name.toLowerCase()).length;
+      const techPlans = getPlansForTech(t);
+      const planCount = techPlans.length;
       const avatar = t.image_url
         ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-1 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(t.image_url, 64))}" class="max-w-full max-h-full object-contain" alt=""></div>`
         : `<span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0 shadow-sm">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
@@ -327,7 +574,7 @@ function updateView() {
             </div>
             <div class="flex items-center gap-2 mt-0.5">
               <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
-                ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} técnico${planCount === 1 ? '' : 's'}` : 'Sin ficha técnica'}
+                ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} (Imagen 2)` : 'Sin planes'}
               </span>
             </div>
           </div>
@@ -340,6 +587,7 @@ function updateView() {
       row.addEventListener('click', () => {
         _selectedTechName = row.dataset.techName;
         _selectedPlanId = null;
+        _selectedPlanName = null;
         updateView();
       });
     });
@@ -356,13 +604,15 @@ function updateView() {
     return;
   }
 
-  const techPlans = _items.filter(it => (it.tech_name || it.producto_nombre || '').toLowerCase() === currentTech.name.toLowerCase());
+  const techPlans = getPlansForTech(currentTech);
   let activePlan = null;
   if (techPlans.length > 0) {
-    activePlan = techPlans.find(p => p.id === _selectedPlanId) || techPlans[0];
+    activePlan = techPlans.find(p => p.id === _selectedPlanId || (p.plan_nombre && p.plan_nombre === _selectedPlanName)) || techPlans[0];
     _selectedPlanId = activePlan.id;
+    _selectedPlanName = activePlan.plan_nombre;
   } else {
     _selectedPlanId = null;
+    _selectedPlanName = null;
   }
 
   detailMount.innerHTML = renderTechDetail(currentTech, techPlans, activePlan);
@@ -375,7 +625,7 @@ function renderTechDetail(tech, plans, activePlan) {
     : `<span class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-base font-bold text-indigo-700 shrink-0 shadow-sm">${esc((tech.name || '?').charAt(0).toUpperCase())}</span>`;
 
   return `
-    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes -->
+    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes (Imagen 2) -->
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
         <div class="flex items-center gap-3">
@@ -394,16 +644,19 @@ function renderTechDetail(tech, plans, activePlan) {
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <button type="button" id="btn-add-plan-for-tech" class="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
+          <button type="button" id="btn-open-image-2-detail" class="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-2xs">
+            💰 Matriz de Costos OPP
+          </button>
+          <button type="button" id="btn-add-plan-for-tech" class="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-2xs" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
             ${icon('add', 14)} Agregar Plan
           </button>
         </div>
       </div>
 
-      <!-- Selector de Planes (Tabs horizontales) -->
+      <!-- Selector de Planes (Tabs horizontales - Salen directamente de la Imagen 2) -->
       <div class="pt-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">Planes Técnicos Registrados:</span>
+          <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">PLANES TÉCNICOS REGISTRADOS:</span>
         </div>
 
         ${plans.length === 0 ? `
@@ -416,15 +669,15 @@ function renderTechDetail(tech, plans, activePlan) {
         ` : `
           <div class="flex items-center gap-2 overflow-x-auto pb-1">
             ${plans.map(p => {
-              const isActive = activePlan && activePlan.id === p.id;
+              const isActive = activePlan && (activePlan.id === p.id || activePlan.plan_nombre === p.plan_nombre);
               return `
                 <button type="button" class="plan-tab-btn px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-2 shrink-0 ${
                   isActive 
                     ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }" data-plan-id="${esc(p.id)}">
+                }" data-plan-id="${esc(p.id)}" data-plan-name="${esc(p.plan_nombre)}">
                   <span>${esc(p.plan_nombre)}</span>
-                  ${p.precio ? `<span class="text-[10px] opacity-80 font-normal">(${esc(p.precio)})</span>` : ''}
+                  ${p.precio ? `<span class="text-[10px] opacity-90 font-normal">(${esc(p.precio)})</span>` : ''}
                 </button>
               `;
             }).join('')}
@@ -446,7 +699,7 @@ function renderActivePlanCard(plan, tech) {
       
       <!-- Barra de Acciones del Plan -->
       <div class="bg-gradient-to-r from-gray-50 to-white px-5 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="text-xs font-bold text-gray-500 uppercase">Ficha del Plan:</span>
           <span class="text-sm font-bold text-gray-900">${esc(plan.plan_nombre)}</span>
           ${plan.precio ? `
@@ -461,13 +714,58 @@ function renderActivePlanCard(plan, tech) {
             ${icon('content_copy', 14)} Copiar Ficha
           </button>
           <button type="button" class="btn-primary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-edit-plan" data-plan-id="${esc(plan.id)}">
-            ${icon('edit', 14)} Editar
+            ${icon('edit', 14)} Editar Plan & Costos
           </button>
-          <button type="button" class="btn-danger text-xs px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-1 btn-delete-plan" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}">
+          <button type="button" class="btn-danger text-xs px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-1 btn-delete-plan" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}">
             ${icon('delete', 14)}
           </button>
         </div>
       </div>
+
+      <!-- Barra Informativa de Sincronización con Imagen 2 (Matriz de Costos OPP) -->
+      <div class="bg-indigo-50/50 border-b border-indigo-100 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-4 flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <span class="text-indigo-600 font-bold">🔗 Sincronizado de Imagen 2:</span>
+          </div>
+          <div>
+            <span class="text-gray-500">Costo Base:</span>
+            <strong class="text-gray-800">${plan.costo !== null && plan.costo !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.costo).toFixed(2)}` : '0.00'}</strong>
+          </div>
+          <div>
+            <span class="text-gray-500">Margen Mín:</span>
+            <strong class="text-gray-800">${plan.margen_min !== null && plan.margen_min !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.margen_min).toFixed(2)}` : '0.00'}</strong>
+          </div>
+          <div>
+            <span class="text-gray-500">Margen Máx:</span>
+            <strong class="text-gray-800">${plan.margen_max !== null && plan.margen_max !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.margen_max).toFixed(2)}` : '0.00'}</strong>
+          </div>
+          <div>
+            <span class="text-gray-500">Periodo:</span>
+            <strong class="text-gray-800">${plan.periodo === 'año' ? 'Por año' : 'Por mes'}</strong>
+          </div>
+        </div>
+
+        <button type="button" class="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1 shrink-0 btn-open-image-2-inline">
+          ✏️ Modificar en Matriz de Costos OPP
+        </button>
+      </div>
+
+      <!-- Si el plan es virtual (está en Imagen 2 pero sin límites aún en tech_plan_info) -->
+      ${plan.isVirtual ? `
+        <div class="m-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">ℹ️</span>
+            <div>
+              <strong>Plan importado de la Matriz de Costos (Imagen 2)</strong>
+              <p class="text-amber-800 mt-0.5">Este plan ya tiene precio oficial. Haz clic en "Editar Plan & Costos" para completar su ficha de límites técnicos, cuotas y políticas.</p>
+            </div>
+          </div>
+          <button type="button" class="btn-primary text-xs py-1 px-3 shrink-0 btn-edit-plan" data-plan-id="${esc(plan.id)}">
+            + Completar Ficha Técnica
+          </button>
+        </div>
+      ` : ''}
 
       <!-- Contenido de los 19 Campos Técnicos -->
       <div class="p-6 space-y-6">
@@ -626,6 +924,7 @@ function wireDetailEvents(tech, activePlan) {
   document.querySelectorAll('.plan-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _selectedPlanId = btn.dataset.planId;
+      _selectedPlanName = btn.dataset.planName;
       updateView();
     });
   });
@@ -643,22 +942,33 @@ function wireDetailEvents(tech, activePlan) {
   // Acciones en la ficha activa
   document.querySelectorAll('.btn-edit-plan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const plan = _items.find(p => p.id === btn.dataset.planId);
-      if (plan) openPlanModal(plan);
+      const planId = btn.dataset.planId;
+      const plans = getPlansForTech(tech);
+      const plan = plans.find(p => p.id === planId) || activePlan;
+      if (plan) openPlanModal(plan, tech.name, tech.category, tech.id);
     });
   });
 
   document.querySelectorAll('.btn-delete-plan').forEach(btn => {
     btn.addEventListener('click', () => {
-      deletePlan(btn.dataset.planId, btn.dataset.planName);
+      deletePlan(btn.dataset.planId, btn.dataset.planName, btn.dataset.techName);
     });
   });
 
   document.querySelectorAll('.btn-copy-plan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const plan = _items.find(p => p.id === btn.dataset.planId);
+      const planId = btn.dataset.planId;
+      const plans = getPlansForTech(tech);
+      const plan = plans.find(p => p.id === planId) || activePlan;
       if (plan) copyPlanToClipboard(plan);
     });
+  });
+
+  // Botones para abrir Imagen 2
+  const openImage2 = () => openTechCostModal(() => load());
+  document.getElementById('btn-open-image-2-detail')?.addEventListener('click', openImage2);
+  document.querySelectorAll('.btn-open-image-2-inline').forEach(btn => {
+    btn.addEventListener('click', openImage2);
   });
 }
 
@@ -697,15 +1007,32 @@ Qubira Tech Hub
   });
 }
 
-async function deletePlan(id, planNombre) {
-  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}"? Esta acción no se puede deshacer.`)) {
+async function deletePlan(id, planNombre, techName) {
+  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}" de "${techName}"? Esta acción se actualizará en la Matriz de Costos (Imagen 2) y en la Ficha Técnica.`)) {
     return;
   }
   try {
-    await api.delete(`/tech-plan-info/${id}`);
+    const matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
+    if (matchedTech && Array.isArray(matchedTech.plans)) {
+      matchedTech.plans = matchedTech.plans.filter(p => (p.name || '').trim().toLowerCase() !== planNombre.trim().toLowerCase());
+      await api.put(`/technology-catalog/${matchedTech.id}/cost`, {
+        costo: matchedTech.plans[0]?.costo ?? null,
+        margen_min: matchedTech.plans[0]?.margen_min ?? null,
+        margen_max: matchedTech.plans[0]?.margen_max ?? null,
+        moneda: matchedTech.plans[0]?.moneda ?? 'PEN',
+        periodo: matchedTech.plans[0]?.periodo ?? 'mes',
+        plans: matchedTech.plans
+      });
+    }
+
+    if (id && !String(id).startsWith('cat-')) {
+      await api.delete(`/tech-plan-info/${id}`);
+      _items = _items.filter(it => it.id !== id);
+    }
+
     toast('Plan técnico eliminado correctamente', 'success');
-    _items = _items.filter(it => it.id !== id);
     _selectedPlanId = null;
+    _selectedPlanName = null;
     updateView();
   } catch(e) {
     toast('Error al eliminar: ' + (e.message || 'Error de servidor'), 'error');
@@ -713,7 +1040,7 @@ async function deletePlan(id, planNombre) {
 }
 
 /* ============================================================
-   MODAL DE CREACIÓN / EDICIÓN (5 Pestañas + Gestor Dinámico)
+   MODAL DE CREACIÓN / EDICIÓN (Sincronizado con Imagen 2)
    ============================================================ */
 function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'tool', defaultTechId = '') {
   const isEdit = !!plan;
@@ -726,13 +1053,21 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
   const initialCategory = plan ? (plan.category || 'tool') : defaultCategory;
   const initialTechId = plan ? (plan.tech_id || '') : defaultTechId;
 
+  // Parámetros de costo provenientes de Imagen 2
+  const initialMoneda = plan?.moneda || 'PEN';
+  const initialCosto = plan?.costo !== null && plan?.costo !== undefined ? plan.costo : '';
+  const initialMin = plan?.margen_min !== null && plan?.margen_min !== undefined ? plan.margen_min : '';
+  const initialMax = plan?.margen_max !== null && plan?.margen_max !== undefined ? plan.margen_max : '';
+  const initialPeriodo = plan?.periodo || 'mes';
+  const initialNota = plan?.nota_precio || '';
+
   showModal(isEdit ? `Editar Ficha Técnica — ${plan.plan_nombre}` : 'Nuevo Plan Técnico', `
     <form id="tech-plan-form" class="space-y-4">
       
       <!-- Selector de Pestañas del Modal -->
       <div class="flex items-center gap-1 border-b border-gray-200 pb-2 overflow-x-auto text-xs font-bold">
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
-          1. General
+          1. General & Costos (Imagen 2)
         </button>
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
           2. Límites & Cuotas
@@ -748,7 +1083,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         </button>
       </div>
 
-      <!-- PESTAÑA 1: BÁSICO & PRECIOS -->
+      <!-- PESTAÑA 1: BÁSICO & COSTOS DE IMAGEN 2 -->
       <div id="tab-pane-basic" class="modal-tab-pane space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -767,14 +1102,57 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Nombre del Plan *</label>
-            <input type="text" id="mp-plan-nombre" required value="${esc(plan?.plan_nombre || '')}" placeholder="Ej: Free Tier, Launch Plan, Team, Pro..." class="input text-xs w-full">
+        <div>
+          <label class="block text-xs font-bold text-gray-700 mb-1">Nombre del Plan *</label>
+          <input type="text" id="mp-plan-nombre" required value="${esc(plan?.plan_nombre || '')}" placeholder="Ej: Free Tier, Launch Plan, Team, Pro, Producción..." class="input text-xs w-full">
+        </div>
+
+        <!-- Parámetros Oficiales de Costo (Sincronizado con Imagen 2) -->
+        <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+              💰 Costos y Márgenes (Sincronizado con Imagen 2)
+            </span>
+            <span id="mp-live-propuesta" class="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+              ${esc(plan ? plan.precio : 'S/ 0.00 / mes')}
+            </span>
           </div>
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Precio Referencial</label>
-            <input type="text" id="mp-precio" value="${esc(plan?.precio || '')}" placeholder="Ej: $ 19.00 / mes o S/ 70.00 / mes" class="input text-xs w-full">
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Moneda</label>
+              <select id="mp-moneda" class="input text-xs w-full">
+                <option value="PEN" ${initialMoneda === 'PEN' ? 'selected' : ''}>S/ (PEN)</option>
+                <option value="USD" ${initialMoneda === 'USD' ? 'selected' : ''}>$ (USD)</option>
+                <option value="EUR" ${initialMoneda === 'EUR' ? 'selected' : ''}>€ (EUR)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Costo Base</label>
+              <input type="number" step="0.01" min="0" id="mp-costo" value="${initialCosto}" placeholder="0.00" class="input text-xs w-full">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Margen Mínimo</label>
+              <input type="number" step="0.01" min="0" id="mp-margen-min" value="${initialMin}" placeholder="0.00" class="input text-xs w-full">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Margen Máximo</label>
+              <input type="number" step="0.01" min="0" id="mp-margen-max" value="${initialMax}" placeholder="0.00" class="input text-xs w-full">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Periodo de Facturación</label>
+              <select id="mp-periodo" class="input text-xs w-full">
+                <option value="mes" ${initialPeriodo === 'mes' ? 'selected' : ''}>Por mes</option>
+                <option value="año" ${initialPeriodo === 'año' ? 'selected' : ''}>Por año</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Detalle o Condición (Opcional)</label>
+              <input type="text" id="mp-nota" value="${esc(initialNota)}" placeholder="Ej: (12 meses) o (Aprox según consumo)" class="input text-xs w-full">
+            </div>
           </div>
         </div>
 
@@ -896,7 +1274,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       <!-- Footer Modal -->
       <div class="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
         <button type="button" id="btn-modal-cancel" class="btn-secondary text-xs">Cancelar</button>
-        <button type="submit" id="btn-modal-save" class="btn-primary text-xs flex items-center gap-1.5">
+        <button type="submit" id="btn-modal-save" class="btn-primary text-xs flex items-center gap-1.5 shadow-sm">
           ${icon('save', 14)} ${isEdit ? 'Guardar Cambios' : 'Crear Plan'}
         </button>
       </div>
@@ -905,6 +1283,36 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
 
   wireModalTabs();
   renderModalCustomFields();
+
+  // Función para recalcular en vivo el badge de propuesta en el modal
+  function updateLivePropuesta() {
+    const liveBadge = document.getElementById('mp-live-propuesta');
+    if (!liveBadge) return;
+    const mon = document.getElementById('mp-moneda')?.value || 'PEN';
+    const cVal = document.getElementById('mp-costo')?.value;
+    const minVal = document.getElementById('mp-margen-min')?.value;
+    const maxVal = document.getElementById('mp-margen-max')?.value;
+    const perVal = document.getElementById('mp-periodo')?.value || 'mes';
+    const notVal = document.getElementById('mp-nota')?.value || '';
+
+    const price = formatPlanPrice({
+      moneda: mon,
+      costo: cVal !== '' ? cVal : null,
+      margen_min: minVal !== '' ? minVal : null,
+      margen_max: maxVal !== '' ? maxVal : null,
+      periodo: perVal
+    }, notVal);
+
+    liveBadge.textContent = price;
+  }
+
+  ['mp-moneda', 'mp-costo', 'mp-margen-min', 'mp-margen-max', 'mp-periodo', 'mp-nota'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateLivePropuesta);
+      el.addEventListener('change', updateLivePropuesta);
+    }
+  });
 
   // Autocompletar categoría si el usuario escribe o selecciona una tecnología conocida
   document.getElementById('mp-tech-name')?.addEventListener('change', (e) => {
@@ -927,50 +1335,107 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
     const planNombre = document.getElementById('mp-plan-nombre').value.trim();
     const category = document.getElementById('mp-category').value;
 
-    const matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
+    const moneda = document.getElementById('mp-moneda').value;
+    const costoVal = document.getElementById('mp-costo').value;
+    const minVal = document.getElementById('mp-margen-min').value;
+    const maxVal = document.getElementById('mp-margen-max').value;
+    const periodo = document.getElementById('mp-periodo').value;
+    const nota = document.getElementById('mp-nota').value.trim();
 
-    const payload = {
-      tech_id: matchedTech ? matchedTech.id : (initialTechId || null),
-      tech_name: techName,
-      producto_nombre: techName,
-      category: category,
-      plan_nombre: planNombre,
-      precio: document.getElementById('mp-precio').value.trim(),
-      descripcion: document.getElementById('mp-descripcion').value.trim(),
-      agregados: document.getElementById('mp-agregados').value.trim(),
-      limites_tecnicos: document.getElementById('mp-limites-tecnicos').value.trim(),
-      cuota_mensual: document.getElementById('mp-cuota-mensual').value.trim(),
-      ejemplo_consumo_mensual: document.getElementById('mp-ejemplo-consumo').value.trim(),
-      limites_archivos: document.getElementById('mp-limites-archivos').value.trim(),
-      limites_api: document.getElementById('mp-limites-api').value.trim(),
-      pasa_si_te_pasas_del_limite: document.getElementById('mp-pasa-si-te-pasas').value.trim(),
-      cuando_subir: document.getElementById('mp-cuando-subir').value.trim(),
-      que_no_incluye: document.getElementById('mp-que-no-incluye').value.trim(),
-      plan_no_resuelve: document.getElementById('mp-plan-no-resuelve').value.trim(),
-      cuentas_usuarios: document.getElementById('mp-cuentas-usuarios').value.trim(),
-      seguridad_control_acceso: document.getElementById('mp-seguridad').value.trim(),
-      entrega_dominio: document.getElementById('mp-entrega-dominio').value.trim(),
-      respaldo_almacenamiento: document.getElementById('mp-respaldo').value.trim(),
-      complementos_ia: document.getElementById('mp-complementos-ia').value.trim(),
-      video: document.getElementById('mp-video').value.trim(),
-      soporte: document.getElementById('mp-soporte').value.trim(),
-      campos_extra: _modalCustomFields.filter(f => f.titulo && f.titulo.trim())
+    const costo = costoVal !== '' ? Number(costoVal) : null;
+    const margen_min = minVal !== '' ? Number(minVal) : null;
+    const margen_max = maxVal !== '' ? Number(maxVal) : null;
+
+    const calculatedPrice = formatPlanPrice({ moneda, costo, margen_min, margen_max, periodo }, nota);
+
+    let matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
+
+    const planDataForCatalog = {
+      name: planNombre,
+      costo: costo,
+      margen_min: margen_min,
+      margen_max: margen_max,
+      moneda: moneda,
+      periodo: periodo
     };
 
     try {
-      if (isEdit) {
+      // 1. Sincronizar con la Imagen 2 (ti.technology_catalog)
+      if (matchedTech && matchedTech.id) {
+        let currentPlans = Array.isArray(matchedTech.plans) ? [...matchedTech.plans] : [];
+        if (isEdit && plan?.plan_nombre) {
+          const pIdx = currentPlans.findIndex(p => (p.name || '').trim().toLowerCase() === plan.plan_nombre.trim().toLowerCase());
+          if (pIdx !== -1) {
+            currentPlans[pIdx] = planDataForCatalog;
+          } else {
+            currentPlans.push(planDataForCatalog);
+          }
+        } else {
+          // Si es nuevo plan, buscar si ya existe con el mismo nombre o agregarlo
+          const pIdx = currentPlans.findIndex(p => (p.name || '').trim().toLowerCase() === planNombre.toLowerCase());
+          if (pIdx !== -1) {
+            currentPlans[pIdx] = planDataForCatalog;
+          } else {
+            currentPlans.push(planDataForCatalog);
+          }
+        }
+
+        matchedTech.plans = currentPlans;
+
+        await api.put(`/technology-catalog/${matchedTech.id}/cost`, {
+          costo: currentPlans[0]?.costo ?? null,
+          margen_min: currentPlans[0]?.margen_min ?? null,
+          margen_max: currentPlans[0]?.margen_max ?? null,
+          moneda: currentPlans[0]?.moneda ?? 'PEN',
+          periodo: currentPlans[0]?.periodo ?? 'mes',
+          plans: currentPlans
+        });
+      }
+
+      // 2. Guardar ficha técnica detallada (ti.tech_plan_info)
+      const payload = {
+        tech_id: matchedTech ? matchedTech.id : (initialTechId || null),
+        tech_name: techName,
+        producto_nombre: techName,
+        category: category,
+        plan_nombre: planNombre,
+        precio: calculatedPrice,
+        descripcion: document.getElementById('mp-descripcion').value.trim(),
+        agregados: document.getElementById('mp-agregados').value.trim(),
+        limites_tecnicos: document.getElementById('mp-limites-tecnicos').value.trim(),
+        cuota_mensual: document.getElementById('mp-cuota-mensual').value.trim(),
+        ejemplo_consumo_mensual: document.getElementById('mp-ejemplo-consumo').value.trim(),
+        limites_archivos: document.getElementById('mp-limites-archivos').value.trim(),
+        limites_api: document.getElementById('mp-limites-api').value.trim(),
+        pasa_si_te_pasas_del_limite: document.getElementById('mp-pasa-si-te-pasas').value.trim(),
+        cuando_subir: document.getElementById('mp-cuando-subir').value.trim(),
+        que_no_incluye: document.getElementById('mp-que-no-incluye').value.trim(),
+        plan_no_resuelve: document.getElementById('mp-plan-no-resuelve').value.trim(),
+        cuentas_usuarios: document.getElementById('mp-cuentas-usuarios').value.trim(),
+        seguridad_control_acceso: document.getElementById('mp-seguridad').value.trim(),
+        entrega_dominio: document.getElementById('mp-entrega-dominio').value.trim(),
+        respaldo_almacenamiento: document.getElementById('mp-respaldo').value.trim(),
+        complementos_ia: document.getElementById('mp-complementos-ia').value.trim(),
+        video: document.getElementById('mp-video').value.trim(),
+        soporte: document.getElementById('mp-soporte').value.trim(),
+        campos_extra: _modalCustomFields.filter(f => f.titulo && f.titulo.trim())
+      };
+
+      if (isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-')) {
         const updated = await api.put(`/tech-plan-info/${plan.id}`, payload);
-        toast('Ficha técnica actualizada con éxito', 'success');
+        toast('Plan y costos actualizados con éxito en Imagen 2', 'success');
         const idx = _items.findIndex(it => it.id === plan.id);
         if (idx !== -1) _items[idx] = updated;
         _selectedPlanId = updated.id;
       } else {
         const created = await api.post('/tech-plan-info', payload);
-        toast('Nuevo plan técnico creado con éxito', 'success');
+        toast('Nuevo plan creado y sincronizado con Imagen 2', 'success');
         _items.push(created);
         _selectedPlanId = created.id;
       }
+
       _selectedTechName = techName;
+      _selectedPlanName = planNombre;
       closeModal();
       updateView();
     } catch(err) {
