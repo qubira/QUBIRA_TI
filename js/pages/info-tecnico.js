@@ -1,6 +1,10 @@
 import { api } from '../api.js';
 import { toast, showModal, closeModal, spinner, icon } from '../utils.js';
-import { openTechCostModal } from './costo-herramientas.js';
+
+// PERMISOS DE COSTOS: OTI (TI) tiene estrictamente PROHIBIDO ver o editar costos/precios.
+// Solo ADG, OPP y ODN tienen acceso a información económica.
+const CAN_VIEW_COSTS = false;
+const CAN_EDIT_COSTS = false;
 
 let _items = []; // Fichas técnicas registradas (ti.tech_plan_info)
 let _catalog = { language: [], tool: [] }; // Catálogo completo (ti.technology_catalog)
@@ -42,218 +46,249 @@ function getCurSym(moneda) {
 }
 
 /**
- * Calcula la etiqueta de propuesta comercial oficial (idéntica a la Matriz de Costos OPP - costo-herramientas.js).
+ * Renderizador de texto enriquecido:
+ * 1. Mantiene el formato copiado (saltos de línea, párrafos, viñetas •, -, * y numeraciones).
+ * 2. Renderiza tablas completas insertadas o copiadas (formato markdown | col | col | o tabulaciones de Excel/Word).
+ * 3. Permite resaltar en rojo palabras u oraciones con [rojo]texto[/rojo], [red]texto[/red], <red>texto</red> o ==texto==.
  */
-function propuestaLabel(p) {
-  if (!p) return 'Indefinido';
-  const hasCost = p.costo !== null && p.costo !== '' && p.costo !== undefined;
-  const hasMin = p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined;
-  const hasMax = p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined;
-  if (!hasMin && !hasMax && !hasCost) return 'Indefinido';
+function renderRichContent(rawStr) {
+  if (!rawStr || !String(rawStr).trim()) return '<span class="text-gray-400 italic">Sin registrar</span>';
+  
+  const text = String(rawStr).trim();
 
-  const sym = getCurSym(p.moneda);
-  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
-  const min = Number(p.margen_min) || 0;
-  const max = Number(p.margen_max) || 0;
-  const costo = Number(p.costo) || 0;
+  // Helper para formatear elementos inline: negrita, código y resaltado en rojo
+  function formatInline(str) {
+    if (!str) return '';
+    let s = esc(str);
 
-  // Precio Máximo para debatir precios con clientes
-  const pMax = max > 0 ? max : costo;
-  if (pMax === 0 && min === 0 && costo === 0) return 'Gratis';
+    // Resaltado en rojo: [rojo]...[/rojo], [red]...[/red], &lt;red&gt;...&lt;/red&gt;, {rojo:...}, ==...==
+    s = s.replace(/\[(?:rojo|red)\]([\s\S]*?)\[\/(?:rojo|red)\]/gi, (match, p1) => {
+      return `<span class="text-rose-600 font-bold bg-rose-50/90 px-1.5 py-0.5 rounded border border-rose-200/80 inline-block">${p1}</span>`;
+    });
+    s = s.replace(/&lt;(?:red|rojo)&gt;([\s\S]*?)&lt;\/(?:red|rojo)&gt;/gi, (match, p1) => {
+      return `<span class="text-rose-600 font-bold bg-rose-50/90 px-1.5 py-0.5 rounded border border-rose-200/80 inline-block">${p1}</span>`;
+    });
+    s = s.replace(/\{(?:rojo|red):([\s\S]*?)\}/gi, (match, p1) => {
+      return `<span class="text-rose-600 font-bold bg-rose-50/90 px-1.5 py-0.5 rounded border border-rose-200/80 inline-block">${p1}</span>`;
+    });
+    s = s.replace(/==([\s\S]*?)==/g, (match, p1) => {
+      return `<span class="text-rose-600 font-bold bg-rose-50/90 px-1.5 py-0.5 rounded border border-rose-200/80 inline-block">${p1}</span>`;
+    });
 
-  const fMax = Number(pMax).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (min > 0 && min < pMax) {
-    const fMin = Number(min).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `${sym} ${fMax}${periodoStr} (Mín: ${sym} ${fMin})`;
+    // Negrita: **texto**
+    s = s.replace(/\*\*([\s\S]*?)\*\*/g, '<strong>$1</strong>');
+
+    // Código en línea: `codigo`
+    s = s.replace(/`([^`]+)`/g, '<code class="bg-gray-100 text-indigo-700 font-mono text-[11px] px-1.5 py-0.5 rounded border border-gray-200">$1</code>');
+
+    return s;
   }
-  return `${sym} ${fMax}${periodoStr}`;
-}
 
-/**
- * Formatea el precio del plan a partir de sus parámetros de la Matriz de Costos OPP.
- * Si min > 0 y max > min: "$ 50.00 - $ 250.00 / mes"
- * Si min = 0 y max = 0: "$ 0.00 / mes"
- * Con opción de nota complementaria: "(12 meses)" o "(Aprox según consumo)".
- */
-function formatPlanPrice(p, customNote = '') {
-  if (!p) return 'A cotizar';
-  const sym = getCurSym(p.moneda);
-  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
-  const min = (p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined) ? Number(p.margen_min) : null;
-  const max = (p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined) ? Number(p.margen_max) : null;
-  const costo = (p.costo !== null && p.costo !== '' && p.costo !== undefined) ? Number(p.costo) : null;
+  const lines = text.split(/\r?\n/);
+  const outputBlocks = [];
+  let inTable = false;
+  let tableRows = [];
+  let inList = false;
+  let listItems = [];
 
-  let priceStr = '';
-  if (min === null && max === null && costo === null) {
-    priceStr = 'A cotizar';
-  } else {
-    const numMin = min || 0;
-    const numMax = max !== null && max !== undefined ? max : (costo || 0);
-
-    if (numMin === 0 && numMax === 0 && (costo === 0 || costo === null)) {
-      priceStr = `${sym} 0.00${periodoStr}`;
-    } else if (numMin > 0 && numMax > numMin) {
-      const fMin = numMin.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      priceStr = `${sym} ${fMin} - ${sym} ${fMax}${periodoStr}`;
-    } else {
-      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      priceStr = `${sym} ${fMax}${periodoStr}`;
+  function flushList() {
+    if (inList && listItems.length > 0) {
+      outputBlocks.push(`
+        <ul class="space-y-1.5 my-2 pl-1">
+          ${listItems.map(item => `
+            <li class="flex items-start gap-2.5 text-xs text-gray-700 leading-relaxed">
+              <span class="text-primary-600 font-bold text-sm shrink-0 select-none leading-4 mt-0.5">•</span>
+              <div class="flex-1">${formatInline(item)}</div>
+            </li>
+          `).join('')}
+        </ul>
+      `);
+      listItems = [];
+      inList = false;
     }
   }
 
-  if (customNote && customNote.trim()) {
-    priceStr += ` ${customNote.trim()}`;
+  function flushTable() {
+    if (inTable && tableRows.length > 0) {
+      // Filtrar filas de separación de markdown tipo |---|---|
+      const cleanRows = tableRows.filter(r => !/^\s*\|?\s*:?-+:?\s*(\|:?-+:?\s*)+\|?\s*$/.test(r));
+      if (cleanRows.length > 0) {
+        const parsedRows = cleanRows.map(r => {
+          let cells = [];
+          if (r.includes('\t')) {
+            cells = r.split('\t').map(c => c.trim());
+          } else {
+            let rowStr = r.trim();
+            if (rowStr.startsWith('|')) rowStr = rowStr.slice(1);
+            if (rowStr.endsWith('|')) rowStr = rowStr.slice(0, -1);
+            cells = rowStr.split('|').map(c => c.trim());
+          }
+          return cells;
+        });
+
+        const headerCells = parsedRows[0] || [];
+        const bodyRows = parsedRows.slice(1);
+
+        outputBlocks.push(`
+          <div class="overflow-x-auto my-3 rounded-xl border border-gray-200 shadow-2xs bg-white">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr class="bg-gray-50/90 border-b border-gray-200 text-gray-800 font-bold">
+                  ${headerCells.map(c => `<th class="px-4 py-2.5 bg-gray-50/90">${formatInline(c)}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                ${bodyRows.map(row => `
+                  <tr class="hover:bg-gray-50/60 transition-colors">
+                    ${row.map((cell, cIdx) => `
+                      <td class="px-4 py-2.5 ${cIdx === 0 ? 'font-semibold text-gray-900 bg-gray-50/30' : 'text-gray-700'}">
+                        ${formatInline(cell)}
+                      </td>
+                    `).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `);
+      }
+      tableRows = [];
+      inTable = false;
+    }
   }
-  return priceStr;
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
+
+    // Detección de filas de tabla: Formato markdown con pipes '|' o delimitadas con tabuladores '\t'
+    const isMarkdownTable = line.startsWith('|') && line.endsWith('|') && line.includes('|');
+    const isTabTable = rawLine.includes('\t') && (rawLine.split('\t').length >= 2);
+
+    if (isMarkdownTable || isTabTable) {
+      flushList();
+      inTable = true;
+      tableRows.push(rawLine);
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+
+    // Detección de listas con viñetas o números
+    const bulletMatch = line.match(/^([•\-\*]|\d+\.)\s+(.+)$/);
+    if (bulletMatch) {
+      inList = true;
+      listItems.push(bulletMatch[2]);
+      continue;
+    } else if (inList) {
+      flushList();
+    }
+
+    // Líneas vacías
+    if (!line) {
+      continue;
+    }
+
+    // Párrafo de texto regular con preservación de saltos
+    outputBlocks.push(`
+      <p class="text-xs text-gray-700 leading-relaxed mb-2.5 last:mb-0">
+        ${formatInline(line)}
+      </p>
+    `);
+  }
+
+  flushList();
+  flushTable();
+
+  return outputBlocks.join('');
 }
 
 /**
- * Obtiene los planes técnicos de una tecnología.
- * Regla de negocio: Los planes, sus costos y márgenes oficiales salen directamente de la Matriz de Costos OPP (ti.technology_catalog).
+ * Barra de herramientas compacta para campos de texto y textareas en el modal
+ */
+function richTextToolbarHtml(targetTextareaId) {
+  return `
+    <div class="flex items-center gap-1.5 py-1">
+      <button type="button" class="btn-rt-table text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Insertar estructura de tabla">
+        📊 Tabla
+      </button>
+      <button type="button" class="btn-rt-red text-[11px] px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Resaltar texto seleccionado en rojo">
+        🔴 Resaltar Rojo
+      </button>
+      <button type="button" class="btn-rt-bullet text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Insertar viñeta">
+        • Viñeta
+      </button>
+      <button type="button" class="btn-rt-bold text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-bold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Texto en negrita">
+        B
+      </button>
+    </div>
+  `;
+}
+
+/**
+ * Obtiene todos los planes asociados a una tecnología
  */
 function getPlansForTech(tech) {
   if (!tech) return [];
+  const techName = (tech.name || '').toLowerCase();
+  const techId = tech.id;
 
-  // 1. Obtener los planes de la tecnología desde el catálogo (Matriz de Costos OPP)
-  let catalogPlans = [];
-  if (Array.isArray(tech.plans) && tech.plans.length > 0) {
-    catalogPlans = tech.plans
-      .filter(p => p && (p.name !== undefined && p.name !== null && String(p.name).trim() !== ''))
-      .map(p => ({
-        name: String(p.name).trim(),
-        costo: p.costo !== undefined && p.costo !== '' ? p.costo : null,
-        margen_min: p.margen_min !== undefined && p.margen_min !== '' ? p.margen_min : null,
-        margen_max: p.margen_max !== undefined && p.margen_max !== '' ? p.margen_max : null,
-        moneda: p.moneda || tech.moneda || 'PEN',
-        periodo: p.periodo || tech.periodo || 'mes'
-      }));
-  }
-
-  // Si no tiene array de planes pero tiene costo/margen en la fila del catálogo (ej. Lenguajes o herramientas de plan único)
-  if (catalogPlans.length === 0) {
-    catalogPlans = [{
-      name: tech.category === 'language' ? `${tech.name}` : 'Plan Base',
-      costo: tech.costo !== undefined && tech.costo !== '' ? tech.costo : null,
-      margen_min: tech.margen_min !== undefined && tech.margen_min !== '' ? tech.margen_min : null,
-      margen_max: tech.margen_max !== undefined && tech.margen_max !== '' ? tech.margen_max : null,
-      moneda: tech.moneda || 'PEN',
-      periodo: tech.periodo || 'mes'
-    }];
-  }
-
-  // 2. Asociar cada plan con su ficha técnica registrada en _items (ti.tech_plan_info)
-  const mappedPlans = catalogPlans.map((catPlan, idx) => {
-    const pName = (catPlan.name || '').trim();
-    // Buscar si ya existe una ficha técnica registrada con este nombre de plan
-    const info = _items.find(it => {
-      const matchTech = (it.tech_name || it.producto_nombre || '').toLowerCase() === tech.name.toLowerCase() ||
-                        (it.tech_id && tech.id && it.tech_id === tech.id);
-      if (!matchTech) return false;
-      const itPlanName = (it.plan_nombre || '').trim();
-      return itPlanName.toLowerCase() === pName.toLowerCase() || (catalogPlans.length === 1 && !itPlanName);
-    });
-
-    // Extraer nota complementaria en paréntesis de info.precio si existe (ej. "(12 meses)", "(Aprox según consumo)")
-    let note = '';
-    if (info?.precio) {
-      const noteMatch = info.precio.match(/\((?:Aprox|12 meses|aprox|según|Licencia|Open Source|Base|usuario)[^)]*\)/i) || 
-                        info.precio.match(/\([^)]+\)$/);
-      if (noteMatch) note = noteMatch[0];
-    }
-
-    const calculatedPrice = formatPlanPrice(catPlan, note);
-    const propuestaOficial = propuestaLabel(catPlan);
-
-    return {
-      id: info?.id || `cat-${tech.id || tech.name}-${idx}`,
-      isVirtual: !info,
-      plan_index: idx,
-      tech_id: tech.id || info?.tech_id,
-      tech_name: tech.name,
-      category: tech.category,
-      plan_nombre: pName || `Plan ${idx + 1}`,
-      // El precio y costo oficial sale directamente de la Matriz de Costos OPP
-      precio: calculatedPrice,
-      precio_personalizado: info?.precio || '',
-      propuesta_oficial: propuestaOficial,
-      nota_precio: note,
-      costo: catPlan.costo,
-      margen_min: catPlan.margen_min,
-      margen_max: catPlan.margen_max,
-      moneda: catPlan.moneda || tech.moneda || 'PEN',
-      periodo: catPlan.periodo || tech.periodo || 'mes',
-      // Ficha técnica (19 campos oficiales)
-      descripcion: info?.descripcion || '',
-      limites_tecnicos: info?.limites_tecnicos || '',
-      cuota_mensual: info?.cuota_mensual || '',
-      limites_archivos: info?.limites_archivos || '',
-      limites_api: info?.limites_api || '',
-      cuentas_usuarios: info?.cuentas_usuarios || '',
-      seguridad_control_acceso: info?.seguridad_control_acceso || '',
-      entrega_dominio: info?.entrega_dominio || '',
-      respaldo_almacenamiento: info?.respaldo_almacenamiento || '',
-      complementos_ia: info?.complementos_ia || '',
-      video: info?.video || '',
-      soporte: info?.soporte || '',
-      agregados: info?.agregados || '',
-      que_no_incluye: info?.que_no_incluye || '',
-      ejemplo_consumo_mensual: info?.ejemplo_consumo_mensual || '',
-      pasa_si_te_pasas_del_limite: info?.pasa_si_te_pasas_del_limite || '',
-      cuando_subir: info?.cuando_subir || '',
-      plan_no_resuelve: info?.plan_no_resuelve || '',
-      campos_extra: info?.campos_extra || []
-    };
+  // 1. Fichas técnicas registradas en ti.tech_plan_info
+  const fromInfo = _items.filter(it => {
+    if (it.tech_id && techId && String(it.tech_id) === String(techId)) return true;
+    const itName = (it.tech_name || it.producto_nombre || '').toLowerCase();
+    return itName === techName;
   });
 
-  // Agregar cualquier plan que esté en _items pero no en tech.plans
-  _items.forEach((it, extraIdx) => {
-    const matchTech = (it.tech_name || it.producto_nombre || '').toLowerCase() === tech.name.toLowerCase() ||
-                      (it.tech_id && tech.id && it.tech_id === tech.id);
-    if (!matchTech) return;
-    const itName = (it.plan_nombre || '').trim();
-    const alreadyMapped = mappedPlans.some(mp => mp.plan_nombre.toLowerCase() === itName.toLowerCase());
-    if (!alreadyMapped) {
-      mappedPlans.push({
-        id: it.id,
-        isVirtual: false,
-        plan_index: catalogPlans.length + extraIdx,
-        tech_id: tech.id || it.tech_id,
+  // 2. Planes dados de alta en el catálogo
+  const catalogPlans = Array.isArray(tech.plans) ? tech.plans : [];
+
+  const unified = [...fromInfo];
+
+  catalogPlans.forEach((cp, idx) => {
+    const cpName = (cp.name || '').trim();
+    if (!cpName) return;
+
+    const exists = unified.some(u => (u.plan_nombre || '').trim().toLowerCase() === cpName.toLowerCase());
+    if (!exists) {
+      unified.push({
+        id: `cat-${tech.id || 'tech'}-${idx}`,
+        isVirtual: true,
+        tech_id: tech.id,
         tech_name: tech.name,
+        producto_nombre: tech.name,
         category: tech.category,
-        plan_nombre: itName || 'Plan Especial',
-        precio: it.precio || 'A cotizar',
-        precio_personalizado: it.precio || '',
-        propuesta_oficial: it.precio || '',
+        plan_nombre: cpName,
+        precio: '',
         costo: null,
         margen_min: null,
         margen_max: null,
-        moneda: tech.moneda || 'PEN',
-        periodo: tech.periodo || 'mes',
-        descripcion: it.descripcion || '',
-        limites_tecnicos: it.limites_tecnicos || '',
-        cuota_mensual: it.cuota_mensual || '',
-        limites_archivos: it.limites_archivos || '',
-        limites_api: it.limites_api || '',
-        cuentas_usuarios: it.cuentas_usuarios || '',
-        seguridad_control_acceso: it.seguridad_control_acceso || '',
-        entrega_dominio: it.entrega_dominio || '',
-        respaldo_almacenamiento: it.respaldo_almacenamiento || '',
-        complementos_ia: it.complementos_ia || '',
-        video: it.video || '',
-        soporte: it.soporte || '',
-        agregados: it.agregados || '',
-        que_no_incluye: it.que_no_incluye || '',
-        ejemplo_consumo_mensual: it.ejemplo_consumo_mensual || '',
-        pasa_si_te_pasas_del_limite: it.pasa_si_te_pasas_del_limite || '',
-        cuando_subir: it.cuando_subir || '',
-        plan_no_resuelve: it.plan_no_resuelve || '',
-        campos_extra: it.campos_extra || []
+        moneda: cp.moneda || 'PEN',
+        periodo: cp.periodo || 'mes',
+        descripcion: '',
+        agregados: '',
+        limites_tecnicos: '',
+        cuota_mensual: '',
+        ejemplo_consumo_mensual: '',
+        limites_archivos: '',
+        limites_api: '',
+        pasa_si_te_pasas_del_limite: '',
+        cuando_subir: '',
+        que_no_incluye: '',
+        plan_no_resuelve: '',
+        cuentas_usuarios: '',
+        seguridad_control_acceso: '',
+        entrega_dominio: '',
+        respaldo_almacenamiento: '',
+        complementos_ia: '',
+        video: '',
+        soporte: '',
+        campos_extra: []
       });
     }
   });
 
-  return mappedPlans;
+  return unified;
 }
 
 export function render() {
@@ -277,7 +312,6 @@ async function load() {
       tool: Array.isArray(tools) ? tools : []
     };
 
-    // Unificar catálogo completo con información de logo, categoría, planes y costos de la Matriz de Costos OPP
     const techMap = new Map();
     [..._catalog.language, ..._catalog.tool].forEach(t => {
       techMap.set((t.name || '').toLowerCase(), {
@@ -285,16 +319,15 @@ async function load() {
         name: t.name,
         category: t.category,
         image_url: t.image_url || '',
-        costo: t.costo,
-        margen_min: t.margen_min,
-        margen_max: t.margen_max,
-        moneda: t.moneda || 'PEN',
-        periodo: t.periodo || 'mes',
+        costo: null,
+        margen_min: null,
+        margen_max: null,
+        moneda: 'PEN',
+        periodo: 'mes',
         plans: Array.isArray(t.plans) ? t.plans : []
       });
     });
 
-    // Agregar cualquier tecnología que esté en info-tecnico y no esté en catálogo
     _items.forEach(it => {
       const key = (it.tech_name || it.producto_nombre || '').toLowerCase();
       if (key && !techMap.has(key)) {
@@ -315,7 +348,6 @@ async function load() {
 
     _allTechs = Array.from(techMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-    // Si hay parámetro en hash (ej: #/info-tecnico?tech=AWS), seleccionarlo
     const hash = window.location.hash || '';
     if (hash.includes('tech=')) {
       const match = hash.match(/tech=([^&]+)/);
@@ -326,7 +358,6 @@ async function load() {
       }
     }
 
-    // Por defecto seleccionar la primera tecnología con planes o la primera del catálogo
     if (!_selectedTechName && _allTechs.length > 0) {
       const firstWithPlans = _allTechs.find(t => getPlansForTech(t).length > 0);
       _selectedTechName = firstWithPlans ? firstWithPlans.name : _allTechs[0].name;
@@ -341,10 +372,6 @@ async function load() {
   }
 }
 
-/**
- * Renderiza el esqueleto general una sola vez para que el input de búsqueda
- * y los filtros no se destruyan al escribir (evita perder el foco).
- */
 function renderPageSkeleton() {
   const c = document.getElementById('info-tecnico-page');
   if (!c) return;
@@ -354,9 +381,8 @@ function renderPageSkeleton() {
   const totalCount = _allTechs.length;
 
   c.innerHTML = `
-    <!-- Encabezado y Filtros Sticky (top-0 z-30 bg-gray-50: NO se sube al scrollear) -->
+    <!-- Encabezado y Filtros Sticky (top-0 z-30 bg-gray-50) -->
     <div class="sticky top-0 z-30 bg-gray-50 pt-1 pb-3" style="position: -webkit-sticky; position: sticky; top: 0;">
-      <!-- Encabezado de página -->
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
         <div>
           <div class="flex items-center gap-2">
@@ -367,21 +393,18 @@ function renderPageSkeleton() {
             </span>
           </div>
           <p class="text-xs text-gray-500 mt-1">
-            Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan (sincronizado con la Matriz de Costos OPP).
+            Consultas técnicas de herramientas y lenguajes de la empresa: especificaciones, cuotas, tablas y límites por plan.
           </p>
         </div>
 
         <div class="flex items-center gap-2.5">
-          <button type="button" id="btn-open-image-2-top" class="btn-secondary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3">
-            💰 Matriz de Costos OPP
-          </button>
           <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-1.5 shadow-sm text-xs py-2 px-3.5">
             ${icon('add', 18)} Nuevo Plan Técnico
           </button>
         </div>
       </div>
 
-      <!-- Barra de Filtros, Categorías y Búsqueda Inteligente (Fija) -->
+      <!-- Barra de Filtros, Categorías y Búsqueda -->
       <div class="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0" id="category-pills-bar">
           <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
@@ -407,7 +430,6 @@ function renderPageSkeleton() {
           </button>
         </div>
 
-        <!-- Buscador (Persistente para no perder foco al escribir) -->
         <div class="relative w-full md:w-80">
           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
             ${icon('search', 16)}
@@ -422,11 +444,8 @@ function renderPageSkeleton() {
       </div>
     </div>
 
-    <!-- Layout Master-Detail: Tecnologías (Izquierda) + Ficha Técnica (Derecha) -->
+    <!-- Layout Master-Detail -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start mt-1">
-      
-      <!-- Columna Izquierda: Lista de Tecnologías (Catálogo)
-           Fijada debajo de los filtros con scroll interno para recorrer las 55 tecnologías -->
       <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:sticky self-start" style="position: -webkit-sticky; position: sticky; top: 150px;">
         <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
           <span class="text-xs font-bold text-gray-700 uppercase tracking-wider" id="tech-count-badge">
@@ -434,34 +453,21 @@ function renderPageSkeleton() {
           </span>
           <span class="text-[11px] text-gray-400">Selecciona para ver ficha</span>
         </div>
-
-        <!-- Scroll independiente para la lista de tecnologías -->
-        <div class="divide-y divide-gray-100 max-h-[calc(100vh-13rem)] overflow-y-auto" id="tech-list-scroll">
-          <!-- Se inyecta con updateView() -->
-        </div>
+        <div class="divide-y divide-gray-100 max-h-[calc(100vh-13rem)] overflow-y-auto" id="tech-list-scroll"></div>
       </div>
 
-      <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada
-           Scrollea libremente hacia abajo para ver toda la información técnica sin trabarse -->
-      <div class="lg:col-span-8 flex flex-col gap-5 min-w-0" id="tech-detail-mount">
-        <!-- Se inyecta con updateView() -->
-      </div>
-
+      <div class="lg:col-span-8 flex flex-col gap-5 min-w-0" id="tech-detail-mount"></div>
     </div>
   `;
 
-  // Listeners de la barra superior y buscador (permanentes)
   const searchInput = document.getElementById('tech-search-input');
   const clearBtn = document.getElementById('clear-search-btn');
 
   if (searchInput) {
     searchInput.addEventListener('input', e => {
-      _searchQuery = e.target.value;
-      if (clearBtn) {
-        if (_searchQuery) clearBtn.classList.remove('hidden');
-        else clearBtn.classList.add('hidden');
-      }
-      updateView();
+      _searchQuery = e.target.value.toLowerCase().trim();
+      if (clearBtn) clearBtn.classList.toggle('hidden', !_searchQuery);
+      updateTechListOnly();
     });
   }
 
@@ -473,85 +479,139 @@ function renderPageSkeleton() {
         searchInput.focus();
       }
       clearBtn.classList.add('hidden');
-      updateView();
+      updateTechListOnly();
     });
   }
 
-  document.querySelectorAll('.category-pill').forEach(btn => {
+  document.querySelectorAll('#category-pills-bar .category-pill').forEach(btn => {
     btn.addEventListener('click', () => {
       _selectedCategory = btn.dataset.cat;
-      // Actualizar estilo visual de las píldoras
-      document.querySelectorAll('.category-pill').forEach(b => {
-        if (b.dataset.cat === _selectedCategory) {
-          b.className = 'category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-primary-600 text-white shadow-sm';
-        } else {
-          b.className = 'category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all bg-gray-100 text-gray-600 hover:bg-gray-200';
-        }
+      document.querySelectorAll('#category-pills-bar .category-pill').forEach(b => {
+        b.className = 'category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ' +
+          (b.dataset.cat === _selectedCategory ? 'bg-primary-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200');
       });
-      updateView();
+      updateTechListOnly();
     });
   });
 
   document.getElementById('btn-nuevo-plan')?.addEventListener('click', () => {
-    openPlanModal(null, _selectedTechName || '');
-  });
-
-  document.getElementById('btn-open-image-2-top')?.addEventListener('click', () => {
-    openTechCostModal(() => {
-      load();
-    });
+    openPlanModal(null, _selectedTechName || '', 'tool');
   });
 }
 
-/**
- * Actualiza la lista izquierda y el detalle derecho sin tocar el input de búsqueda.
- */
-function updateView() {
+function updateTechListOnly() {
   const listContainer = document.getElementById('tech-list-scroll');
   const countBadge = document.getElementById('tech-count-badge');
-  const detailMount = document.getElementById('tech-detail-mount');
-  if (!listContainer || !detailMount) return;
+  if (!listContainer) return;
 
-  // Filtrar tecnologías
-  const q = (_searchQuery || '').trim().toLowerCase();
-  const filteredTechs = _allTechs.filter(t => {
+  let filtered = _allTechs.filter(t => {
     if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
-    if (q) {
-      const inName = t.name.toLowerCase().includes(q);
+    if (_searchQuery) {
+      const matchName = (t.name || '').toLowerCase().includes(_searchQuery);
       const plans = getPlansForTech(t);
-      const inPlans = plans.some(p => 
-        p.plan_nombre.toLowerCase().includes(q) ||
-        p.descripcion.toLowerCase().includes(q) ||
-        p.limites_tecnicos.toLowerCase().includes(q) ||
-        p.precio.toLowerCase().includes(q)
+      const matchPlan = plans.some(p => 
+        (p.plan_nombre || '').toLowerCase().includes(_searchQuery) ||
+        (p.descripcion || '').toLowerCase().includes(_searchQuery)
       );
-      if (!inName && !inPlans) return false;
+      if (!matchName && !matchPlan) return false;
     }
     return true;
   });
 
-  // Actualizar contador
   if (countBadge) {
-    countBadge.textContent = `Tecnologías (${filteredTechs.length})`;
+    countBadge.textContent = `Tecnologías (${filtered.length})`;
   }
 
-  // Asegurar que haya una tecnología activa seleccionada
-  let currentTech = _allTechs.find(t => t.name.toLowerCase() === (_selectedTechName || '').toLowerCase());
-  if (!currentTech || !filteredTechs.some(t => t.name.toLowerCase() === currentTech.name.toLowerCase())) {
-    currentTech = filteredTechs[0] || null;
-    if (currentTech) _selectedTechName = currentTech.name;
-  }
-
-  // Renderizar filas de tecnologías en la lista izquierda
-  if (filteredTechs.length === 0) {
+  if (filtered.length === 0) {
     listContainer.innerHTML = `
       <div class="p-8 text-center text-gray-400 text-xs">
-        No se encontraron tecnologías que coincidan.
+        No se encontraron tecnologías ni planes con ese criterio
+      </div>
+    `;
+    return;
+  }
+
+  listContainer.innerHTML = filtered.map(t => {
+    const isSelected = _selectedTechName && t.name.toLowerCase() === _selectedTechName.toLowerCase();
+    const techPlans = getPlansForTech(t);
+    const planCount = techPlans.length;
+    const avatar = t.image_url
+      ? `<div class="w-8 h-8 rounded-lg bg-white border border-gray-200 p-1 flex items-center justify-center shrink-0 shadow-sm"><img src="${esc(thumbUrl(t.image_url, 64))}" class="max-w-full max-h-full object-contain" alt=""></div>`
+      : `<span class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0 shadow-sm">${esc((t.name || '?').charAt(0).toUpperCase())}</span>`;
+
+    return `
+      <div class="tech-item-row p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+        isSelected ? 'bg-primary-50/80 border-l-4 border-primary-600' : 'hover:bg-gray-50'
+      }" data-tech-name="${esc(t.name)}">
+        ${avatar}
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-1">
+            <span class="text-sm font-semibold text-gray-900 truncate">${esc(t.name)}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+              t.category === 'tool' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+            }">
+              ${t.category === 'tool' ? 'Herramienta' : 'Lenguaje'}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 mt-0.5">
+            <span class="text-[11px] ${planCount > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">
+              ${planCount > 0 ? `✓ ${planCount} plan${planCount === 1 ? '' : 'es'} registrados` : 'Sin planes'}
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listContainer.querySelectorAll('.tech-item-row').forEach(row => {
+    row.addEventListener('click', () => {
+      _selectedTechName = row.dataset.techName;
+      _selectedPlanId = null;
+      _selectedPlanName = null;
+      updateView();
+    });
+  });
+}
+
+function updateView() {
+  const listContainer = document.getElementById('tech-list-scroll');
+  const detailMount = document.getElementById('tech-detail-mount');
+  const countBadge = document.getElementById('tech-count-badge');
+  if (!listContainer || !detailMount) return;
+
+  let filtered = _allTechs.filter(t => {
+    if (_selectedCategory !== 'all' && t.category !== _selectedCategory) return false;
+    if (_searchQuery) {
+      const matchName = (t.name || '').toLowerCase().includes(_searchQuery);
+      const plans = getPlansForTech(t);
+      const matchPlan = plans.some(p => 
+        (p.plan_nombre || '').toLowerCase().includes(_searchQuery) ||
+        (p.descripcion || '').toLowerCase().includes(_searchQuery)
+      );
+      if (!matchName && !matchPlan) return false;
+    }
+    return true;
+  });
+
+  if (countBadge) {
+    countBadge.textContent = `Tecnologías (${filtered.length})`;
+  }
+
+  let currentTech = _allTechs.find(t => _selectedTechName && t.name.toLowerCase() === _selectedTechName.toLowerCase());
+  if (!currentTech && filtered.length > 0) {
+    currentTech = filtered[0];
+    _selectedTechName = currentTech.name;
+  }
+
+  if (filtered.length === 0) {
+    listContainer.innerHTML = `
+      <div class="p-8 text-center text-gray-400 text-xs">
+        No se encontraron tecnologías con ese criterio
       </div>
     `;
   } else {
-    listContainer.innerHTML = filteredTechs.map(t => {
-      const isSelected = currentTech && currentTech.name.toLowerCase() === t.name.toLowerCase();
+    listContainer.innerHTML = filtered.map(t => {
+      const isSelected = currentTech && t.name.toLowerCase() === currentTech.name.toLowerCase();
       const techPlans = getPlansForTech(t);
       const planCount = techPlans.length;
       const avatar = t.image_url
@@ -582,7 +642,6 @@ function updateView() {
       `;
     }).join('');
 
-    // Listener para selección de tecnología
     listContainer.querySelectorAll('.tech-item-row').forEach(row => {
       row.addEventListener('click', () => {
         _selectedTechName = row.dataset.techName;
@@ -593,7 +652,6 @@ function updateView() {
     });
   }
 
-  // Renderizar detalle de la tecnología en la columna derecha
   if (!currentTech) {
     detailMount.innerHTML = `
       <div class="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400">
@@ -625,7 +683,7 @@ function renderTechDetail(tech, plans, activePlan) {
     : `<span class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-base font-bold text-indigo-700 shrink-0 shadow-sm">${esc((tech.name || '?').charAt(0).toUpperCase())}</span>`;
 
   return `
-    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes (Matriz de Costos OPP) -->
+    <!-- Tarjeta Superior: Info de Tecnología y Selector de Planes -->
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
         <div class="flex items-center gap-3">
@@ -644,17 +702,14 @@ function renderTechDetail(tech, plans, activePlan) {
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <button type="button" id="btn-open-image-2-detail" class="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-2xs">
-            💰 Matriz de Costos OPP
-          </button>
           <button type="button" id="btn-add-plan-for-tech" class="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-2xs" data-tech-id="${esc(tech.id || '')}" data-tech-name="${esc(tech.name)}" data-tech-category="${esc(tech.category)}">
             ${icon('add', 14)} Agregar Plan
           </button>
         </div>
       </div>
 
-      <!-- Selector de Planes (Tabs horizontales - Salen directamente de la Matriz de Costos OPP) -->
-      <div class="pt-4">
+      <!-- Selector de Planes (Tabs horizontales) -->
+      <div class="pt-4" id="tech-plan-tabs-container">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold text-gray-600 uppercase tracking-wide">PLANES TÉCNICOS REGISTRADOS:</span>
         </div>
@@ -667,7 +722,7 @@ function renderTechDetail(tech, plans, activePlan) {
             </button>
           </div>
         ` : `
-          <div class="flex items-center gap-2 overflow-x-auto pb-1">
+          <div class="flex items-center gap-2 overflow-x-auto pb-1" id="plan-tabs-bar">
             ${plans.map(p => {
               const isActive = activePlan && (activePlan.id === p.id || activePlan.plan_nombre === p.plan_nombre);
               return `
@@ -677,7 +732,6 @@ function renderTechDetail(tech, plans, activePlan) {
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                 }" data-plan-id="${esc(p.id)}" data-plan-name="${esc(p.plan_nombre)}">
                   <span>${esc(p.plan_nombre)}</span>
-                  ${p.precio ? `<span class="text-[10px] opacity-90 font-normal">(${esc(p.precio)})</span>` : ''}
                 </button>
               `;
             }).join('')}
@@ -686,8 +740,10 @@ function renderTechDetail(tech, plans, activePlan) {
       </div>
     </div>
 
-    <!-- Si hay un plan activo, renderizar la ficha técnica completa -->
-    ${activePlan ? renderActivePlanCard(activePlan, tech) : ''}
+    <!-- Contenedor del Plan Activo: Se actualiza independientemente sin mover el scroll -->
+    <div id="active-plan-card-mount">
+      ${activePlan ? renderActivePlanCard(activePlan, tech) : ''}
+    </div>
   `;
 }
 
@@ -702,11 +758,6 @@ function renderActivePlanCard(plan, tech) {
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-xs font-bold text-gray-500 uppercase">Ficha del Plan:</span>
           <span class="text-sm font-bold text-gray-900">${esc(plan.plan_nombre)}</span>
-          ${plan.precio ? `
-            <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs px-2.5 py-0.5 rounded-full">
-              ${esc(plan.precio)}
-            </span>
-          ` : ''}
         </div>
 
         <div class="flex items-center gap-2">
@@ -714,7 +765,7 @@ function renderActivePlanCard(plan, tech) {
             ${icon('content_copy', 14)} Copiar Ficha
           </button>
           <button type="button" class="btn-primary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-edit-plan" data-plan-id="${esc(plan.id)}">
-            ${icon('edit', 14)} Editar Plan & Costos
+            ${icon('edit', 14)} Editar Plan
           </button>
           <button type="button" class="btn-danger text-xs px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-1 btn-delete-plan" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}">
             ${icon('delete', 14)}
@@ -722,43 +773,14 @@ function renderActivePlanCard(plan, tech) {
         </div>
       </div>
 
-      <!-- Barra Informativa de Sincronización con Matriz de Costos OPP -->
-      <div class="bg-indigo-50/50 border-b border-indigo-100 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div class="flex items-center gap-4 flex-wrap">
-          <div class="flex items-center gap-1.5">
-            <span class="text-indigo-600 font-bold">🔗 Matriz de Costos OPP:</span>
-          </div>
-          <div>
-            <span class="text-gray-500">Costo Base:</span>
-            <strong class="text-gray-800">${plan.costo !== null && plan.costo !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.costo).toFixed(2)}` : '0.00'}</strong>
-          </div>
-          <div>
-            <span class="text-gray-500">Margen Mín:</span>
-            <strong class="text-gray-800">${plan.margen_min !== null && plan.margen_min !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.margen_min).toFixed(2)}` : '0.00'}</strong>
-          </div>
-          <div>
-            <span class="text-gray-500">Margen Máx:</span>
-            <strong class="text-gray-800">${plan.margen_max !== null && plan.margen_max !== undefined ? `${getCurSym(plan.moneda)} ${Number(plan.margen_max).toFixed(2)}` : '0.00'}</strong>
-          </div>
-          <div>
-            <span class="text-gray-500">Periodo:</span>
-            <strong class="text-gray-800">${plan.periodo === 'año' ? 'Por año' : 'Por mes'}</strong>
-          </div>
-        </div>
-
-        <button type="button" class="btn-secondary text-[11px] py-1 px-2.5 flex items-center gap-1 shrink-0 btn-open-image-2-inline">
-          ✏️ Modificar en Matriz de Costos OPP
-        </button>
-      </div>
-
-      <!-- Si el plan es virtual (está en catálogo pero sin límites aún en tech_plan_info) -->
+      <!-- Si el plan es virtual (sin ficha aún en tech_plan_info) -->
       ${plan.isVirtual ? `
         <div class="m-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span class="text-xl">ℹ️</span>
             <div>
-              <strong>Plan registrado en la Matriz de Costos OPP</strong>
-              <p class="text-amber-800 mt-0.5">Este plan ya tiene precio oficial. Haz clic en "Editar Plan & Costos" para completar su ficha de límites técnicos, cuotas y políticas.</p>
+              <strong>Plan registrado en el catálogo</strong>
+              <p class="text-amber-800 mt-0.5">Este plan está registrado pero aún no se ha completado su ficha técnica con límites, cuotas y tablas.</p>
             </div>
           </div>
           <button type="button" class="btn-primary text-xs py-1 px-3 shrink-0 btn-edit-plan" data-plan-id="${esc(plan.id)}">
@@ -767,56 +789,66 @@ function renderActivePlanCard(plan, tech) {
         </div>
       ` : ''}
 
-      <!-- Contenido de los 19 Campos Técnicos -->
+      <!-- Contenido de las Especificaciones Técnicas con Formato Enriquecido y Tablas -->
       <div class="p-6 space-y-6">
 
-        <!-- 1. Precios y Cuotas -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50/60 p-4 rounded-xl border border-gray-100">
-          <div>
-            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Precio Referencial</span>
-            <p class="text-sm font-bold text-gray-900">${esc(plan.precio || 'Sin especificar')}</p>
-          </div>
+        <!-- 1. Cuotas y Consumo Mensual (Sin precios para OTI) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/60 p-4 rounded-xl border border-gray-100">
           <div>
             <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Cuota Mensual</span>
-            <p class="text-sm text-gray-800">${esc(plan.cuota_mensual || 'Sin especificar')}</p>
+            <div class="text-xs text-gray-800">${renderRichContent(plan.cuota_mensual || 'Sin especificar')}</div>
           </div>
           <div>
             <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Ejemplo de Consumo Mensual</span>
-            <p class="text-sm text-gray-800">${esc(plan.ejemplo_consumo_mensual || 'Sin especificar')}</p>
+            <div class="text-xs text-gray-800">${renderRichContent(plan.ejemplo_consumo_mensual || 'Sin especificar')}</div>
           </div>
         </div>
 
-        <!-- 2. Descripción General y Agregados -->
+        <!-- 2. Descripción General y Agregados (Soporta listas con viñetas y resaltado) -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="p-4 rounded-xl border border-gray-100 bg-white">
-            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Descripción del Plan</span>
-            <p class="text-xs text-gray-700 leading-relaxed">${esc(plan.descripcion || 'Sin descripción')}</p>
+            <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-2">Descripción del Plan</span>
+            <div class="rich-content-container">
+              ${renderRichContent(plan.descripcion || 'Sin descripción')}
+            </div>
           </div>
           <div class="p-4 rounded-xl border border-gray-100 bg-white">
-            <span class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">✨ Agregados & Beneficios</span>
-            <p class="text-xs text-gray-700 leading-relaxed">${esc(plan.agregados || 'Sin agregados registrados')}</p>
+            <span class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block mb-2">✨ Agregados & Beneficios</span>
+            <div class="rich-content-container">
+              ${renderRichContent(plan.agregados || 'Sin agregados registrados')}
+            </div>
           </div>
         </div>
 
-        <!-- 3. Límites Técnicos, Archivos y API -->
-        <div class="border border-gray-100 rounded-xl p-4 bg-white">
-          <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-            ${icon('tune', 16)} Límites Técnicos y Capacidades
-          </h4>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-gray-50/70 p-3 rounded-lg">
-              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites Técnicos</span>
-              <p class="text-xs text-gray-800">${esc(plan.limites_tecnicos || 'Sin límite especificado')}</p>
-            </div>
-            <div class="bg-gray-50/70 p-3 rounded-lg">
-              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites de Archivos</span>
-              <p class="text-xs text-gray-800">${esc(plan.limites_archivos || 'Sin límite especificado')}</p>
-            </div>
-            <div class="bg-gray-50/70 p-3 rounded-lg">
-              <span class="text-[11px] font-semibold text-gray-500 block mb-0.5">Límites de API</span>
-              <p class="text-xs text-gray-800">${esc(plan.limites_api || 'Sin límite especificado')}</p>
-            </div>
+        <!-- 3. Límites Técnicos y Capacidades (Soporta Tablas completas tipo Imagen 3) -->
+        <div class="border border-gray-100 rounded-xl p-4 bg-white space-y-3">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-2">
+            <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+              ${icon('tune', 16)} 3. Límites Técnicos y Capacidades
+            </h4>
           </div>
+
+          <div class="rich-content-container">
+            ${renderRichContent(plan.limites_tecnicos || 'Sin límites técnicos registrados.')}
+          </div>
+
+          <!-- Campos complementarios de archivos y API -->
+          ${(plan.limites_archivos || plan.limites_api) ? `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+              ${plan.limites_archivos ? `
+                <div class="bg-gray-50/80 p-3 rounded-lg border border-gray-100">
+                  <span class="text-[11px] font-bold text-gray-600 block mb-1">📁 Límites de Archivos</span>
+                  <div class="rich-content-container">${renderRichContent(plan.limites_archivos)}</div>
+                </div>
+              ` : ''}
+              ${plan.limites_api ? `
+                <div class="bg-gray-50/80 p-3 rounded-lg border border-gray-100">
+                  <span class="text-[11px] font-bold text-gray-600 block mb-1">🔌 Límites de API</span>
+                  <div class="rich-content-container">${renderRichContent(plan.limites_api)}</div>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
         </div>
 
         <!-- 4. Reglas Críticas (Qué pasa si te pasas, Cuándo subir, Qué no incluye) -->
@@ -825,18 +857,18 @@ function renderActivePlanCard(plan, tech) {
             <h4 class="text-xs font-bold text-amber-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               ⚠️ ¿Qué pasa si te pasas del límite?
             </h4>
-            <p class="text-xs text-amber-950 leading-relaxed">
-              ${esc(plan.pasa_si_te_pasas_del_limite || 'No hay política de sobreuso definida.')}
-            </p>
+            <div class="rich-content-container text-amber-950">
+              ${renderRichContent(plan.pasa_si_te_pasas_del_limite || 'No hay política de sobreuso definida.')}
+            </div>
           </div>
 
           <div class="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-4">
             <h4 class="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               🚀 ¿Cuándo subir de plan?
             </h4>
-            <p class="text-xs text-indigo-950 leading-relaxed">
-              ${esc(plan.cuando_subir || 'No se han definido disparadores de escalamiento.')}
-            </p>
+            <div class="rich-content-container text-indigo-950">
+              ${renderRichContent(plan.cuando_subir || 'No se han definido disparadores de escalamiento.')}
+            </div>
           </div>
         </div>
 
@@ -845,69 +877,73 @@ function renderActivePlanCard(plan, tech) {
             <h4 class="text-xs font-bold text-rose-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               🚫 Qué NO Incluye
             </h4>
-            <p class="text-xs text-rose-950 leading-relaxed">
-              ${esc(plan.que_no_incluye || 'No se registraron exclusiones explícitas.')}
-            </p>
+            <div class="rich-content-container text-rose-950">
+              ${renderRichContent(plan.que_no_incluye || 'Sin exclusiones especificadas.')}
+            </div>
           </div>
 
           <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               ❌ Lo que el plan NO resuelve
             </h4>
-            <p class="text-xs text-gray-700 leading-relaxed">
-              ${esc(plan.plan_no_resuelve || 'Sin restricciones de alcance documentadas.')}
-            </p>
+            <div class="rich-content-container text-gray-800">
+              ${renderRichContent(plan.plan_no_resuelve || 'Sin restricciones adicionales.')}
+            </div>
           </div>
         </div>
 
-        <!-- 5. Infraestructura, Usuarios, Seguridad, Media & Soporte -->
-        <div class="border border-gray-100 rounded-xl p-4 bg-white">
-          <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-            Infraestructura, Multimedia & Soporte
+        <!-- 5. Gobernanza, Infraestructura y Operaciones -->
+        <div class="border border-gray-100 rounded-xl p-4 bg-gray-50/40 space-y-4">
+          <h4 class="text-xs font-bold text-gray-800 uppercase tracking-wider">
+            🏛️ Gobernanza, Usuarios & Despliegue
           </h4>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Cuentas y Usuarios</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.cuentas_usuarios || '—')}</p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-gray-500 block mb-1">👥 Cuentas y Usuarios</span>
+              <div class="rich-content-container">${renderRichContent(plan.cuentas_usuarios || 'Sin especificar')}</div>
             </div>
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Seguridad y Control de Acceso</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.seguridad_control_acceso || '—')}</p>
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-gray-500 block mb-1">🔒 Seguridad & Accesos</span>
+              <div class="rich-content-container">${renderRichContent(plan.seguridad_control_acceso || 'Sin especificar')}</div>
             </div>
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Entrega y Dominio</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.entrega_dominio || '—')}</p>
-            </div>
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Respaldo y Almacenamiento</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.respaldo_almacenamiento || '—')}</p>
-            </div>
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Complementos IA</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.complementos_ia || '—')}</p>
-            </div>
-            <div class="p-2.5 bg-gray-50/60 rounded-lg">
-              <span class="text-[10.5px] font-semibold text-gray-500 block">Video & Streaming</span>
-              <p class="text-xs text-gray-800 mt-0.5">${esc(plan.video || '—')}</p>
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-gray-500 block mb-1">🌐 Entrega y Dominio</span>
+              <div class="rich-content-container">${renderRichContent(plan.entrega_dominio || 'Sin especificar')}</div>
             </div>
           </div>
-          <div class="mt-3 p-2.5 bg-indigo-50/50 rounded-lg border border-indigo-100/60">
-            <span class="text-[10.5px] font-bold text-indigo-900 block">🎧 Nivel de Soporte Técnico</span>
-            <p class="text-xs text-indigo-950 mt-0.5">${esc(plan.soporte || 'Soporte estándar')}</p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-gray-200/60">
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-gray-500 block mb-1">💾 Respaldo & Storage</span>
+              <div class="rich-content-container">${renderRichContent(plan.respaldo_almacenamiento || 'Sin especificar')}</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-purple-700 block mb-1">🤖 Complementos IA</span>
+              <div class="rich-content-container">${renderRichContent(plan.complementos_ia || 'Sin complementos')}</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-blue-700 block mb-1">🎥 Video</span>
+              <div class="rich-content-container">${renderRichContent(plan.video || 'Sin video')}</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg border border-gray-200/70">
+              <span class="text-[11px] font-bold text-emerald-700 block mb-1">🎧 Soporte</span>
+              <div class="rich-content-container">${renderRichContent(plan.soporte || 'Soporte estándar')}</div>
+            </div>
           </div>
         </div>
 
         <!-- 6. Campos Dinámicos Personalizados -->
         ${customFields.length > 0 ? `
-          <div class="border border-purple-100 rounded-xl p-4 bg-purple-50/30">
-            <h4 class="text-xs font-bold text-purple-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              ⚡ Campos Personalizados Dinámicos (${customFields.length})
+          <div class="border border-dashed border-gray-300 rounded-xl p-4 bg-white space-y-3">
+            <h4 class="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+              ${icon('dataset', 16)} Campos Técnicos Adicionales
             </h4>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               ${customFields.map(f => `
-                <div class="p-3 bg-white rounded-lg border border-purple-100 shadow-2xs">
-                  <span class="text-[11px] font-bold text-purple-800 block">${esc(f.titulo || 'Campo')}</span>
-                  <p class="text-xs text-gray-700 mt-1 leading-relaxed">${esc(f.valor || '')}</p>
+                <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                  <span class="text-[11px] font-bold text-gray-500 block mb-0.5">${esc(f.titulo)}</span>
+                  <div class="rich-content-container">${renderRichContent(f.valor)}</div>
                 </div>
               `).join('')}
             </div>
@@ -920,14 +956,40 @@ function renderActivePlanCard(plan, tech) {
 }
 
 function wireDetailEvents(tech, activePlan) {
-  // Tabs de planes dentro de la tecnología seleccionada
-  document.querySelectorAll('.plan-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _selectedPlanId = btn.dataset.planId;
-      _selectedPlanName = btn.dataset.planName;
-      updateView();
+  // Selector de tabs de planes: CAMBIA SOLO LA TARJETA DEL PLAN SIN MOVER EL SCROLL DEL USUARIO
+  const tabsBar = document.getElementById('plan-tabs-bar');
+  if (tabsBar) {
+    tabsBar.querySelectorAll('.plan-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const planId = btn.dataset.planId;
+        const planName = btn.dataset.planName;
+        _selectedPlanId = planId;
+        _selectedPlanName = planName;
+
+        const allPlans = getPlansForTech(tech);
+        const newActivePlan = allPlans.find(p => p.id === planId || p.plan_nombre === planName) || allPlans[0];
+
+        // 1. Actualizar las clases visuales de los tabs sin alterar el DOM de la página
+        tabsBar.querySelectorAll('.plan-tab-btn').forEach(b => {
+          if (b.dataset.planId === planId || b.dataset.planName === planName) {
+            b.className = 'plan-tab-btn px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-2 shrink-0 bg-primary-600 text-white border-primary-600 shadow-sm';
+          } else {
+            b.className = 'plan-tab-btn px-3.5 py-2 text-xs font-bold rounded-lg border transition-all flex items-center gap-2 shrink-0 bg-white text-gray-700 border-gray-200 hover:bg-gray-50';
+          }
+        });
+
+        // 2. Renderizar solo el contenedor de la tarjeta activa abajo, manteniendo la posición de scroll
+        const cardMount = document.getElementById('active-plan-card-mount');
+        if (cardMount && newActivePlan) {
+          cardMount.innerHTML = renderActivePlanCard(newActivePlan, tech);
+          wireCardActions(tech, newActivePlan);
+        }
+      });
     });
-  });
+  }
 
   // Botón Agregar Plan para la tecnología actual
   document.getElementById('btn-add-plan-for-tech')?.addEventListener('click', (e) => {
@@ -939,36 +1001,31 @@ function wireDetailEvents(tech, activePlan) {
     openPlanModal(null, btn.dataset.techName, btn.dataset.techCategory, btn.dataset.techId);
   });
 
-  // Acciones en la ficha activa
-  document.querySelectorAll('.btn-edit-plan').forEach(btn => {
+  if (activePlan) {
+    wireCardActions(tech, activePlan);
+  }
+}
+
+function wireCardActions(tech, plan) {
+  const cardMount = document.getElementById('active-plan-card-mount');
+  if (!cardMount) return;
+
+  cardMount.querySelectorAll('.btn-edit-plan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const planId = btn.dataset.planId;
-      const plans = getPlansForTech(tech);
-      const plan = plans.find(p => p.id === planId) || activePlan;
-      if (plan) openPlanModal(plan, tech.name, tech.category, tech.id);
+      openPlanModal(plan, tech.name, tech.category, tech.id);
     });
   });
 
-  document.querySelectorAll('.btn-delete-plan').forEach(btn => {
+  cardMount.querySelectorAll('.btn-delete-plan').forEach(btn => {
     btn.addEventListener('click', () => {
       deletePlan(btn.dataset.planId, btn.dataset.planName, btn.dataset.techName);
     });
   });
 
-  document.querySelectorAll('.btn-copy-plan').forEach(btn => {
+  cardMount.querySelectorAll('.btn-copy-plan').forEach(btn => {
     btn.addEventListener('click', () => {
-      const planId = btn.dataset.planId;
-      const plans = getPlansForTech(tech);
-      const plan = plans.find(p => p.id === planId) || activePlan;
-      if (plan) copyPlanToClipboard(plan);
+      copyPlanToClipboard(plan);
     });
-  });
-
-  // Botones para abrir Matriz de Costos OPP
-  const openImage2 = () => openTechCostModal(() => load());
-  document.getElementById('btn-open-image-2-detail')?.addEventListener('click', openImage2);
-  document.querySelectorAll('.btn-open-image-2-inline').forEach(btn => {
-    btn.addEventListener('click', openImage2);
   });
 }
 
@@ -977,7 +1034,6 @@ function copyPlanToClipboard(p) {
   const text = `
 📋 FICHA TÉCNICA — ${p.tech_name || p.producto_nombre || ''} [${p.plan_nombre}]
 --------------------------------------------------
-💰 Precio: ${p.precio || 'N/A'}
 📊 Cuota Mensual: ${p.cuota_mensual || 'N/A'}
 📝 Descripción: ${p.descripcion || 'N/A'}
 ✨ Agregados: ${p.agregados || 'N/A'}
@@ -1003,28 +1059,14 @@ Qubira Tech Hub
   navigator.clipboard.writeText(text).then(() => {
     toast('Ficha técnica copiada al portapapeles', 'success');
   }).catch(() => {
-    toast('No se pudo copiar automáticamente', 'error');
+    toast('No se pudo copiar al portapapeles', 'error');
   });
 }
 
 async function deletePlan(id, planNombre, techName) {
-  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}" de "${techName}"? Esta acción se actualizará en la Matriz de Costos OPP y en la Ficha Técnica.`)) {
-    return;
-  }
-  try {
-    const matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
-    if (matchedTech && Array.isArray(matchedTech.plans)) {
-      matchedTech.plans = matchedTech.plans.filter(p => (p.name || '').trim().toLowerCase() !== planNombre.trim().toLowerCase());
-      await api.put(`/technology-catalog/${matchedTech.id}/cost`, {
-        costo: matchedTech.plans[0]?.costo ?? null,
-        margen_min: matchedTech.plans[0]?.margen_min ?? null,
-        margen_max: matchedTech.plans[0]?.margen_max ?? null,
-        moneda: matchedTech.plans[0]?.moneda ?? 'PEN',
-        periodo: matchedTech.plans[0]?.periodo ?? 'mes',
-        plans: matchedTech.plans
-      });
-    }
+  if (!confirm(`¿Estás seguro de eliminar el plan "${planNombre}" para ${techName}?`)) return;
 
+  try {
     if (id && !String(id).startsWith('cat-')) {
       await api.delete(`/tech-plan-info/${id}`);
       _items = _items.filter(it => it.id !== id);
@@ -1040,7 +1082,7 @@ async function deletePlan(id, planNombre, techName) {
 }
 
 /* ============================================================
-   MODAL DE CREACIÓN / EDICIÓN
+   MODAL DE CREACIÓN / EDICIÓN (Con barra de tablas y resaltado)
    ============================================================ */
 function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'tool', defaultTechId = '') {
   const isEdit = !!plan;
@@ -1053,21 +1095,13 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
   const initialCategory = plan ? (plan.category || 'tool') : defaultCategory;
   const initialTechId = plan ? (plan.tech_id || '') : defaultTechId;
 
-  // Parámetros de costo
-  const initialMoneda = plan?.moneda || 'PEN';
-  const initialCosto = plan?.costo !== null && plan?.costo !== undefined ? plan.costo : '';
-  const initialMin = plan?.margen_min !== null && plan?.margen_min !== undefined ? plan.margen_min : '';
-  const initialMax = plan?.margen_max !== null && plan?.margen_max !== undefined ? plan.margen_max : '';
-  const initialPeriodo = plan?.periodo || 'mes';
-  const initialNota = plan?.nota_precio || '';
-
   showModal(isEdit ? `Editar Ficha Técnica — ${plan.plan_nombre}` : 'Nuevo Plan Técnico', `
     <form id="tech-plan-form" class="space-y-4">
       
       <!-- Selector de Pestañas del Modal -->
       <div class="flex items-center gap-1 border-b border-gray-200 pb-2 overflow-x-auto text-xs font-bold">
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent transition-all active text-primary-600 bg-primary-50" data-tab="basic">
-          1. General & Costos
+          1. General
         </button>
         <button type="button" class="modal-tab-btn px-3 py-1.5 rounded-lg border border-transparent text-gray-500 hover:text-gray-800 transition-all" data-tab="limits">
           2. Límites & Cuotas
@@ -1083,7 +1117,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         </button>
       </div>
 
-      <!-- PESTAÑA 1: BÁSICO & COSTOS -->
+      <!-- PESTAÑA 1: BÁSICO -->
       <div id="tab-pane-basic" class="modal-tab-pane space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1107,225 +1141,195 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
           <input type="text" id="mp-plan-nombre" required value="${esc(plan?.plan_nombre || '')}" placeholder="Ej: Free Tier, Launch Plan, Team, Pro, Producción..." class="input text-xs w-full">
         </div>
 
-        <!-- Parámetros Oficiales de Costo -->
-        <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-              💰 Costos y Márgenes (Matriz OPP)
-            </span>
-            <span id="mp-live-propuesta" class="text-xs font-bold px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-              ${esc(plan ? plan.precio : 'S/ 0.00 / mes')}
-            </span>
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-gray-700">Descripción del Plan</label>
+            ${richTextToolbarHtml('mp-descripcion')}
           </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Moneda</label>
-              <select id="mp-moneda" class="input text-xs w-full">
-                <option value="PEN" ${initialMoneda === 'PEN' ? 'selected' : ''}>S/ (PEN)</option>
-                <option value="USD" ${initialMoneda === 'USD' ? 'selected' : ''}>$ (USD)</option>
-                <option value="EUR" ${initialMoneda === 'EUR' ? 'selected' : ''}>€ (EUR)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Costo Base</label>
-              <input type="number" step="0.01" min="0" id="mp-costo" value="${initialCosto}" placeholder="0.00" class="input text-xs w-full">
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Margen Mínimo</label>
-              <input type="number" step="0.01" min="0" id="mp-margen-min" value="${initialMin}" placeholder="0.00" class="input text-xs w-full">
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Margen Máximo</label>
-              <input type="number" step="0.01" min="0" id="mp-margen-max" value="${initialMax}" placeholder="0.00" class="input text-xs w-full">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Periodo de Facturación</label>
-              <select id="mp-periodo" class="input text-xs w-full">
-                <option value="mes" ${initialPeriodo === 'mes' ? 'selected' : ''}>Por mes</option>
-                <option value="año" ${initialPeriodo === 'año' ? 'selected' : ''}>Por año</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-gray-600 mb-0.5">Detalle o Condición (Opcional)</label>
-              <input type="text" id="mp-nota" value="${esc(initialNota)}" placeholder="Ej: (12 meses) o (Aprox según consumo)" class="input text-xs w-full">
-            </div>
-          </div>
+          <textarea id="mp-descripcion" rows="3" class="input text-xs w-full font-sans" placeholder="Objetivo y resumen de uso de esta herramienta o plan...">${esc(plan?.descripcion || '')}</textarea>
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Descripción del Plan</label>
-          <textarea id="mp-descripcion" rows="2" class="input text-xs w-full" placeholder="Objetivo y resumen de uso de esta herramienta o plan...">${esc(plan?.descripcion || '')}</textarea>
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Agregados & Beneficios</label>
-          <textarea id="mp-agregados" rows="2" class="input text-xs w-full" placeholder="Beneficios incluidos, plugins, módulos o bonos especiales...">${esc(plan?.agregados || '')}</textarea>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-emerald-800">✨ Agregados & Beneficios</label>
+            ${richTextToolbarHtml('mp-agregados')}
+          </div>
+          <textarea id="mp-agregados" rows="4" class="input text-xs w-full font-sans" placeholder="• Beneficio 1&#10;• Beneficio 2&#10;• [rojo]Restricción clave[/rojo]">${esc(plan?.agregados || '')}</textarea>
         </div>
       </div>
 
-      <!-- PESTAÑA 2: LÍMITES Y CUOTAS -->
+      <!-- PESTAÑA 2: LÍMITES Y CUOTAS (Con soporte de Tablas tipo Imagen 3) -->
       <div id="tab-pane-limits" class="modal-tab-pane space-y-3 hidden">
         <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Límites Técnicos</label>
-          <textarea id="mp-limites-tecnicos" rows="2" class="input text-xs w-full" placeholder="Capacidades de cómputo, vCPU, RAM, suspensión, concurrencia...">${esc(plan?.limites_tecnicos || '')}</textarea>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-bold text-gray-700">Límites Técnicos y Capacidades (Soporta Tablas | Col 1 | Col 2 |)</label>
+            ${richTextToolbarHtml('mp-limites-tecnicos')}
+          </div>
+          <textarea id="mp-limites-tecnicos" rows="6" class="input text-xs w-full font-mono text-[11.5px]" placeholder="| Campo | Información para registrar |&#10;| Límites técnicos | Dependen del sistema... |&#10;| Límites de archivos | No existe límite universal... |">${esc(plan?.limites_tecnicos || '')}</textarea>
         </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Cuota Mensual</label>
-            <input type="text" id="mp-cuota-mensual" value="${esc(plan?.cuota_mensual || '')}" placeholder="Ej: 100,000 reqs/mes, 10 GB ancho de banda..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">Cuota Mensual</label>
+              ${richTextToolbarHtml('mp-cuota-mensual')}
+            </div>
+            <textarea id="mp-cuota-mensual" rows="2" class="input text-xs w-full" placeholder="Ej: 100,000 reqs/mes, 10 GB ancho de banda...">${esc(plan?.cuota_mensual || '')}</textarea>
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Ejemplo de Consumo Mensual</label>
-            <input type="text" id="mp-ejemplo-consumo" value="${esc(plan?.ejemplo_consumo_mensual || '')}" placeholder="Ej: 5,000 visitas/mes, 100 consultas/día..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">Ejemplo de Consumo Mensual</label>
+              ${richTextToolbarHtml('mp-ejemplo-consumo')}
+            </div>
+            <textarea id="mp-ejemplo-consumo" rows="2" class="input text-xs w-full" placeholder="Ej: 5,000 visitas/mes, 100 consultas/día...">${esc(plan?.ejemplo_consumo_mensual || '')}</textarea>
           </div>
         </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Límites de Archivos</label>
-            <input type="text" id="mp-limites-archivos" value="${esc(plan?.limites_archivos || '')}" placeholder="Ej: 10 MB por imagen, 500 MB total..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">Límites de Archivos</label>
+              ${richTextToolbarHtml('mp-limites-archivos')}
+            </div>
+            <textarea id="mp-limites-archivos" rows="2" class="input text-xs w-full" placeholder="Ej: 10 MB por imagen, 500 MB total...">${esc(plan?.limites_archivos || '')}</textarea>
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Límites de API</label>
-            <input type="text" id="mp-limites-api" value="${esc(plan?.limites_api || '')}" placeholder="Ej: 60 peticiones/min, 2 webhooks..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">Límites de API</label>
+              ${richTextToolbarHtml('mp-limites-api')}
+            </div>
+            <textarea id="mp-limites-api" rows="2" class="input text-xs w-full" placeholder="Ej: 60 reqs/min, token bearer con rotación...">${esc(plan?.limites_api || '')}</textarea>
           </div>
         </div>
       </div>
 
-      <!-- PESTAÑA 3: REGLAS Y ESCALAMIENTO -->
+      <!-- PESTAÑA 3: REGLAS & ESCALA -->
       <div id="tab-pane-rules" class="modal-tab-pane space-y-3 hidden">
-        <div>
-          <label class="block text-xs font-bold text-amber-800 mb-1">⚠️ ¿Qué pasa si te pasas del límite?</label>
-          <textarea id="mp-pasa-si-te-pasas" rows="2" class="input text-xs w-full border-amber-200 bg-amber-50/30" placeholder="¿Cobro extra, bloqueo temporal, soft-limit, degradación?">${esc(plan?.pasa_si_te_pasas_del_limite || '')}</textarea>
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-indigo-800 mb-1">🚀 ¿Cuándo subir de plan?</label>
-          <textarea id="mp-cuando-subir" rows="2" class="input text-xs w-full border-indigo-200 bg-indigo-50/30" placeholder="Criterios y señales claras para escalar a un plan superior...">${esc(plan?.cuando_subir || '')}</textarea>
-        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold text-rose-800 mb-1">🚫 Qué NO incluye</label>
-            <textarea id="mp-que-no-incluye" rows="2" class="input text-xs w-full border-rose-200 bg-rose-50/30" placeholder="Exclusiones clave del servicio...">${esc(plan?.que_no_incluye || '')}</textarea>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-amber-800">⚠️ ¿Qué pasa si te pasas del límite?</label>
+              ${richTextToolbarHtml('mp-pasa-si-te-pasas')}
+            </div>
+            <textarea id="mp-pasa-si-te-pasas" rows="3" class="input text-xs w-full" placeholder="Ej: El servicio bloquea las consultas extras o cobra $0.05 por GB adicional...">${esc(plan?.pasa_si_te_pasas_del_limite || '')}</textarea>
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">❌ Lo que el plan NO resuelve</label>
-            <textarea id="mp-plan-no-resuelve" rows="2" class="input text-xs w-full" placeholder="Límites de responsabilidad técnica o funcional...">${esc(plan?.plan_no_resuelve || '')}</textarea>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-indigo-800">🚀 ¿Cuándo subir de plan?</label>
+              ${richTextToolbarHtml('mp-cuando-subir')}
+            </div>
+            <textarea id="mp-cuando-subir" rows="3" class="input text-xs w-full" placeholder="Ej: Cuando la app supere los 10,000 usuarios concurrentes...">${esc(plan?.cuando_subir || '')}</textarea>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-rose-800">🚫 Qué NO incluye</label>
+              ${richTextToolbarHtml('mp-que-no-incluye')}
+            </div>
+            <textarea id="mp-que-no-incluye" rows="3" class="input text-xs w-full" placeholder="• No incluye dominio personalizado&#10;• No incluye soporte 24/7...">${esc(plan?.que_no_incluye || '')}</textarea>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">❌ Lo que el plan NO resuelve</label>
+              ${richTextToolbarHtml('mp-plan-no-resuelve')}
+            </div>
+            <textarea id="mp-plan-no-resuelve" rows="3" class="input text-xs w-full" placeholder="Ej: No gestiona backups automáticos, requiere script cron externo...">${esc(plan?.plan_no_resuelve || '')}</textarea>
           </div>
         </div>
       </div>
 
-      <!-- PESTAÑA 4: INFRAESTRUCTURA & MEDIA -->
+      <!-- PESTAÑA 4: INFRAESTRUCTURA, MULTIMEDIA & GOBERNANZA -->
       <div id="tab-pane-infra" class="modal-tab-pane space-y-3 hidden">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Cuentas y Usuarios</label>
-            <input type="text" id="mp-cuentas-usuarios" value="${esc(plan?.cuentas_usuarios || '')}" placeholder="Ej: 3 usuarios administradores, 10 colaboradores..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">👥 Cuentas y Usuarios</label>
+              ${richTextToolbarHtml('mp-cuentas-usuarios')}
+            </div>
+            <textarea id="mp-cuentas-usuarios" rows="2" class="input text-xs w-full" placeholder="Ej: Hasta 5 miembros, SSO opcional...">${esc(plan?.cuentas_usuarios || '')}</textarea>
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Seguridad y Control de Acceso</label>
-            <input type="text" id="mp-seguridad" value="${esc(plan?.seguridad_control_acceso || '')}" placeholder="Ej: 2FA obligatorio, SSL TLS 1.3, RBAC, IP Allowlist..." class="input text-xs w-full">
-          </div>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Entrega y Dominio</label>
-            <input type="text" id="mp-entrega-dominio" value="${esc(plan?.entrega_dominio || '')}" placeholder="Ej: Subdominio cloud o CNAME personalizado..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">🔒 Seguridad & Acceso</label>
+              ${richTextToolbarHtml('mp-seguridad')}
+            </div>
+            <textarea id="mp-seguridad" rows="2" class="input text-xs w-full" placeholder="Ej: 2FA obligatorio, SSL gratuito, IP Whitelist...">${esc(plan?.seguridad_control_acceso || '')}</textarea>
           </div>
           <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Respaldo y Almacenamiento</label>
-            <input type="text" id="mp-respaldo" value="${esc(plan?.respaldo_almacenamiento || '')}" placeholder="Ej: Copias automáticas diarias con 7 días retención..." class="input text-xs w-full">
-          </div>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Complementos IA</label>
-            <input type="text" id="mp-complementos-ia" value="${esc(plan?.complementos_ia || '')}" placeholder="Ej: pgvector, 10,000 tokens/mes, OpenAI GPT-4o..." class="input text-xs w-full">
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-gray-700 mb-1">Video & Multimedia</label>
-            <input type="text" id="mp-video" value="${esc(plan?.video || '')}" placeholder="Ej: HLS streaming, max 100 MB por video..." class="input text-xs w-full">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">🌐 Entrega y Dominio</label>
+              ${richTextToolbarHtml('mp-entrega-dominio')}
+            </div>
+            <textarea id="mp-entrega-dominio" rows="2" class="input text-xs w-full" placeholder="Ej: Subdominio .qubira.io, DNS gestionado...">${esc(plan?.entrega_dominio || '')}</textarea>
           </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Soporte Técnico</label>
-          <input type="text" id="mp-soporte" value="${esc(plan?.soporte || '')}" placeholder="Ej: Email y tickets SLA 4h hábiles, o soporte comunitario..." class="input text-xs w-full">
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-gray-700">💾 Respaldo y Almacenamiento</label>
+              ${richTextToolbarHtml('mp-respaldo')}
+            </div>
+            <textarea id="mp-respaldo" rows="2" class="input text-xs w-full" placeholder="Ej: Snapshots diarios por 7 días...">${esc(plan?.respaldo_almacenamiento || '')}</textarea>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-purple-700">🤖 Complementos IA</label>
+              ${richTextToolbarHtml('mp-complementos-ia')}
+            </div>
+            <textarea id="mp-complementos-ia" rows="2" class="input text-xs w-full" placeholder="Ej: OpenAI API Embeddings, Claude Token pool...">${esc(plan?.complementos_ia || '')}</textarea>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-blue-700">🎥 Video</label>
+              ${richTextToolbarHtml('mp-video')}
+            </div>
+            <textarea id="mp-video" rows="2" class="input text-xs w-full" placeholder="Ej: Transcodificación 720p, 50 hrs streaming...">${esc(plan?.video || '')}</textarea>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-emerald-700">🎧 Soporte</label>
+              ${richTextToolbarHtml('mp-soporte')}
+            </div>
+            <textarea id="mp-soporte" rows="2" class="input text-xs w-full" placeholder="Ej: Ticket < 24h, Discord Comunitario...">${esc(plan?.soporte || '')}</textarea>
+          </div>
         </div>
       </div>
 
-      <!-- PESTAÑA 5: CAMPOS PERSONALIZADOS DINÁMICOS -->
+      <!-- PESTAÑA 5: CAMPOS EXTRA DINÁMICOS -->
       <div id="tab-pane-custom" class="modal-tab-pane space-y-3 hidden">
         <div class="flex items-center justify-between">
-          <p class="text-xs text-gray-500">
-            Libertad total para agregar cualquier especificación o atributo técnico adicional a esta herramienta.
-          </p>
-          <button type="button" id="btn-add-modal-custom-field" class="btn-secondary text-xs px-2.5 py-1">
-            + Agregar Campo Dinámico
+          <div>
+            <h4 class="text-xs font-bold text-gray-800">Campos Técnicos Personalizados</h4>
+            <p class="text-[11px] text-gray-500">Agrega cualquier parámetro técnico adicional que necesites registrar para este plan.</p>
+          </div>
+          <button type="button" id="btn-add-modal-custom-field" class="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1">
+            ${icon('add', 14)} Agregar Campo
           </button>
         </div>
 
-        <div id="modal-custom-fields-container" class="space-y-2 max-h-60 overflow-y-auto pt-1">
-          <!-- Renderizado dinámico -->
-        </div>
+        <div id="modal-custom-fields-container" class="space-y-2 pt-1 max-h-60 overflow-y-auto"></div>
       </div>
 
-      <!-- Footer Modal -->
-      <div class="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
-        <button type="button" id="btn-modal-cancel" class="btn-secondary text-xs">Cancelar</button>
-        <button type="submit" id="btn-modal-save" class="btn-primary text-xs flex items-center gap-1.5 shadow-sm">
-          ${icon('save', 14)} ${isEdit ? 'Guardar Cambios' : 'Crear Plan'}
+      <!-- Footer del Modal -->
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+        <button type="button" class="btn-secondary text-xs py-2 px-4" id="btn-modal-cancel">Cancelar</button>
+        <button type="submit" class="btn-primary text-xs py-2 px-4 flex items-center gap-1.5" id="btn-modal-save">
+          ${icon('save', 14)} Guardar Ficha Técnica
         </button>
       </div>
     </form>
-  `, '2xl');
+  `, { maxWidth: 'max-w-4xl' });
 
   wireModalTabs();
   renderModalCustomFields();
+  wireRichTextToolbars();
 
-  // Función para recalcular en vivo el badge de propuesta en el modal
-  function updateLivePropuesta() {
-    const liveBadge = document.getElementById('mp-live-propuesta');
-    if (!liveBadge) return;
-    const mon = document.getElementById('mp-moneda')?.value || 'PEN';
-    const cVal = document.getElementById('mp-costo')?.value;
-    const minVal = document.getElementById('mp-margen-min')?.value;
-    const maxVal = document.getElementById('mp-margen-max')?.value;
-    const perVal = document.getElementById('mp-periodo')?.value || 'mes';
-    const notVal = document.getElementById('mp-nota')?.value || '';
+  document.getElementById('btn-modal-cancel')?.addEventListener('click', closeModal);
 
-    const price = formatPlanPrice({
-      moneda: mon,
-      costo: cVal !== '' ? cVal : null,
-      margen_min: minVal !== '' ? minVal : null,
-      margen_max: maxVal !== '' ? maxVal : null,
-      periodo: perVal
-    }, notVal);
-
-    liveBadge.textContent = price;
-  }
-
-  ['mp-moneda', 'mp-costo', 'mp-margen-min', 'mp-margen-max', 'mp-periodo', 'mp-nota'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('input', updateLivePropuesta);
-      el.addEventListener('change', updateLivePropuesta);
-    }
-  });
-
-  // Autocompletar categoría si el usuario escribe o selecciona una tecnología conocida
-  document.getElementById('mp-tech-name')?.addEventListener('change', (e) => {
-    const val = (e.target.value || '').trim().toLowerCase();
-    const found = _allTechs.find(t => t.name.toLowerCase() === val);
-    if (found && found.category) {
-      document.getElementById('mp-category').value = found.category;
-    }
-  });
-
-  document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
-
-  document.getElementById('tech-plan-form').addEventListener('submit', async (e) => {
+  document.getElementById('tech-plan-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const saveBtn = document.getElementById('btn-modal-save');
     saveBtn.disabled = true;
@@ -1335,71 +1339,16 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
     const planNombre = document.getElementById('mp-plan-nombre').value.trim();
     const category = document.getElementById('mp-category').value;
 
-    const moneda = document.getElementById('mp-moneda').value;
-    const costoVal = document.getElementById('mp-costo').value;
-    const minVal = document.getElementById('mp-margen-min').value;
-    const maxVal = document.getElementById('mp-margen-max').value;
-    const periodo = document.getElementById('mp-periodo').value;
-    const nota = document.getElementById('mp-nota').value.trim();
-
-    const costo = costoVal !== '' ? Number(costoVal) : null;
-    const margen_min = minVal !== '' ? Number(minVal) : null;
-    const margen_max = maxVal !== '' ? Number(maxVal) : null;
-
-    const calculatedPrice = formatPlanPrice({ moneda, costo, margen_min, margen_max, periodo }, nota);
-
     let matchedTech = _allTechs.find(t => t.name.toLowerCase() === techName.toLowerCase());
 
-    const planDataForCatalog = {
-      name: planNombre,
-      costo: costo,
-      margen_min: margen_min,
-      margen_max: margen_max,
-      moneda: moneda,
-      periodo: periodo
-    };
-
     try {
-      // 1. Sincronizar con la Matriz de Costos OPP (ti.technology_catalog)
-      if (matchedTech && matchedTech.id) {
-        let currentPlans = Array.isArray(matchedTech.plans) ? [...matchedTech.plans] : [];
-        if (isEdit && plan?.plan_nombre) {
-          const pIdx = currentPlans.findIndex(p => (p.name || '').trim().toLowerCase() === plan.plan_nombre.trim().toLowerCase());
-          if (pIdx !== -1) {
-            currentPlans[pIdx] = planDataForCatalog;
-          } else {
-            currentPlans.push(planDataForCatalog);
-          }
-        } else {
-          // Si es nuevo plan, buscar si ya existe con el mismo nombre o agregarlo
-          const pIdx = currentPlans.findIndex(p => (p.name || '').trim().toLowerCase() === planNombre.toLowerCase());
-          if (pIdx !== -1) {
-            currentPlans[pIdx] = planDataForCatalog;
-          } else {
-            currentPlans.push(planDataForCatalog);
-          }
-        }
-
-        matchedTech.plans = currentPlans;
-
-        await api.put(`/technology-catalog/${matchedTech.id}/cost`, {
-          costo: currentPlans[0]?.costo ?? null,
-          margen_min: currentPlans[0]?.margen_min ?? null,
-          margen_max: currentPlans[0]?.margen_max ?? null,
-          moneda: currentPlans[0]?.moneda ?? 'PEN',
-          periodo: currentPlans[0]?.periodo ?? 'mes',
-          plans: currentPlans
-        });
-      }
-
-      // 2. Guardar ficha técnica detallada (ti.tech_plan_info)
+      // Guardar ficha técnica detallada (ti.tech_plan_info) - Sin datos ni permisos de costo
       const payload = {
         tech_id: matchedTech ? matchedTech.id : (initialTechId || null),
         tech_name: techName,
         producto_nombre: techName,
         category: category,
         plan_nombre: planNombre,
-        precio: calculatedPrice,
         descripcion: document.getElementById('mp-descripcion').value.trim(),
         agregados: document.getElementById('mp-agregados').value.trim(),
         limites_tecnicos: document.getElementById('mp-limites-tecnicos').value.trim(),
@@ -1423,7 +1372,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
 
       if (isEdit && !plan.isVirtual && plan.id && !String(plan.id).startsWith('cat-')) {
         const updated = await api.put(`/tech-plan-info/${plan.id}`, payload);
-        toast('Plan y costos actualizados con éxito', 'success');
+        toast('Ficha técnica guardada con éxito', 'success');
         const idx = _items.findIndex(it => it.id === plan.id);
         if (idx !== -1) _items[idx] = updated;
         _selectedPlanId = updated.id;
@@ -1441,8 +1390,66 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
     } catch(err) {
       toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
       saveBtn.disabled = false;
-      saveBtn.innerHTML = `${icon('save', 14)} Guardar`;
+      saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
     }
+  });
+}
+
+function wireRichTextToolbars() {
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const val = textarea.value;
+    textarea.value = val.substring(0, start) + text + val.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+    textarea.focus();
+    textarea.dispatchEvent(new Event('input'));
+  }
+
+  function wrapSelection(textarea, prefix, suffix, defaultText = '') {
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const val = textarea.value;
+    const selected = val.substring(start, end) || defaultText;
+    const replacement = prefix + selected + suffix;
+    textarea.value = val.substring(0, start) + replacement + val.substring(end);
+    textarea.selectionStart = start + prefix.length;
+    textarea.selectionEnd = start + prefix.length + selected.length;
+    textarea.focus();
+    textarea.dispatchEvent(new Event('input'));
+  }
+
+  document.querySelectorAll('.btn-rt-table').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      const tableTpl = `\n| Campo | Información para registrar |\n| Límites técnicos | Dependen del entorno de ejecución... |\n| Límites de archivos | Especificación según plataforma... |\n| Límites de API | Cuotas o solicitudes permitidas... |\n`;
+      insertAtCursor(target, tableTpl);
+    });
+  });
+
+  document.querySelectorAll('.btn-rt-red').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      wrapSelection(target, '[rojo]', '[/rojo]', 'palabra o frase');
+    });
+  });
+
+  document.querySelectorAll('.btn-rt-bullet').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      insertAtCursor(target, '\n• ');
+    });
+  });
+
+  document.querySelectorAll('.btn-rt-bold').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      wrapSelection(target, '**', '**', 'texto en negrita');
+    });
   });
 }
 
