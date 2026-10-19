@@ -1033,8 +1033,8 @@ function renderActivePlanCard(plan, tech) {
           <button type="button" class="btn-primary text-xs px-2.5 py-1.5 flex items-center gap-1.5 btn-edit-plan" data-plan-id="${esc(plan.id)}">
             ${icon('edit', 14)} Editar Plan
           </button>
-          <button type="button" class="btn-danger text-xs px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-1 btn-delete-plan" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}">
-            ${icon('delete', 14)}
+          <button type="button" class="text-xs px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg flex items-center justify-center transition-colors shadow-2xs btn-delete-plan cursor-pointer" data-plan-id="${esc(plan.id)}" data-plan-name="${esc(plan.plan_nombre)}" data-tech-name="${esc(tech.name)}" title="Eliminar Plan">
+            <span class="material-icons text-white" style="font-size:16px;line-height:1;color:#ffffff !important">delete</span>
           </button>
         </div>
       </div>
@@ -1950,7 +1950,7 @@ function renderModalCustomFields() {
     <div class="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
       <input type="text" class="input text-xs w-1/3 modal-cf-title" data-idx="${idx}" placeholder="Nombre del campo (ej: Versión, RAM...)" value="${esc(f.titulo)}">
       <input type="text" class="input text-xs flex-1 modal-cf-value" data-idx="${idx}" placeholder="Valor o especificación..." value="${esc(f.valor)}">
-      <button type="button" class="btn-danger p-1 text-gray-400 hover:text-rose-600 modal-cf-del" data-idx="${idx}" title="Eliminar campo">
+      <button type="button" class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors modal-cf-del cursor-pointer" data-idx="${idx}" title="Eliminar campo">
         ${icon('delete', 16)}
       </button>
     </div>
