@@ -31,7 +31,9 @@ function thumbUrl(url, size = 64) {
 
 export function render() {
   const main = document.getElementById('main');
-  main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="info-tecnico-page">${spinner()}</div>`;
+  // En desktop fijamos el contenedor para que el encabezado y la barra de búsqueda sean 100% estáticos
+  main.className = 'flex-1 overflow-y-auto lg:overflow-hidden flex flex-col';
+  main.innerHTML = `<div class="p-6 max-w-7xl mx-auto w-full lg:h-full flex flex-col min-h-0" id="info-tecnico-page">${spinner()}</div>`;
   load();
 }
 
@@ -116,75 +118,78 @@ function renderPageSkeleton() {
   const totalCount = _allTechs.length;
 
   c.innerHTML = `
-    <!-- Encabezado de página -->
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="text-2xl">⚡</span>
-          <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Info Técnico</h1>
-          <span class="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-200">
-            Catálogo de Tecnologías & Planes
-          </span>
+    <!-- Encabezado y Filtros Estáticos (flex-shrink-0: NUNCA se sube) -->
+    <div class="flex-shrink-0 mb-4">
+      <!-- Encabezado de página -->
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">⚡</span>
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Info Técnico</h1>
+            <span class="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-200">
+              Catálogo de Tecnologías & Planes
+            </span>
+          </div>
+          <p class="text-sm text-gray-500 mt-1">
+            Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan.
+          </p>
         </div>
-        <p class="text-sm text-gray-500 mt-1">
-          Consultas técnicas rápidas de herramientas y lenguajes de la empresa: límites, políticas, cuotas y especificaciones por plan.
-        </p>
-      </div>
 
-      <div class="flex items-center gap-3">
-        <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm">
-          ${icon('add', 18)} Nuevo Plan Técnico
-        </button>
-      </div>
-    </div>
-
-    <!-- Barra de Filtros, Categorías y Búsqueda Inteligente -->
-    <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0" id="category-pills-bar">
-        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-          _selectedCategory === 'all'
-            ? 'bg-primary-600 text-white shadow-sm'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        }" data-cat="all">
-          🌐 Todas (${totalCount})
-        </button>
-        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-          _selectedCategory === 'tool'
-            ? 'bg-primary-600 text-white shadow-sm'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        }" data-cat="tool">
-          🛠️ Herramientas (${toolCount})
-        </button>
-        <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-          _selectedCategory === 'language'
-            ? 'bg-primary-600 text-white shadow-sm'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        }" data-cat="language">
-          💻 Lenguajes (${langCount})
-        </button>
-      </div>
-
-      <!-- Buscador (Persistente para no perder foco al escribir) -->
-      <div class="relative w-full md:w-80">
-        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-          ${icon('search', 16)}
+        <div class="flex items-center gap-3">
+          <button type="button" id="btn-nuevo-plan" class="btn-primary flex items-center gap-2 shadow-sm">
+            ${icon('add', 18)} Nuevo Plan Técnico
+          </button>
         </div>
-        <input type="text" id="tech-search-input" value="${esc(_searchQuery)}" placeholder="Buscar herramienta o lenguaje..."
-          autocomplete="off"
-          class="input pl-9 pr-8 py-1.5 text-xs w-full bg-gray-50 hover:bg-white focus:bg-white border-gray-200 rounded-lg transition-all">
-        <button type="button" id="clear-search-btn" class="${_searchQuery ? '' : 'hidden'} absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer" title="Limpiar búsqueda">
-          ${icon('close', 14)}
-        </button>
+      </div>
+
+      <!-- Barra de Filtros, Categorías y Búsqueda Inteligente (Estática) -->
+      <div class="bg-white border border-gray-200 rounded-xl p-3.5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0" id="category-pills-bar">
+          <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            _selectedCategory === 'all'
+              ? 'bg-primary-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }" data-cat="all">
+            🌐 Todas (${totalCount})
+          </button>
+          <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            _selectedCategory === 'tool'
+              ? 'bg-primary-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }" data-cat="tool">
+            🛠️ Herramientas (${toolCount})
+          </button>
+          <button type="button" class="category-pill px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            _selectedCategory === 'language'
+              ? 'bg-primary-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }" data-cat="language">
+            💻 Lenguajes (${langCount})
+          </button>
+        </div>
+
+        <!-- Buscador (Persistente para no perder foco al escribir) -->
+        <div class="relative w-full md:w-80">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+            ${icon('search', 16)}
+          </div>
+          <input type="text" id="tech-search-input" value="${esc(_searchQuery)}" placeholder="Buscar herramienta o lenguaje..."
+            autocomplete="off"
+            class="input pl-9 pr-8 py-1.5 text-xs w-full bg-gray-50 hover:bg-white focus:bg-white border-gray-200 rounded-lg transition-all">
+          <button type="button" id="clear-search-btn" class="${_searchQuery ? '' : 'hidden'} absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer" title="Limpiar búsqueda">
+            ${icon('close', 14)}
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Layout Master-Detail: Tecnologías (Izquierda) + Ficha Técnica (Derecha) -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch lg:flex-1 lg:min-h-0">
       
       <!-- Columna Izquierda: Lista de Tecnologías (Catálogo)
-           lg:sticky lg:top-4 self-start: NO se baja al scrollear la ficha técnica -->
-      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:sticky lg:top-4 self-start">
-        <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+           Estática y fija, con scroll independiente -->
+      <div class="lg:col-span-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col lg:h-full max-h-[500px] lg:max-h-none">
+        <div class="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
           <span class="text-xs font-bold text-gray-700 uppercase tracking-wider" id="tech-count-badge">
             Tecnologías (${totalCount})
           </span>
@@ -192,13 +197,14 @@ function renderPageSkeleton() {
         </div>
 
         <!-- Scroll independiente para la lista de tecnologías -->
-        <div class="divide-y divide-gray-100 max-h-[calc(100vh-14rem)] overflow-y-auto" id="tech-list-scroll">
+        <div class="divide-y divide-gray-100 flex-1 overflow-y-auto" id="tech-list-scroll">
           <!-- Se inyecta con updateView() -->
         </div>
       </div>
 
-      <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada -->
-      <div class="lg:col-span-8 flex flex-col gap-5" id="tech-detail-mount">
+      <!-- Columna Derecha: Detalle Técnico de la Tecnología Seleccionada
+           Scroll independiente fluido -->
+      <div class="lg:col-span-8 flex flex-col gap-5 lg:h-full lg:overflow-y-auto lg:pr-1" id="tech-detail-mount">
         <!-- Se inyecta con updateView() -->
       </div>
 
