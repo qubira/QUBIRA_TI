@@ -351,40 +351,103 @@ function stripRedundantHeader(text, fieldId) {
 }
 
 /**
+ * Extrae elementos de lista (<li>) de HTML preservando negritas, resaltados y formato original
+ */
+function extractListFromHtml(html) {
+  if (!html || (!html.includes('<li') && !html.includes('<ul') && !html.includes('<ol'))) return null;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const listItems = Array.from(doc.querySelectorAll('li'));
+    if (listItems.length === 0) return null;
+
+    return listItems.map(li => {
+      li.querySelectorAll('strong, b').forEach(b => {
+        const t = b.textContent.trim();
+        if (t) b.parentNode.replaceChild(doc.createTextNode(`**${t}**`), b);
+      });
+      li.querySelectorAll('span, font').forEach(s => {
+        const color = (s.style.color || s.getAttribute('color') || '').toLowerCase();
+        if (color.includes('red') || color.includes('rgb(239') || color.includes('rgb(220') || color.includes('#e') || color.includes('#f')) {
+          const t = s.textContent.trim();
+          if (t) s.parentNode.replaceChild(doc.createTextNode(`[rojo]${t}[/rojo]`), s);
+        }
+      });
+      let text = li.textContent.trim();
+      text = text.replace(/^[•\*\-\–\—\·\●\▪\▫\‣\◦\⁃\+\>]+\s*/, '')
+                 .replace(/^\d+[\.\)]\s*/, '')
+                 .replace(/\s+/g, ' ')
+                 .trim();
+      return text ? `• ${text}` : '';
+    }).filter(Boolean);
+  } catch (e) {
+    console.error('Error parsing HTML list:', e);
+    return null;
+  }
+}
+
+/**
  * Da formato inteligente al texto pegado:
  * - Detecta y convierte tablas HTML o tabuladas a Markdown.
- * - Elimina encabezados repetitivos del prompt o respuesta de ChatGPT.
- * - Estandariza viñetas (•).
+ * - Detecta listas HTML (<li>) o texto y estandariza viñetas (•) sin líneas vacías intermedias.
+ * - Elimina encabezados redundantes de secciones de ChatGPT (ej: "3. ✨ Agregados y beneficios").
+ * - Preserva resaltados [rojo] y **negritas** exactamente como el original.
  */
 function smartFormatPastedText(text, fieldId = '', html = '') {
   if (!text && !html) return '';
 
+  const isListField = ['mp-agregados', 'mp-que-no-incluye', 'mp-plan-no-resuelve'].includes(fieldId);
+
+  // 1. Si hay HTML con tabla, convertirla directamente a Markdown
   if (html && html.includes('<table')) {
     const tableMd = htmlTableToMarkdown(html);
     if (tableMd) return tableMd;
   }
 
-  let cleaned = (text || '').replace(/\r\n/g, '\n');
+  // 2. Si el texto plano contiene TSV (columnas separadas por tabulador de Excel/ChatGPT)
+  if (text && text.includes('\t') && (text.includes('\n') || text.includes('\r'))) {
+    const tableMd = tsvToMarkdown(text);
+    if (tableMd) return tableMd;
+  }
 
+  // 3. Si hay HTML con elementos de lista (<li>)
+  if (html && html.includes('<li')) {
+    const listItems = extractListFromHtml(html);
+    if (listItems && listItems.length > 0) {
+      return listItems.join('\n');
+    }
+  }
+
+  // 4. Procesar el texto plano disponible
+  let cleaned = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Eliminar encabezado redundante de la sección (ej: "3. ✨ Agregados y beneficios")
   if (fieldId) {
     cleaned = stripRedundantHeader(cleaned, fieldId);
   }
 
-  if (cleaned.includes('\t')) {
-    const tableMd = tsvToMarkdown(cleaned);
-    if (tableMd) return tableMd;
+  // Si después de limpiar el encabezado quedó vacío
+  if (!cleaned.trim()) return '';
+
+  // 5. Si es un campo de lista o si el texto pegado contiene viñetas en sus líneas
+  const rawLines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+  const hasBullets = rawLines.some(l => /^([•\*\-\–\—\·\●\▪\▫\‣\◦\⁃\+]|(?:\d+[\.\)]))\s+/.test(l));
+
+  if (isListField || (hasBullets && rawLines.length > 1)) {
+    const formatted = rawLines.map(line => {
+      const bulletMatch = line.match(/^([•\*\-\–\—\·\●\▪\▫\‣\◦\⁃\+\>]|(?:\d+[\.\)]))\s*(.*)$/);
+      if (bulletMatch) {
+        const content = bulletMatch[2].trim();
+        return content ? `• ${content}` : '';
+      }
+      return isListField ? `• ${line}` : line;
+    }).filter(Boolean);
+
+    return formatted.join('\n');
   }
 
-  const lines = cleaned.split('\n');
-  const formattedLines = lines.map(line => {
-    const bulletMatch = line.match(/^\s*([•\*\-]|o|\d+\.)\s*(.*)$/);
-    if (bulletMatch && bulletMatch[1] !== '1.' && bulletMatch[1] !== '2.' && !/^\d+\./.test(bulletMatch[1])) {
-      return `• ${bulletMatch[2]}`;
-    }
-    return line;
-  });
-
-  return formattedLines.join('\n').trim();
+  // Colapsar más de 2 saltos de línea consecutivos
+  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /**
@@ -429,6 +492,9 @@ function parseChatGptResponse(raw) {
       if (val.includes('\t')) {
         const mdTable = tsvToMarkdown(val);
         if (mdTable) val = mdTable;
+      }
+      if (['agregados', 'que_no_incluye', 'plan_no_resuelve'].includes(currentKey)) {
+        val = smartFormatPastedText(val, `mp-${currentKey.replace(/_/g, '-')}`);
       }
       result[currentKey] = val;
     }
@@ -1916,10 +1982,10 @@ function wireRichTextToolbars() {
 
       const formatted = smartFormatPastedText(text, textarea.id, html);
 
-      if (formatted && formatted !== text) {
+      if (formatted) {
         e.preventDefault();
         insertAtCursor(textarea, formatted);
-        toast('📋 Pegado con formato inteligente aplicado', 'info', 2000);
+        toast('📋 Pegado con formato original preservado', 'success', 2000);
       }
     });
   });
