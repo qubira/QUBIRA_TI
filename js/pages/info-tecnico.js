@@ -571,6 +571,63 @@ function richTextToolbarHtml(targetTextareaId) {
   `;
 }
 
+function propuestaLabel(p) {
+  if (!p) return 'Indefinido';
+  const hasCost = p.costo !== null && p.costo !== '' && p.costo !== undefined;
+  const hasMin = p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined;
+  const hasMax = p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined;
+  if (!hasMin && !hasMax && !hasCost) return 'Indefinido';
+
+  const sym = getCurSym(p.moneda);
+  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
+  const min = Number(p.margen_min) || 0;
+  const max = Number(p.margen_max) || 0;
+  const costo = Number(p.costo) || 0;
+
+  const pMax = max > 0 ? max : costo;
+  if (pMax === 0 && min === 0 && costo === 0) return 'Gratis';
+
+  const fMax = Number(pMax).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (min > 0 && min < pMax) {
+    const fMin = Number(min).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${sym} ${fMax}${periodoStr} (Mín: ${sym} ${fMin})`;
+  }
+  return `${sym} ${fMax}${periodoStr}`;
+}
+
+function formatPlanPrice(p, customNote = '') {
+  if (!p) return 'A cotizar';
+  const sym = getCurSym(p.moneda);
+  const periodoStr = p.periodo === 'año' ? ' / año' : ' / mes';
+  const min = (p.margen_min !== null && p.margen_min !== '' && p.margen_min !== undefined) ? Number(p.margen_min) : null;
+  const max = (p.margen_max !== null && p.margen_max !== '' && p.margen_max !== undefined) ? Number(p.margen_max) : null;
+  const costo = (p.costo !== null && p.costo !== '' && p.costo !== undefined) ? Number(p.costo) : null;
+
+  let priceStr = '';
+  if (min === null && max === null && costo === null) {
+    priceStr = 'A cotizar';
+  } else {
+    const numMin = min || 0;
+    const numMax = max !== null && max !== undefined ? max : (costo || 0);
+
+    if (numMin === 0 && numMax === 0 && (costo === 0 || costo === null)) {
+      priceStr = `${sym} 0.00${periodoStr}`;
+    } else if (numMin > 0 && numMax > numMin) {
+      const fMin = numMin.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      priceStr = `${sym} ${fMin} - ${sym} ${fMax}${periodoStr}`;
+    } else {
+      const fMax = numMax.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      priceStr = `${sym} ${fMax}${periodoStr}`;
+    }
+  }
+
+  if (customNote && customNote.trim()) {
+    priceStr += ` ${customNote.trim()}`;
+  }
+  return priceStr;
+}
+
 function normalizePlanStr(s) {
   return (s || '')
     .toLowerCase()
