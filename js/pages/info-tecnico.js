@@ -551,20 +551,20 @@ function parseChatGptResponse(raw) {
  */
 function richTextToolbarHtml(targetTextareaId) {
   return `
-    <div class="flex items-center gap-1.5 py-1">
-      <button type="button" class="btn-rt-paste text-[11px] px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Pegar formateando tablas y viñetas automáticamente">
+    <div class="flex items-center gap-1 shrink-0 flex-nowrap">
+      <button type="button" class="btn-rt-paste text-[10.5px] px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold flex items-center gap-0.5 shadow-2xs transition-colors shrink-0" data-target="${targetTextareaId}" title="Pegar formateando tablas y viñetas automáticamente">
         📋 Pegar
       </button>
-      <button type="button" class="btn-rt-table text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Insertar estructura de tabla">
+      <button type="button" class="btn-rt-table text-[10.5px] px-1.5 py-0.5 rounded bg-gray-50 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 border border-gray-200 font-medium flex items-center gap-0.5 shadow-2xs transition-colors shrink-0" data-target="${targetTextareaId}" title="Insertar estructura de tabla">
         📊 Tabla
       </button>
-      <button type="button" class="btn-rt-red text-[11px] px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Resaltar texto seleccionado en rojo">
-        🔴 Resaltar Rojo
+      <button type="button" class="btn-rt-red text-[10.5px] px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium flex items-center gap-0.5 shadow-2xs transition-colors shrink-0" data-target="${targetTextareaId}" title="Resaltar texto seleccionado en rojo">
+        🔴 Rojo
       </button>
-      <button type="button" class="btn-rt-bullet text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-semibold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Insertar viñeta">
+      <button type="button" class="btn-rt-bullet text-[10.5px] px-1.5 py-0.5 rounded bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-medium shadow-2xs transition-colors shrink-0" data-target="${targetTextareaId}" title="Insertar viñeta">
         • Viñeta
       </button>
-      <button type="button" class="btn-rt-bold text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 font-bold flex items-center gap-1 transition-colors" data-target="${targetTextareaId}" title="Texto en negrita">
+      <button type="button" class="btn-rt-bold text-[10.5px] px-1.5 py-0.5 rounded bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-bold shadow-2xs transition-colors shrink-0" data-target="${targetTextareaId}" title="Texto en negrita">
         B
       </button>
     </div>
@@ -1667,154 +1667,161 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         </div>
       </div>
 
-      <!-- PESTAÑA 2: LÍMITES Y CUOTAS (Con soporte de Tablas tipo Imagen 3) -->
-      <div id="tab-pane-limits" class="modal-tab-pane space-y-3 hidden">
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-xs font-bold text-gray-700">Límites Técnicos y Capacidades (Soporta Tablas | Col 1 | Col 2 |)</label>
+      <!-- PESTAÑA 2: LÍMITES Y CUOTAS -->
+      <div id="tab-pane-limits" class="modal-tab-pane space-y-3.5 hidden">
+        <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <label class="block text-xs font-bold text-gray-800">3. Límites Técnicos y Capacidades (Soporta Tablas | Col 1 | Col 2 |)</label>
             ${richTextToolbarHtml('mp-limites-tecnicos')}
           </div>
-          <textarea id="mp-limites-tecnicos" rows="6" class="input text-xs w-full font-mono text-[11.5px]" placeholder="| Campo | Información para registrar |&#10;| Límites técnicos | Dependen del sistema... |&#10;| Límites de archivos | No existe límite universal... |">${esc(plan?.limites_tecnicos || '')}</textarea>
+          <textarea id="mp-limites-tecnicos" rows="6" class="input text-xs w-full bg-white font-mono text-[11.5px]" placeholder="| Campo | Información para registrar |&#10;| Límites técnicos | Dependen del sistema... |&#10;| Límites de archivos | No existe límite universal... |">${esc(plan?.limites_tecnicos || '')}</textarea>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">Cuota Mensual</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">Cuota Mensual</label>
               ${richTextToolbarHtml('mp-cuota-mensual')}
             </div>
-            <textarea id="mp-cuota-mensual" rows="2" class="input text-xs w-full" placeholder="Ej: 100,000 reqs/mes, 10 GB ancho de banda...">${esc(plan?.cuota_mensual || '')}</textarea>
+            <textarea id="mp-cuota-mensual" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: 100,000 reqs/mes, 10 GB ancho de banda...">${esc(plan?.cuota_mensual || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">Ejemplo de Consumo Mensual</label>
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">Ejemplo de Consumo Mensual</label>
               ${richTextToolbarHtml('mp-ejemplo-consumo')}
             </div>
-            <textarea id="mp-ejemplo-consumo" rows="2" class="input text-xs w-full" placeholder="Ej: 5,000 visitas/mes, 100 consultas/día...">${esc(plan?.ejemplo_consumo_mensual || '')}</textarea>
+            <textarea id="mp-ejemplo-consumo" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: 5,000 visitas/mes, 100 consultas/día...">${esc(plan?.ejemplo_consumo_mensual || '')}</textarea>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">Límites de Archivos</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">📁 Límites de Archivos</label>
               ${richTextToolbarHtml('mp-limites-archivos')}
             </div>
-            <textarea id="mp-limites-archivos" rows="2" class="input text-xs w-full" placeholder="Ej: 10 MB por imagen, 500 MB total...">${esc(plan?.limites_archivos || '')}</textarea>
+            <textarea id="mp-limites-archivos" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: 10 MB por imagen, 500 MB total...">${esc(plan?.limites_archivos || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">Límites de API</label>
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">🔌 Límites de API</label>
               ${richTextToolbarHtml('mp-limites-api')}
             </div>
-            <textarea id="mp-limites-api" rows="2" class="input text-xs w-full" placeholder="Ej: 60 reqs/min, token bearer con rotación...">${esc(plan?.limites_api || '')}</textarea>
+            <textarea id="mp-limites-api" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: 60 reqs/min, token bearer con rotación...">${esc(plan?.limites_api || '')}</textarea>
           </div>
         </div>
       </div>
 
       <!-- PESTAÑA 3: REGLAS & ESCALA -->
-      <div id="tab-pane-rules" class="modal-tab-pane space-y-3 hidden">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-amber-800">⚠️ ¿Qué pasa si te pasas del límite?</label>
+      <div id="tab-pane-rules" class="modal-tab-pane space-y-3.5 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-amber-900">⚠️ ¿Qué pasa si te pasas del límite?</label>
               ${richTextToolbarHtml('mp-pasa-si-te-pasas')}
             </div>
-            <textarea id="mp-pasa-si-te-pasas" rows="3" class="input text-xs w-full" placeholder="Ej: El servicio bloquea las consultas extras o cobra $0.05 por GB adicional...">${esc(plan?.pasa_si_te_pasas_del_limite || '')}</textarea>
+            <textarea id="mp-pasa-si-te-pasas" rows="4" class="input text-xs w-full bg-white border-amber-200 font-sans" placeholder="Ej: El servicio bloquea las consultas extras o cobra $0.05 por GB adicional...">${esc(plan?.pasa_si_te_pasas_del_limite || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-indigo-800">🚀 ¿Cuándo subir de plan?</label>
+          <div class="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-indigo-900">🚀 ¿Cuándo subir de plan?</label>
               ${richTextToolbarHtml('mp-cuando-subir')}
             </div>
-            <textarea id="mp-cuando-subir" rows="3" class="input text-xs w-full" placeholder="Ej: Cuando la app supere los 10,000 usuarios concurrentes...">${esc(plan?.cuando_subir || '')}</textarea>
+            <textarea id="mp-cuando-subir" rows="4" class="input text-xs w-full bg-white border-indigo-200 font-sans" placeholder="Ej: Cuando la app supere los 10,000 usuarios concurrentes...">${esc(plan?.cuando_subir || '')}</textarea>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-rose-800">🚫 Qué NO incluye</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-rose-900">🚫 Qué NO incluye</label>
               ${richTextToolbarHtml('mp-que-no-incluye')}
             </div>
-            <textarea id="mp-que-no-incluye" rows="3" class="input text-xs w-full" placeholder="• No incluye dominio personalizado&#10;• No incluye soporte 24/7...">${esc(plan?.que_no_incluye || '')}</textarea>
+            <textarea id="mp-que-no-incluye" rows="4" class="input text-xs w-full bg-white border-rose-200 font-sans" placeholder="• No incluye dominio personalizado&#10;• No incluye soporte 24/7...">${esc(plan?.que_no_incluye || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">❌ Lo que el plan NO resuelve</label>
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">❌ Lo que el plan NO resuelve</label>
               ${richTextToolbarHtml('mp-plan-no-resuelve')}
             </div>
-            <textarea id="mp-plan-no-resuelve" rows="3" class="input text-xs w-full" placeholder="Ej: No gestiona backups automáticos, requiere script cron externo...">${esc(plan?.plan_no_resuelve || '')}</textarea>
+            <textarea id="mp-plan-no-resuelve" rows="4" class="input text-xs w-full bg-white font-sans" placeholder="Ej: No gestiona backups automáticos, requiere script cron externo...">${esc(plan?.plan_no_resuelve || '')}</textarea>
           </div>
         </div>
       </div>
 
       <!-- PESTAÑA 4: INFRAESTRUCTURA, MULTIMEDIA & GOBERNANZA -->
-      <div id="tab-pane-infra" class="modal-tab-pane space-y-3 hidden">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">👥 Cuentas y Usuarios</label>
+      <div id="tab-pane-infra" class="modal-tab-pane space-y-3.5 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">👥 Cuentas y Usuarios</label>
               ${richTextToolbarHtml('mp-cuentas-usuarios')}
             </div>
-            <textarea id="mp-cuentas-usuarios" rows="2" class="input text-xs w-full" placeholder="Ej: Hasta 5 miembros, SSO opcional...">${esc(plan?.cuentas_usuarios || '')}</textarea>
+            <textarea id="mp-cuentas-usuarios" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: Hasta 5 miembros de equipo, roles asignables, SSO...">${esc(plan?.cuentas_usuarios || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">🔒 Seguridad & Acceso</label>
+
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">🔒 Seguridad y Control de Acceso</label>
               ${richTextToolbarHtml('mp-seguridad')}
             </div>
-            <textarea id="mp-seguridad" rows="2" class="input text-xs w-full" placeholder="Ej: 2FA obligatorio, SSL gratuito, IP Whitelist...">${esc(plan?.seguridad_control_acceso || '')}</textarea>
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">🌐 Entrega y Dominio</label>
-              ${richTextToolbarHtml('mp-entrega-dominio')}
-            </div>
-            <textarea id="mp-entrega-dominio" rows="2" class="input text-xs w-full" placeholder="Ej: Subdominio .qubira.io, DNS gestionado...">${esc(plan?.entrega_dominio || '')}</textarea>
+            <textarea id="mp-seguridad" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: 2FA obligatorio, SSL/TLS 1.3, RBAC, IP Whitelist...">${esc(plan?.seguridad_control_acceso || '')}</textarea>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-gray-700">💾 Respaldo y Almacenamiento</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">🌐 Entrega y Dominio</label>
+              ${richTextToolbarHtml('mp-entrega-dominio')}
+            </div>
+            <textarea id="mp-entrega-dominio" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: Subdominio *.qubira.app o CNAME propio con SSL...">${esc(plan?.entrega_dominio || '')}</textarea>
+          </div>
+
+          <div class="bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-gray-800">💾 Respaldo y Almacenamiento</label>
               ${richTextToolbarHtml('mp-respaldo')}
             </div>
-            <textarea id="mp-respaldo" rows="2" class="input text-xs w-full" placeholder="Ej: Snapshots diarios por 7 días...">${esc(plan?.respaldo_almacenamiento || '')}</textarea>
+            <textarea id="mp-respaldo" rows="3" class="input text-xs w-full bg-white font-sans" placeholder="Ej: Snapshots diarios, retención de 30 días, PITR...">${esc(plan?.respaldo_almacenamiento || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-purple-700">🤖 Complementos IA</label>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-purple-50/40 p-3.5 rounded-xl border border-purple-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-purple-900">🤖 Complementos IA</label>
               ${richTextToolbarHtml('mp-complementos-ia')}
             </div>
-            <textarea id="mp-complementos-ia" rows="2" class="input text-xs w-full" placeholder="Ej: OpenAI API Embeddings, Claude Token pool...">${esc(plan?.complementos_ia || '')}</textarea>
+            <textarea id="mp-complementos-ia" rows="3" class="input text-xs w-full bg-white border-purple-200 font-sans" placeholder="Ej: pgvector, tokens OpenAI GPT-4o, asistentes integrados...">${esc(plan?.complementos_ia || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-blue-700">🎥 Video</label>
+
+          <div class="bg-blue-50/40 p-3.5 rounded-xl border border-blue-200/80 shadow-2xs">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <label class="block text-xs font-bold text-blue-900">🎥 Video & Multimedia</label>
               ${richTextToolbarHtml('mp-video')}
             </div>
-            <textarea id="mp-video" rows="2" class="input text-xs w-full" placeholder="Ej: Transcodificación 720p, 50 hrs streaming...">${esc(plan?.video || '')}</textarea>
+            <textarea id="mp-video" rows="3" class="input text-xs w-full bg-white border-blue-200 font-sans" placeholder="Ej: Streaming HLS adaptativo, compresión WebM/MP4...">${esc(plan?.video || '')}</textarea>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-bold text-emerald-700">🎧 Soporte</label>
-              ${richTextToolbarHtml('mp-soporte')}
-            </div>
-            <textarea id="mp-soporte" rows="2" class="input text-xs w-full" placeholder="Ej: Ticket < 24h, Discord Comunitario...">${esc(plan?.soporte || '')}</textarea>
+        </div>
+
+        <div class="bg-emerald-50/40 p-3.5 rounded-xl border border-emerald-200/80 shadow-2xs">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <label class="block text-xs font-bold text-emerald-900">🎧 Nivel de Soporte Técnico & SLA</label>
+            ${richTextToolbarHtml('mp-soporte')}
           </div>
+          <textarea id="mp-soporte" rows="2" class="input text-xs w-full bg-white border-emerald-200 font-sans" placeholder="Ej: Soporte prioritario 24/7 con SLA < 1 hora o tickets estándar en horario de oficina...">${esc(plan?.soporte || '')}</textarea>
         </div>
       </div>
 
       <!-- PESTAÑA 5: CAMPOS EXTRA DINÁMICOS -->
-      <div id="tab-pane-custom" class="modal-tab-pane space-y-3 hidden">
-        <div class="flex items-center justify-between">
+      <div id="tab-pane-custom" class="modal-tab-pane space-y-3.5 hidden">
+        <div class="flex items-center justify-between bg-gray-50/70 p-3.5 rounded-xl border border-gray-200/80">
           <div>
             <h4 class="text-xs font-bold text-gray-800">Campos Técnicos Personalizados</h4>
             <p class="text-[11px] text-gray-500">Agrega cualquier parámetro técnico adicional que necesites registrar para este plan.</p>
           </div>
-          <button type="button" id="btn-add-modal-custom-field" class="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1">
+          <button type="button" id="btn-add-modal-custom-field" class="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1 font-semibold">
             ${icon('add', 14)} Agregar Campo
           </button>
         </div>
@@ -1830,7 +1837,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
         </button>
       </div>
     </form>
-  `, { maxWidth: 'max-w-4xl' });
+  `, '2xl');
 
   wireModalTabs();
   renderModalCustomFields();

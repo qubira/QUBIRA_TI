@@ -11,7 +11,7 @@ import { render as renderEmails }      from './pages/emails.js';
 import { render as renderCalendario }  from './pages/calendario.js';
 import { render as renderAuditoria }   from './pages/auditoria.js';
 import { render as renderHerramientas } from './pages/herramientas.js';
-import { render as renderInfoTecnico }  from './pages/info-tecnico.js?v=34';
+import { render as renderInfoTecnico }  from './pages/info-tecnico.js?v=35';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
