@@ -1767,9 +1767,9 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
 
       <!-- Footer del Modal -->
       <div class="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-        <button type="button" class="btn-secondary text-xs py-2 px-4" id="btn-modal-cancel">Cancelar</button>
-        <button type="submit" class="btn-primary text-xs py-2 px-4 flex items-center gap-1.5" id="btn-modal-save">
-          ${icon('save', 14)} Guardar Ficha Técnica
+        <button type="button" class="btn-secondary text-xs h-9 px-4" id="btn-modal-cancel">Cancelar</button>
+        <button type="submit" class="btn-primary text-xs h-9 px-4 flex items-center justify-center gap-1.5 shadow-sm font-semibold shrink-0" id="btn-modal-save">
+          ${icon('save', 14)} <span>Guardar Ficha Técnica</span>
         </button>
       </div>
     </form>
@@ -1786,7 +1786,10 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
     const saveBtn = document.getElementById('btn-modal-save');
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.innerHTML = `${spinner(14)} Guardando...`;
+      saveBtn.innerHTML = `
+        <span class="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0"></span>
+        <span>Guardando...</span>
+      `;
     }
 
     const techName = (document.getElementById('mp-tech-name')?.value || '').trim();
@@ -1797,7 +1800,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       toast('Por favor completa el Nombre de la Herramienta y del Plan', 'warning');
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
+        saveBtn.innerHTML = `${icon('save', 14)} <span>Guardar Ficha Técnica</span>`;
       }
       return;
     }
@@ -1863,7 +1866,7 @@ function openPlanModal(plan = null, defaultTechName = '', defaultCategory = 'too
       toast('Error al guardar: ' + (err.message || 'Error de servidor'), 'error');
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = `${icon('save', 14)} Guardar Ficha Técnica`;
+        saveBtn.innerHTML = `${icon('save', 14)} <span>Guardar Ficha Técnica</span>`;
       }
     }
   });
