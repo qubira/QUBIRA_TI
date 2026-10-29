@@ -271,6 +271,18 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ─── Sincronización en vivo con la Base de Datos ─────────────────────────────
+async function recargarActas() {
+  try {
+    const actasRes = await api.get('/calidad/actas');
+    _actas = Array.isArray(actasRes) ? actasRes : [];
+    return _actas;
+  } catch (err) {
+    console.error('Error al sincronizar actas:', err);
+    return _actas;
+  }
+}
+
 // ─── Render principal ─────────────────────────────────────────────────────────
 export async function render(params = {}) {
   const main = document.getElementById('main');
@@ -278,10 +290,9 @@ export async function render(params = {}) {
 
   try {
     const [actasRes, projectsRes] = await Promise.all([
-      api.get('/calidad/actas'),
+      recargarActas(),
       api.get('/projects').catch(() => []),
     ]);
-    _actas = Array.isArray(actasRes) ? actasRes : [];
     _projects = Array.isArray(projectsRes) ? projectsRes : [];
 
     if (params.id) {
@@ -438,6 +449,10 @@ function renderBandeja() {
         <button id="btn-limpiar-filtros" class="btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1 text-gray-500 hover:text-gray-800">
           ${icon('clear', 16)} Limpiar
         </button>` : ''}
+
+      <button id="btn-refrescar-bandeja" class="btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5 text-gray-700 hover:text-primary-700 hover:border-primary-300 ml-auto transition-all shadow-sm" title="Sincronizar lista con la base de datos">
+        ${icon('refresh', 16)} Actualizar
+      </button>
     </div>
 
     <!-- Tabla de Actas -->
@@ -485,6 +500,14 @@ function renderBandeja() {
 
   // Listeners de la bandeja
   document.getElementById('btn-nueva-acta')?.addEventListener('click', () => abrirModalNuevaActa());
+
+  document.getElementById('btn-refrescar-bandeja')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-refrescar-bandeja');
+    if (btn) btn.innerHTML = `${icon('hourglass_empty', 16)} Sincronizando...`;
+    await recargarActas();
+    renderBandeja();
+    toast('Lista de actas actualizada');
+  });
 
   document.getElementById('f-q')?.addEventListener('input', e => {
     _filters.q = e.target.value;
@@ -707,6 +730,7 @@ function abrirModalNuevaActa() {
         datos: datosIniciales,
       });
       closeModal();
+      await recargarActas();
       toast(`Acta ${resp.codigo} creada en blanco exitosamente`);
       await editarActa(resp.id);
     } catch (e) {
@@ -805,8 +829,9 @@ async function verActa(id) {
     `;
 
     // Listeners
-    document.getElementById('btn-volver-bandeja')?.addEventListener('click', () => {
+    document.getElementById('btn-volver-bandeja')?.addEventListener('click', async () => {
       _mode = 'list';
+      await recargarActas();
       renderBandeja();
     });
     document.getElementById('btn-editar-doc')?.addEventListener('click', () => editarActa(acta.id));
@@ -818,8 +843,7 @@ async function verActa(id) {
       try {
         await api.put(`/calidad/actas/${acta.id}`, { estado: nuevo });
         toast(`Estado actualizado a ${nuevo.replace('_', ' ')}`);
-        const idx = _actas.findIndex(x => x.id === acta.id);
-        if (idx !== -1) _actas[idx].estado = nuevo;
+        await recargarActas();
         verActa(acta.id);
       } catch (err) {
         toast(err.message || 'Error al cambiar estado', 'error');
@@ -1521,10 +1545,14 @@ async function editarActa(id) {
       <!-- Toolbar superior de edición (Fijo / Sticky al hacer scroll) -->
       <div class="sticky top-0 z-30 pt-1 pb-3 bg-gray-50/95 backdrop-blur-md mb-4 print:hidden" style="position: -webkit-sticky; position: sticky; top: 0;">
         <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-md">
-          <div class="flex items-center gap-3">
-            <button id="btn-cancelar-edicion" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
-              ${icon('arrow_back', 18)} Cancelar
+          <div class="flex items-center gap-2">
+            <button id="btn-volver-lista-edicion" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-gray-700 hover:text-gray-900" title="Regresar a la bandeja de actas">
+              ${icon('arrow_back', 18)} Volver a la lista
             </button>
+            <button id="btn-cancelar-edicion" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-gray-600 hover:text-gray-800" title="Ver documento en modo oficial">
+              ${icon('visibility', 18)} Ver Acta
+            </button>
+            <div class="h-6 w-px bg-gray-200 mx-1"></div>
             <div>
               <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Editando Acta:</span>
               <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(acta.codigo)}</span>
@@ -2042,6 +2070,12 @@ async function editarActa(id) {
       renderHerramientasInputs();
     });
 
+    document.getElementById('btn-volver-lista-edicion')?.addEventListener('click', async () => {
+      _mode = 'list';
+      await recargarActas();
+      renderBandeja();
+    });
+
     document.getElementById('btn-cancelar-edicion')?.addEventListener('click', () => {
       verActa(acta.id);
     });
@@ -2111,6 +2145,7 @@ async function editarActa(id) {
           fecha_emision: fechaEmision,
           datos: d,
         });
+        await recargarActas(); // <-- Sincronizar reactivamente la lista de actas en memoria
         toast('Acta actualizada con éxito');
         await verActa(acta.id);
       } catch (err) {
@@ -2214,7 +2249,7 @@ async function eliminarActa(id, codigo) {
   try {
     await api.delete(`/calidad/actas/${id}`);
     toast(`Acta ${codigo} eliminada`);
-    _actas = _actas.filter(x => x.id !== id);
+    await recargarActas();
     renderBandeja();
   } catch (err) {
     toast(err.message || 'Error al eliminar el acta', 'error');
