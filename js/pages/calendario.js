@@ -65,11 +65,13 @@ function projectsFieldHtml() {
     </span>`;
   }).join('');
   const libres = _projects.filter(pr => !_projectIds.some(id => String(id) === String(pr.id)));
+  const ph = !_projects.length ? (_projectsCargados ? 'No hay proyectos disponibles' : 'Cargando proyectos…')
+    : libres.length ? (_projectIds.length ? '🔍 Agregar otro proyecto: nombre, código o empresa…' : '🔍 Buscar proyecto por nombre, código o empresa…') : 'Ya agregaste todos los proyectos';
   return `<div class="flex flex-wrap gap-1.5 ${_projectIds.length ? 'mb-1.5' : ''}">${chips}</div>
-    <select id="cal-in-project" class="input text-sm w-full" ${libres.length ? '' : 'disabled'}>
-      <option value="">${!_projects.length ? (_projectsCargados ? 'No hay proyectos disponibles' : 'Cargando proyectos…') : libres.length ? (_projectIds.length ? '+ Agregar otro proyecto…' : '+ Agregar proyecto…') : 'Ya agregaste todos los proyectos'}</option>
-      ${libres.map(pr => `<option value="${esc(pr.id)}">${esc(nombreProyecto(pr))}</option>`).join('')}
-    </select>
+    <div class="relative">
+      <input id="cal-project-search" class="input text-sm w-full" placeholder="${ph}" autocomplete="off" ${libres.length ? '' : 'disabled'}>
+      <div id="cal-project-results" class="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+    </div>
     ${_projectIds.length > 1 ? '<p class="text-[11px] text-gray-400 mt-1">★ principal. La reunión aparece en el detalle y la actividad de cada proyecto.</p>' : ''}`;
 }
 function refreshProjects() {
@@ -77,12 +79,68 @@ function refreshProjects() {
   if (box) box.innerHTML = projectsFieldHtml();
   wireProjects();
 }
-function wireProjects() {
-  document.getElementById('cal-in-project')?.addEventListener('change', e => {
-    const id = e.target.value;
-    if (id && !_projectIds.some(x => String(x) === String(id))) _projectIds.push(id);
-    refreshProjects();
+const sinTildes = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+let _projActivo = 0;
+
+// Proyectos que coinciden con lo escrito (nombre, código o empresa; cada palabra)
+function buscarProyectos(q) {
+  const palabras = sinTildes(q).split(/\s+/).filter(Boolean);
+  return _projects
+    .filter(pr => !_projectIds.some(id => String(id) === String(pr.id)))
+    .filter(pr => { const t = sinTildes(`${pr.code || ''} ${pr.name || ''} ${pr.client || ''}`); return palabras.every(w => t.includes(w)); })
+    .slice(0, 30);
+}
+function resaltar(texto, q) {
+  let html = esc(texto);
+  sinTildes(q).split(/\s+/).filter(w => w.length > 1).forEach(w => {
+    const i = sinTildes(texto).indexOf(w);
+    if (i >= 0) {
+      const orig = texto.slice(i, i + w.length);
+      html = html.replace(esc(orig), `<mark class="bg-yellow-100 text-inherit rounded px-0.5">${esc(orig)}</mark>`);
+    }
   });
+  return html;
+}
+function pintarResultadosProyectos() {
+  const input = document.getElementById('cal-project-search');
+  const box = document.getElementById('cal-project-results');
+  if (!input || !box) return;
+  const q = input.value;
+  const lista = buscarProyectos(q);
+  if (_projActivo >= lista.length) _projActivo = Math.max(0, lista.length - 1);
+  box.innerHTML = lista.length ? lista.map((pr, i) => `
+    <button type="button" class="cal-project-pick w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-3 ${i === _projActivo ? 'bg-primary-50' : 'hover:bg-gray-50'}" data-id="${esc(pr.id)}">
+      <span class="min-w-0"><span class="block font-medium text-gray-800 truncate">${resaltar(pr.name || '', q)}</span>
+        <span class="block text-xs text-gray-500 truncate">${pr.client ? resaltar(pr.client, q) : 'Sin empresa'}</span></span>
+      <span class="text-[11px] font-mono text-gray-500 shrink-0">${pr.code ? resaltar(pr.code, q) : ''}</span>
+    </button>`).join('')
+    : `<p class="px-3 py-2 text-xs text-gray-400">${q.trim() ? 'Ningún proyecto coincide con «' + esc(q) + '»' : 'No quedan proyectos por agregar'}</p>`;
+  box.classList.remove('hidden');
+  box.querySelectorAll('.cal-project-pick').forEach(b => b.addEventListener('mousedown', e => { e.preventDefault(); agregarProyecto(b.dataset.id); }));
+  box.querySelector('.cal-project-pick.bg-primary-50')?.scrollIntoView({ block: 'nearest' });
+}
+function agregarProyecto(id) {
+  if (id && !_projectIds.some(x => String(x) === String(id))) _projectIds.push(id);
+  _projActivo = 0;
+  refreshProjects();
+  document.getElementById('cal-project-search')?.focus();
+}
+
+function wireProjects() {
+  const input = document.getElementById('cal-project-search');
+  const box = document.getElementById('cal-project-results');
+  if (input && box) {
+    input.addEventListener('input', () => { _projActivo = 0; pintarResultadosProyectos(); });
+    input.addEventListener('focus', pintarResultadosProyectos);
+    input.addEventListener('blur', () => setTimeout(() => box.classList.add('hidden'), 120));
+    input.addEventListener('keydown', e => {
+      const n = buscarProyectos(input.value).length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); _projActivo = Math.min(n - 1, _projActivo + 1); pintarResultadosProyectos(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); _projActivo = Math.max(0, _projActivo - 1); pintarResultadosProyectos(); }
+      else if (e.key === 'Enter') { e.preventDefault(); const pr = buscarProyectos(input.value)[_projActivo]; if (pr) agregarProyecto(pr.id); }
+      else if (e.key === 'Escape') { e.stopPropagation(); box.classList.add('hidden'); }
+    });
+  }
   document.querySelectorAll('.cal-remove-project').forEach(b => b.addEventListener('click', () => {
     _projectIds = _projectIds.filter(x => String(x) !== b.dataset.id);
     refreshProjects();
