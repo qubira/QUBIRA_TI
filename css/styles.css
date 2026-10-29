@@ -144,3 +144,49 @@
 .xlsx-table table { border-collapse: collapse; font-size: 0.8rem; }
 .xlsx-table table td, .xlsx-table table th { border: 1px solid #d1d5db; padding: 4px 10px; white-space: nowrap; }
 .xlsx-table table tr:first-child { background: #f3f4f6; font-weight: 600; }
+
+/* ─── Estilos de Impresión / Exportación a PDF para Actas de Calidad (A4) ─── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 15mm 10mm 15mm;
+  }
+  body, html {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #sidebar-container,
+  #toast-container,
+  #modal-container,
+  .print\:hidden,
+  button {
+    display: none !important;
+  }
+  #app {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #main {
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .word-paper-container {
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+  table {
+    page-break-inside: avoid;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
+

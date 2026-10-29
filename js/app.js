@@ -12,6 +12,7 @@ import { render as renderCalendario }  from './pages/calendario.js';
 import { render as renderAuditoria }   from './pages/auditoria.js';
 import { render as renderHerramientas } from './pages/herramientas.js';
 import { render as renderInfoTecnico }  from './pages/info-tecnico.js?v=35';
+import { render as renderCalidad }      from './pages/calidad.js';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
@@ -55,6 +56,7 @@ const NAV = [
   { path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
   { path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
   { path: '/documents',  iconName: 'article',       label: 'Documentos' },
+  { path: '/calidad',    iconName: 'verified',      label: 'Calidad' },
   { path: '/herramientas', iconName: 'build',       label: 'Herramientas' },
   { path: '/info-tecnico', iconName: 'memory',      label: 'Info Técnico' },
   { path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
@@ -178,6 +180,8 @@ addRoute('/projects/:id',    p  => renderProjectDetail(p));
 addRoute('/calendario',      () => renderCalendario());
 addRoute('/auditoria',       () => renderAuditoria());
 addRoute('/documents',       () => renderDocuments());
+addRoute('/calidad',         () => renderCalidad());
+addRoute('/calidad/:id',     p  => renderCalidad(p));
 addRoute('/herramientas',    () => renderHerramientas());
 addRoute('/info-tecnico',    () => renderInfoTecnico());
 addRoute('/whatsapp',        () => renderWhatsApp());
