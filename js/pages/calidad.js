@@ -438,8 +438,13 @@ function renderBandeja() {
           </tbody>
         </table>
       </div>
-      <div class="px-4 py-3 bg-gray-50/50 border-t border-gray-100 text-xs text-gray-500 flex justify-between items-center">
-        <span>Mostrando <b>${filtradas.length}</b> de <b>${_actas.length}</b> actas</span>
+      <div class="px-4 py-3 bg-gray-50/50 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center gap-2.5">
+          <span>Mostrando <b>${filtradas.length}</b> de <b>${_actas.length}</b> actas</span>
+          <span class="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Base de Datos: Neon PostgreSQL (ti.auditorias_calidad)
+          </span>
+        </div>
         <span class="text-gray-400">Modelo oficial: MODELO_DOC/AUDITORIA</span>
       </div>
     </div>
@@ -648,8 +653,8 @@ function abrirModalNuevaActa() {
       responsable_proyecto: proj?.responsible_name || 'Responsable del proyecto',
       responsable_dni: '',
       responsable_cargo: 'Líder de Proyecto / Contraparte',
-      entorno: proj?.hosting || 'Producción — [Hosting Backend · Hosting Frontend · PostgreSQL Neon]',
-      repositorios: proj?.repository || 'Repositorio principal de código fuente e historial de Git',
+      entorno: proj?.website_url ? `Producción (${proj.website_url}) — [Hosting Frontend · Backend Render · Neon PostgreSQL]` : (proj?.project_type ? `Entorno ${proj.project_type.toUpperCase()} · PostgreSQL Neon` : 'Producción — [Hosting Backend · Hosting Frontend · PostgreSQL Neon]'),
+      repositorios: proj?.github_url ? `${proj.github_url} (Rama principal e historial de Git)` : 'Repositorio principal de código fuente e historial de Git',
       alcance: cfg.alcanceDef,
       metodologia: cfg.metodologiaDef,
       periodo_desde: fechaEmision,
