@@ -1,6 +1,7 @@
 import { api }        from '../api.js';
 import { getUser }    from '../state.js';
 import { toast, showModal, closeModal, confirmModal, pageHeader, spinner, icon } from '../utils.js';
+import { iniciarAgenda, montarAgenda, repintarAgenda } from '../components/agenda-reunion.js';
 
 const OWN_AREA = 'TI';
 const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
@@ -357,24 +358,12 @@ function formHtml() {
   const fv = (name, fallback) => esc(_draft[name] ?? fallback ?? '');
   const currentImage = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
   return `
-    <form id="cal-form" class="space-y-3">
+    <form id="cal-form" class="grid lg:grid-cols-2 gap-5 items-start">
+      <div id="cal-agenda"></div>
+      <div class="space-y-3">
       <div>
         <label class="text-xs font-medium text-gray-600">Nombre de la reunión *</label>
         <input name="title" class="input text-sm w-full mt-1" required autocomplete="off" value="${fv('title', editing?.title)}">
-      </div>
-      <div class="grid grid-cols-3 gap-2">
-        <div>
-          <label class="text-xs font-medium text-gray-600">Fecha *</label>
-          <input type="date" name="date" class="input text-sm w-full mt-1" required value="${fv('date', editing?.meeting_date)}">
-        </div>
-        <div>
-          <label class="text-xs font-medium text-gray-600">Inicio *</label>
-          <input type="time" name="start_time" class="input text-sm w-full mt-1" required value="${fv('start_time', editing ? editing.start_time.slice(0,5) : '')}">
-        </div>
-        <div>
-          <label class="text-xs font-medium text-gray-600">Fin *</label>
-          <input type="time" name="end_time" class="input text-sm w-full mt-1" required value="${fv('end_time', editing ? editing.end_time.slice(0,5) : '')}">
-        </div>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
@@ -441,16 +430,58 @@ function formHtml() {
         <button type="submit" id="cal-save-btn" class="btn-primary text-sm flex-1 justify-center" ${_conflicts.length ? 'disabled' : ''}>${editing ? 'Guardar cambios' : 'Guardar reunión'}</button>
         <button type="button" id="cal-form-cancel" class="btn-secondary text-sm">Cancelar</button>
       </div>
+      </div>
     </form>`;
 }
 
 function openFormModal() {
   const editing = _meetings.find(m => m.id === _editingId);
-  showModal(editing ? 'Editar reunión' : 'Nueva reunión', formHtml(), 'lg');
+  iniciarAgenda({
+    area: OWN_AREA, areaLabel: AREA_LABEL,
+    fecha: _draft.date ?? editing?.meeting_date ?? '',
+    inicio: _draft.start_time ?? (editing ? editing.start_time.slice(0, 5) : ''),
+    fin: _draft.end_time ?? (editing ? editing.end_time.slice(0, 5) : ''),
+    excluirReunion: _editingId || null,
+  });
+  showModal(editing ? 'Editar reunión' : 'Nueva reunión', formHtml(), '2xl');
   document.getElementById('cal-form-cancel')?.addEventListener('click', closeModal);
   wireFormExtras();
   wireFormDraftCapture();
   wireImageControls();
+  mountAgenda();
+}
+
+const AREA_LABEL = (AREAS.find(a => a[0] === OWN_AREA) || [OWN_AREA, OWN_AREA])[1];
+
+/* Agenda del área (fecha, hora y quién está libre): escribe fecha y horario
+   en el formulario y permite sumar a los integrantes libres como participantes. */
+function mountAgenda() {
+  const cont = document.getElementById('cal-agenda');
+  if (!cont) return;
+  montarAgenda(cont, {
+    seleccionados: () => _selectedParticipants.map(p => p.user_id),
+    alCambiarHorario: ({ date, start_time, end_time }) => {
+      _draft.date = date; _draft.start_time = start_time; _draft.end_time = end_time;
+      liveCheck();
+    },
+    alMarcarPersona: (m, agregar) => {
+      if (agregar) {
+        if (!_selectedParticipants.some(p => String(p.user_id) === String(m.user_id))) {
+          _selectedParticipants.push({ user_id: m.user_id, nombre: m.nombre, apellidos: m.apellidos, cargo: m.cargo, area: AREA_LABEL });
+        }
+      } else {
+        _selectedParticipants = _selectedParticipants.filter(p => String(p.user_id) !== String(m.user_id));
+      }
+      refreshParticipants();
+    },
+  });
+}
+
+function refreshParticipants() {
+  const box = document.getElementById('cal-selected-participants');
+  if (box) box.innerHTML = selectedParticipantsHtml();
+  wireRemoveParticipants();
+  liveCheck();
 }
 
 function selectedParticipantsHtml() {
@@ -578,6 +609,7 @@ function rerenderFormModal() {
   wireFormExtras();
   wireFormDraftCapture();
   wireImageControls();
+  mountAgenda();
 }
 
 function wireImageControls() {
@@ -631,9 +663,8 @@ function wireFormExtras() {
             const person = _dirResults.find(p => String(p.user_id) === btn.dataset.id);
             if (person && !_selectedParticipants.some(p => p.user_id === person.user_id)) {
               _selectedParticipants.push(person);
-              document.getElementById('cal-selected-participants').innerHTML = selectedParticipantsHtml();
-              wireRemoveParticipants();
-              liveCheck();
+              refreshParticipants();
+              repintarAgenda();
             }
             search.value = ''; results.classList.add('hidden'); results.innerHTML = '';
           }));
@@ -660,9 +691,8 @@ function wireFormExtras() {
 function wireRemoveParticipants() {
   document.querySelectorAll('.cal-remove-participant').forEach(btn => btn.addEventListener('click', () => {
     _selectedParticipants = _selectedParticipants.filter(p => String(p.user_id) !== btn.dataset.id);
-    document.getElementById('cal-selected-participants').innerHTML = selectedParticipantsHtml();
-    wireRemoveParticipants();
-    liveCheck();
+    refreshParticipants();
+    repintarAgenda();
   }));
 }
 function wireRemoveExternals() {
@@ -723,7 +753,7 @@ async function submitForm(e) {
   const description = form.elements.description.value.trim();
 
   if (!title) return toast('El nombre de la reunión es requerido', 'error');
-  if (!date || !start_time || !end_time) return toast('Fecha y horario son requeridos', 'error');
+  if (!date || !start_time || !end_time) return toast('Elige en la agenda el día y el horario de la reunión', 'error');
   if (end_time <= start_time) return toast('La hora de fin debe ser posterior a la de inicio', 'error');
   if (!_selectedParticipants.length && !_externalParticipants.length) return toast('Selecciona al menos un participante', 'error');
 
