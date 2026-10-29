@@ -443,6 +443,146 @@ function tieneSubActa(acta) {
   return Boolean(acta?.datos?.sub_acta && acta.datos.sub_acta.codigo);
 }
 
+// ─── Construir contenido en blanco jalando observaciones del acta inicial ────
+function construirContenidoSubActaDesdeOrigen(acta, plantillaKey) {
+  const hallazgos = Array.isArray(acta?.datos?.hallazgos) ? acta.datos.hallazgos : [];
+  const tipo = plantillaKey || acta?.tipo || 'seguridad';
+  const plantillaDef = PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad;
+
+  if (hallazgos.length > 0) {
+    const grupos = {
+      critico: { label: '🔴 Críticos', severidad: 'critico', colorBadge: '#C0392B', items: [] },
+      alto:    { label: '🟠 Altos', severidad: 'alto', colorBadge: '#E67E22', items: [] },
+      medio:   { label: '🟡 Medios', severidad: 'medio', colorBadge: '#F1C40F', items: [] },
+      bajo:    { label: '⚪ Bajos', severidad: 'bajo', colorBadge: '#27AE60', items: [] },
+    };
+
+    hallazgos.forEach(h => {
+      const sev = ['critico', 'alto', 'medio', 'bajo'].includes(h.severidad) ? h.severidad : 'bajo';
+      grupos[sev].items.push({
+        ref: h.id,
+        hallazgo: h.titulo || 'Observación registrada',
+        accion: '', // En blanco inicialmente para que el usuario escriba la acción técnica
+        estado: h.estado || 'pendiente',
+        corregido: ['corregido', 'verificado'].includes(h.estado),
+        severidad: sev,
+        ubicacion: h.ubicacion || '',
+      });
+    });
+
+    const secciones = Object.values(grupos).filter(g => g.items.length > 0);
+
+    return {
+      nombre: `Solucionario Técnico — ${acta.codigo}`,
+      descripcionIntroductoria: 'Se ha trabajado directamente sobre el código fuente de los proyectos vinculados, remediando las observaciones técnicas identificadas en la auditoría.',
+      secciones: secciones.length > 0 ? secciones : Object.values(grupos),
+      credenciales: plantillaDef.credenciales ? JSON.parse(JSON.stringify(plantillaDef.credenciales)) : null,
+    };
+  }
+
+  return {
+    nombre: `Solucionario Técnico — ${acta?.codigo || 'Acta'}`,
+    descripcionIntroductoria: 'Se ha verificado la arquitectura y se documentan las acciones de remediación correspondientes.',
+    secciones: [
+      { label: '🔴 Críticos', severidad: 'critico', colorBadge: '#C0392B', items: [] },
+      { label: '🟠 Altos', severidad: 'alto', colorBadge: '#E67E22', items: [] },
+      { label: '🟡 Medios', severidad: 'medio', colorBadge: '#F1C40F', items: [] },
+      { label: '⚪ Bajos', severidad: 'bajo', colorBadge: '#27AE60', items: [] },
+    ],
+    credenciales: null,
+  };
+}
+
+// ─── Sincronizar observaciones de origen en la sub-acta sin perder lo editado ───
+function asegurarContenidoSubActaSincronizado(acta, sub) {
+  if (!sub || !acta) return sub;
+  const hallazgos = Array.isArray(acta.datos?.hallazgos) ? acta.datos.hallazgos : [];
+  if (hallazgos.length === 0) return sub;
+
+  const itemsSub = (sub.contenido?.secciones || []).flatMap(s => s.items || []);
+  const refsSub = new Set(itemsSub.map(it => it.ref));
+
+  // Si faltan observaciones del acta inicial en la sub-acta
+  const faltaAlgunaRef = hallazgos.some(h => !refsSub.has(h.id));
+  if (faltaAlgunaRef || itemsSub.length === 0) {
+    const accionesPrevias = new Map();
+    itemsSub.forEach(it => {
+      if (it.ref && it.accion) accionesPrevias.set(it.ref, it.accion);
+      if (it.ref && it.estado) accionesPrevias.set(`${it.ref}_estado`, it.estado);
+    });
+
+    const grupos = {
+      critico: { label: '🔴 Críticos', severidad: 'critico', colorBadge: '#C0392B', items: [] },
+      alto:    { label: '🟠 Altos', severidad: 'alto', colorBadge: '#E67E22', items: [] },
+      medio:   { label: '🟡 Medios', severidad: 'medio', colorBadge: '#F1C40F', items: [] },
+      bajo:    { label: '⚪ Bajos', severidad: 'bajo', colorBadge: '#27AE60', items: [] },
+    };
+
+    hallazgos.forEach(h => {
+      const sev = ['critico', 'alto', 'medio', 'bajo'].includes(h.severidad) ? h.severidad : 'bajo';
+      const accionGuardada = accionesPrevias.get(h.id) || '';
+      const estadoGuardado = accionesPrevias.get(`${h.id}_estado`) || h.estado || 'pendiente';
+      grupos[sev].items.push({
+        ref: h.id,
+        hallazgo: h.titulo || 'Observación registrada',
+        accion: accionGuardada,
+        estado: estadoGuardado,
+        corregido: ['corregido', 'verificado'].includes(estadoGuardado),
+        severidad: sev,
+        ubicacion: h.ubicacion || '',
+      });
+    });
+
+    if (!sub.contenido) sub.contenido = {};
+    sub.contenido.secciones = Object.values(grupos).filter(g => g.items.length > 0);
+  }
+
+  return sub;
+}
+
+// ─── Calcular progreso real de subsanación y abiertos ─────────────────────────
+function calcularProgresoSubsanacion(acta) {
+  const sub = obtenerSubActa(acta);
+  const hallazgos = Array.isArray(acta?.datos?.hallazgos) ? acta.datos.hallazgos : [];
+
+  const total = { critico: 0, alto: 0, medio: 0, bajo: 0, total: 0 };
+  const corregidos = { critico: 0, alto: 0, medio: 0, bajo: 0, total: 0 };
+  const abiertos = { critico: 0, alto: 0, medio: 0, bajo: 0, total: 0 };
+
+  const itemsMap = new Map();
+  if (sub && sub.contenido && Array.isArray(sub.contenido.secciones)) {
+    sub.contenido.secciones.forEach(sec => {
+      (sec.items || []).forEach(it => {
+        if (it.ref) itemsMap.set(it.ref, it);
+      });
+    });
+  }
+
+  hallazgos.forEach(h => {
+    const sev = ['critico', 'alto', 'medio', 'bajo'].includes(h.severidad) ? h.severidad : 'bajo';
+    total[sev]++;
+    total.total++;
+
+    const itemSub = itemsMap.get(h.id);
+    const estaCorregido = itemSub
+      ? (itemSub.corregido === true || ['corregido', 'verificado'].includes(itemSub.estado))
+      : ['corregido', 'verificado'].includes(h.estado);
+
+    if (estaCorregido) {
+      corregidos[sev]++;
+      corregidos.total++;
+    } else {
+      abiertos[sev]++;
+      abiertos.total++;
+    }
+  });
+
+  const porcentaje = total.total > 0 ? Math.round((corregidos.total / total.total) * 100) : 100;
+  const totalmenteSubsanado = total.total > 0 && corregidos.total === total.total;
+
+  return { total, corregidos, abiertos, porcentaje, totalmenteSubsanado };
+}
+
 function obtenerSubActa(acta) {
   if (!acta) return null;
   const tipo = acta.tipo || 'seguridad';
@@ -451,7 +591,7 @@ function obtenerSubActa(acta) {
 
   if (acta.datos?.sub_acta && acta.datos.sub_acta.codigo) {
     const s = acta.datos.sub_acta;
-    return {
+    const baseSub = {
       id: s.id || `cor-${acta.id}`,
       codigo: s.codigo && s.codigo.startsWith('COR-') ? s.codigo : codigoCor,
       acta_origen_id: acta.id,
@@ -466,9 +606,11 @@ function obtenerSubActa(acta) {
       auditor: s.auditor || acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
       responsable_proyecto: s.responsable_proyecto || acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
       plantilla_id: s.plantilla_id || tipo,
-      contenido: s.contenido || JSON.parse(JSON.stringify(PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
+      contenido: s.contenido || construirContenidoSubActaDesdeOrigen(acta, tipo),
       proyectos: Array.isArray(s.proyectos) && s.proyectos.length ? s.proyectos : (Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : [])),
     };
+
+    return asegurarContenidoSubActaSincronizado(acta, baseSub);
   }
 
   return null;
@@ -481,8 +623,7 @@ function obtenerSolucionarioActa(acta) {
   const tipo = acta.tipo || 'seguridad';
   const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
   const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
-  const plantilla = PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad;
-  return {
+  const baseSub = {
     id: `cor-${acta.id}`,
     codigo: codigoCor,
     acta_origen_id: acta.id,
@@ -497,9 +638,11 @@ function obtenerSolucionarioActa(acta) {
     auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
     responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
     plantilla_id: tipo,
-    contenido: JSON.parse(JSON.stringify(plantilla)),
+    contenido: construirContenidoSubActaDesdeOrigen(acta, tipo),
     proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
   };
+
+  return asegurarContenidoSubActaSincronizado(acta, baseSub);
 }
 
 function generarTextoPlanoSolucionario(sol, acta) {
@@ -512,9 +655,10 @@ function generarTextoPlanoSolucionario(sol, acta) {
   txt += `Estado: Subsanado y Verificado\n\n`;
   txt += `${cont.descripcionIntroductoria || ''}\n\n`;
   (cont.secciones || []).forEach(sec => {
-    txt += `${sec.label}\n#\tHallazgo\tAcción\n`;
+    txt += `${sec.label}\n#\tHallazgo\tAcción Técnica\tEstado\n`;
     (sec.items || []).forEach(it => {
-      txt += `${it.ref}\t${it.hallazgo}\t${it.accion}\n`;
+      const isOk = it.corregido || ['corregido', 'verificado'].includes(it.estado);
+      txt += `${it.ref}\t${it.hallazgo}\t${it.accion || '(Sin acción documentada)'}\t[${isOk ? 'CORREGIDO' : 'PENDIENTE'}]\n`;
     });
     txt += `\n`;
   });
@@ -525,15 +669,16 @@ function generarTextoPlanoSolucionario(sol, acta) {
 }
 
 function renderPanelSolucionario(a) {
-  const sub = obtenerSolucionarioActa(a);
+  const sub = asegurarContenidoSubActaSincronizado(a, obtenerSubActa(a) || obtenerSolucionarioActa(a));
   const sol = sub;
   const cont = sol.contenido || sol;
   const fechaPub = sub.fecha_publicacion || sol.fecha_publicacion || fmtDate(a.fecha_emision);
   const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
   const tieneSub = tieneSubActa(a);
+  const prog = calcularProgresoSubsanacion(a);
 
   return `
-    <div class="p-4 sm:p-6 bg-white rounded-2xl border border-gray-200/90 shadow-lg space-y-4 my-2 mx-2">
+    <div class="contenedor-panel-solucionario p-4 sm:p-6 bg-white rounded-2xl border border-gray-200/90 shadow-lg space-y-4 my-2 mx-2">
       <!-- Encabezado del Solucionario / Sub-Acta -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-gray-100">
         <div class="flex items-center gap-3">
@@ -549,21 +694,32 @@ function renderPanelSolucionario(a) {
               <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.badgeCls}">${cfg.label}</span>
               <span class="text-xs text-gray-500 font-medium">Ref: Acta #${esc(a.codigo)}</span>
             </div>
-            <p class="text-xs text-gray-500 mt-0.5">Resolución técnica oficial y solucionario verificado directamente sobre el código fuente</p>
+            <p class="text-xs text-gray-500 mt-0.5">Resolución técnica oficial y remediación de hallazgos sobre el código fuente</p>
           </div>
         </div>
 
-        <!-- Acciones del Sub-Acta, Selector de plantillas y Fecha de Publicación -->
-        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <!-- Acciones del Sub-Acta -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <!-- Botón Editar Sub-Acta -->
+          <button
+            type="button"
+            data-action="editar-subacta"
+            data-id="${a.id}"
+            class="btn-primary text-xs py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center gap-1.5 shadow-sm font-semibold cursor-pointer"
+            title="Editar observaciones y documentar acciones técnicas de corrección"
+          >
+            ${icon('edit', 14)} Editar Corrección
+          </button>
+
           <!-- Ver documento oficial A4 de Sub-Acta -->
           <button
             type="button"
             data-action="ver-subacta"
             data-id="${a.id}"
-            class="btn-primary text-xs py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 shadow-sm font-semibold"
-            title="Ver documento oficial en hoja A4 con membrete institucional"
+            class="btn-secondary text-xs py-1.5 px-3 bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 inline-flex items-center gap-1.5 shadow-sm font-semibold"
+            title="Ver documento oficial en hoja A4"
           >
-            ${icon('visibility', 14)} Ver Sub-Acta
+            ${icon('visibility', 14)} Ver Hoja A4
           </button>
 
           <!-- Descargar Word de Sub-Acta -->
@@ -577,44 +733,7 @@ function renderPanelSolucionario(a) {
             ${icon('file_download', 14)} Word (.doc)
           </button>
 
-          <!-- Selector de Plantillas -->
-          <div class="flex items-center gap-1 bg-gray-100/90 p-1 rounded-xl text-xs font-medium border border-gray-200/60">
-            <span class="text-gray-500 px-2 flex items-center gap-1 font-semibold text-[11px]">
-              ${icon('style', 14)} Plantilla:
-            </span>
-            <button
-              type="button"
-              data-action="cambiar-plantilla-sol"
-              data-id="${a.id}"
-              data-plantilla="seguridad"
-              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'seguridad' || (!sub.plantilla_id && a.tipo === 'seguridad') ? 'bg-white text-indigo-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
-              title="Cargar plantilla de Seguridad Web + API"
-            >
-              Seguridad
-            </button>
-            <button
-              type="button"
-              data-action="cambiar-plantilla-sol"
-              data-id="${a.id}"
-              data-plantilla="calidad"
-              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'calidad' || (!sub.plantilla_id && a.tipo === 'calidad') ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
-              title="Cargar plantilla de Calidad & Refactorización"
-            >
-              Calidad
-            </button>
-            <button
-              type="button"
-              data-action="cambiar-plantilla-sol"
-              data-id="${a.id}"
-              data-plantilla="reglas"
-              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'reglas' || (!sub.plantilla_id && a.tipo === 'reglas') ? 'bg-white text-purple-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
-              title="Cargar plantilla de Reglas de Negocio"
-            >
-              Reglas
-            </button>
-          </div>
-
-          <!-- FECHA DE PUBLICACIÓN AL COSTADO DE LA VISUALIZACIÓN -->
+          <!-- Fecha de Publicación -->
           <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-900 text-xs font-semibold shadow-sm">
             <span class="material-icons text-blue-600 text-sm">event</span>
             <span>Publicado: <span class="font-bold font-mono">${esc(fechaPub)}</span></span>
@@ -625,7 +744,7 @@ function renderPanelSolucionario(a) {
             type="button"
             data-action="copiar-solucionario"
             data-id="${a.id}"
-            class="btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5 text-gray-700 hover:text-gray-900 shadow-sm"
+            class="btn-secondary text-xs py-1.5 px-2.5 inline-flex items-center gap-1 text-gray-700 hover:text-gray-900 shadow-sm"
             title="Copiar resumen estructurado al portapapeles"
           >
             ${icon('content_copy', 14)} Copiar
@@ -638,13 +757,48 @@ function renderPanelSolucionario(a) {
               data-action="eliminar-subacta"
               data-id="${a.id}"
               data-codigo="${esc(sub.codigo)}"
-              class="btn-secondary text-xs py-1.5 px-3 text-red-600 border-red-200 hover:bg-red-50 inline-flex items-center gap-1.5 shadow-sm font-medium"
+              class="btn-secondary text-xs py-1.5 px-2.5 text-red-600 border-red-200 hover:bg-red-50 inline-flex items-center gap-1 shadow-sm font-medium"
               title="Eliminar Sub-Acta de Corrección (${esc(sub.codigo)})"
             >
               ${icon('delete', 14)} Eliminar
             </button>
           ` : ''}
         </div>
+      </div>
+
+      <!-- Tarjeta de Progreso de Subsanación en tiempo real -->
+      <div class="p-3.5 bg-gradient-to-r from-emerald-50/70 to-blue-50/50 rounded-xl border border-emerald-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm text-gray-900">Estado de Corrección Técnica:</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono ${prog.totalmenteSubsanado ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'}">
+              ${prog.totalmenteSubsanado ? '✓ Totalmente Subsanado (100%)' : `⏳ ${prog.corregidos.total} de ${prog.total.total} Subsanados (${prog.abiertos.total} pendientes)`}
+            </span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono font-medium text-gray-600">
+            <span class="px-2 py-0.5 rounded bg-white border border-red-200 text-red-800">
+              <b>${prog.corregidos.critico}/${prog.total.critico}</b> Críticos subsanados
+            </span>
+            <span class="px-2 py-0.5 rounded bg-white border border-amber-200 text-amber-800">
+              <b>${prog.corregidos.alto}/${prog.total.alto}</b> Altos subsanados
+            </span>
+            <span class="px-2 py-0.5 rounded bg-white border border-yellow-300 text-yellow-900">
+              <b>${prog.corregidos.medio}/${prog.total.medio}</b> Medios subsanados
+            </span>
+            <span class="px-2 py-0.5 rounded bg-white border border-emerald-200 text-emerald-800">
+              <b>${prog.corregidos.bajo}/${prog.total.bajo}</b> Bajos subsanados
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          data-action="editar-subacta"
+          data-id="${a.id}"
+          class="btn-secondary text-xs py-2 px-3.5 bg-white hover:bg-amber-50 text-amber-900 border-amber-300 font-bold inline-flex items-center gap-1.5 shrink-0 shadow-2xs"
+        >
+          ${icon('edit_note', 16)} Editar Observaciones
+        </button>
       </div>
 
       <!-- Texto introductorio -->
@@ -683,27 +837,46 @@ function renderPanelSolucionario(a) {
                   sec.severidad === 'alto' ? 'text-amber-700 border-amber-200' :
                   sec.severidad === 'medio' ? 'text-yellow-800 border-yellow-300' :
                   'text-slate-600 border-slate-200'
-                }">${sec.items?.length || 0} acciones</span>
+                }">${sec.items?.length || 0} observaciones</span>
               </div>
             </div>
 
             <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left">
+              <table class="w-full text-xs text-left" style="table-layout: fixed;">
+                <colgroup>
+                  <col style="width: 70px;">
+                  <col style="width: 32%;">
+                  <col style="width: 53%;">
+                  <col style="width: 15%;">
+                </colgroup>
                 <thead>
-                  <tr class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200/40">
-                    <th class="py-1.5 px-2 w-24">#</th>
-                    <th class="py-1.5 px-2 w-1/4">Hallazgo</th>
-                    <th class="py-1.5 px-2">Acción / Solución Aplicada</th>
+                  <tr class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200/60 bg-gray-50/50">
+                    <th class="py-2 px-2.5">#</th>
+                    <th class="py-2 px-2.5">Observación Original</th>
+                    <th class="py-2 px-2.5">Acción Técnica / Solución Aplicada</th>
+                    <th class="py-2 px-2.5 text-center">Estado</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                  ${(sec.items || []).map(it => `
-                    <tr class="hover:bg-white/80 transition-colors">
-                      <td class="py-2 px-2 font-mono font-bold text-gray-900 whitespace-nowrap align-top">${esc(it.ref)}</td>
-                      <td class="py-2 px-2 font-semibold text-gray-800 align-top">${esc(it.hallazgo)}</td>
-                      <td class="py-2 px-2 text-gray-600 leading-relaxed align-top">${esc(it.accion)}</td>
-                    </tr>
-                  `).join('')}
+                  ${(sec.items || []).map(it => {
+                    const isOk = it.corregido || ['corregido', 'verificado'].includes(it.estado);
+                    return `
+                      <tr class="hover:bg-white/90 transition-colors ${isOk ? 'bg-emerald-50/10' : ''}">
+                        <td class="py-2.5 px-2.5 font-mono font-bold text-gray-900 whitespace-nowrap align-top">${esc(it.ref)}</td>
+                        <td class="py-2.5 px-2.5 font-semibold text-gray-800 align-top">${esc(it.hallazgo)}</td>
+                        <td class="py-2.5 px-2.5 text-gray-700 leading-relaxed align-top">
+                          ${it.accion ? esc(it.accion) : '<span class="text-gray-400 italic font-normal">Sin acción técnica registrada aún. Presiona «Editar Corrección» para redactar.</span>'}
+                        </td>
+                        <td class="py-2.5 px-2.5 text-center align-top whitespace-nowrap">
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            isOk ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-50 text-red-700 border border-red-200'
+                          }">
+                            ${isOk ? '✓ Corregido' : '❌ Pendiente'}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
@@ -713,7 +886,7 @@ function renderPanelSolucionario(a) {
 
       <!-- Bloque de Credenciales Seguras (si aplica) -->
       ${cont.credenciales ? `
-        <div class="rounded-xl p-4 bg-slate-900 text-white border border-slate-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="rounded-xl p-4 bg-slate-900 text-white border border-slate-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
           <div class="space-y-1">
             <div class="flex items-center gap-2 font-bold text-sm text-amber-400">
               <span class="material-icons text-amber-400 text-base">key</span>
@@ -827,14 +1000,14 @@ function renderBandeja() {
     return true;
   });
 
-  // Métricas agregadas
+  // Métricas agregadas en vivo (descontando los subsanados en Sub-Acta)
   let totalCriticos = 0, totalAltos = 0, totalMedios = 0, totalVencidos = 0;
   _actas.forEach(a => {
-    const r = a.resumen || {};
-    totalCriticos += r.abiertos?.critico || 0;
-    totalAltos += r.abiertos?.alto || 0;
-    totalMedios += r.abiertos?.medio || 0;
-    totalVencidos += r.vencidos || 0;
+    const prog = calcularProgresoSubsanacion(a);
+    totalCriticos += prog.abiertos.critico;
+    totalAltos += prog.abiertos.alto;
+    totalMedios += prog.abiertos.medio;
+    totalVencidos += (a.resumen?.vencidos || 0);
   });
 
   const projOpts = _projects.map(p => `
@@ -852,9 +1025,9 @@ function renderBandeja() {
       </button>`
     )}
 
-    <!-- Tarjetas de métricas tipo KPI -->
+    <!-- Tarjetas de métricas tipo KPI (Interactivas con Desglose) -->
     <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-6">
-      <div class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between">
+      <div id="kpi-card-total" class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-300 hover:shadow-md transition-all" title="Click para ver desglose de todas las actas">
         <div>
           <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Actas</p>
           <p class="text-2xl font-bold text-gray-900 mt-1">${_actas.length}</p>
@@ -864,37 +1037,46 @@ function renderBandeja() {
         </div>
       </div>
 
-      <div class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between">
+      <div id="kpi-card-criticos" class="card p-4 bg-white border ${totalCriticos === 0 ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-100'} shadow-sm flex items-center justify-between cursor-pointer hover:border-red-300 hover:shadow-md transition-all" title="Click para ver desglose de Críticos Abiertos por acta">
         <div>
           <p class="text-xs font-semibold text-red-600 uppercase tracking-wide">Críticos Abiertos</p>
-          <p class="text-2xl font-bold text-red-700 mt-1">${totalCriticos}</p>
+          <div class="flex items-baseline gap-1 mt-1">
+            <p class="text-2xl font-bold ${totalCriticos === 0 ? 'text-emerald-700 font-mono' : 'text-red-700'}">${totalCriticos}</p>
+            ${totalCriticos === 0 ? '<span class="text-xs font-bold text-emerald-600 font-mono">✓ En Cero</span>' : ''}
+          </div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
-          ${icon('error', 22)}
+        <div class="w-10 h-10 rounded-xl ${totalCriticos === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-50 text-red-600'} flex items-center justify-center">
+          ${icon(totalCriticos === 0 ? 'check_circle' : 'error', 22)}
         </div>
       </div>
 
-      <div class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between">
+      <div id="kpi-card-altos" class="card p-4 bg-white border ${totalAltos === 0 ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-100'} shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 hover:shadow-md transition-all" title="Click para ver desglose de Altos Abiertos por acta">
         <div>
           <p class="text-xs font-semibold text-amber-600 uppercase tracking-wide">Altos Abiertos</p>
-          <p class="text-2xl font-bold text-amber-700 mt-1">${totalAltos}</p>
+          <div class="flex items-baseline gap-1 mt-1">
+            <p class="text-2xl font-bold ${totalAltos === 0 ? 'text-emerald-700 font-mono' : 'text-amber-700'}">${totalAltos}</p>
+            ${totalAltos === 0 ? '<span class="text-xs font-bold text-emerald-600 font-mono">✓ En Cero</span>' : ''}
+          </div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-          ${icon('warning', 22)}
+        <div class="w-10 h-10 rounded-xl ${totalAltos === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600'} flex items-center justify-center">
+          ${icon(totalAltos === 0 ? 'check_circle' : 'warning', 22)}
         </div>
       </div>
 
-      <div class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between">
+      <div id="kpi-card-medios" class="card p-4 bg-white border ${totalMedios === 0 ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-100'} shadow-sm flex items-center justify-between cursor-pointer hover:border-yellow-400 hover:shadow-md transition-all" title="Click para ver desglose de Medios Abiertos por acta">
         <div>
           <p class="text-xs font-semibold text-yellow-600 uppercase tracking-wide">Medios Abiertos</p>
-          <p class="text-2xl font-bold text-yellow-700 mt-1">${totalMedios}</p>
+          <div class="flex items-baseline gap-1 mt-1">
+            <p class="text-2xl font-bold ${totalMedios === 0 ? 'text-emerald-700 font-mono' : 'text-yellow-700'}">${totalMedios}</p>
+            ${totalMedios === 0 ? '<span class="text-xs font-bold text-emerald-600 font-mono">✓ En Cero</span>' : ''}
+          </div>
         </div>
-        <div class="w-10 h-10 rounded-xl bg-yellow-50 text-yellow-700 flex items-center justify-center">
-          ${icon('info', 22)}
+        <div class="w-10 h-10 rounded-xl ${totalMedios === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-50 text-yellow-700'} flex items-center justify-center">
+          ${icon(totalMedios === 0 ? 'check_circle' : 'info', 22)}
         </div>
       </div>
 
-      <div class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between col-span-2 sm:col-span-1">
+      <div id="kpi-card-vencidos" class="card p-4 bg-white border border-gray-100 shadow-sm flex items-center justify-between col-span-2 sm:col-span-1 cursor-pointer hover:border-purple-300 hover:shadow-md transition-all" title="Click para ver desglose de vencidos">
         <div>
           <p class="text-xs font-semibold text-purple-600 uppercase tracking-wide">Vencidos</p>
           <p class="text-2xl font-bold ${totalVencidos > 0 ? 'text-red-600' : 'text-gray-900'} mt-1">${totalVencidos}</p>
@@ -995,6 +1177,13 @@ function renderBandeja() {
     toast('Lista de actas actualizada');
   });
 
+  // Listeners interactivos de las tarjetas KPI para ver desglose por acta
+  document.getElementById('kpi-card-total')?.addEventListener('click', () => abrirModalDesgloseKpi('todos'));
+  document.getElementById('kpi-card-criticos')?.addEventListener('click', () => abrirModalDesgloseKpi('critico'));
+  document.getElementById('kpi-card-altos')?.addEventListener('click', () => abrirModalDesgloseKpi('alto'));
+  document.getElementById('kpi-card-medios')?.addEventListener('click', () => abrirModalDesgloseKpi('medio'));
+  document.getElementById('kpi-card-vencidos')?.addEventListener('click', () => abrirModalDesgloseKpi('vencidos'));
+
   document.getElementById('f-q')?.addEventListener('input', e => {
     _filters.q = e.target.value;
     renderBandeja();
@@ -1056,6 +1245,9 @@ function renderBandeja() {
   c.querySelectorAll('[data-action="crear-subacta"]').forEach(btn => {
     btn.addEventListener('click', () => abrirModalNuevaSubActa(btn.dataset.id));
   });
+  c.querySelectorAll('[data-action="editar-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => editarSubActa(btn.dataset.id));
+  });
   c.querySelectorAll('[data-action="eliminar-subacta"]').forEach(btn => {
     btn.addEventListener('click', () => eliminarSubActa(btn.dataset.id, btn.dataset.codigo));
   });
@@ -1084,59 +1276,6 @@ function renderBandeja() {
       } else {
         row.classList.add('hidden');
         _solucionariosAbiertos.delete(id);
-      }
-    });
-  });
-
-  c.querySelectorAll('[data-action="cambiar-plantilla-sol"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      const plantillaKey = btn.dataset.plantilla;
-      const acta = _actas.find(x => x.id === id);
-      if (!acta) return;
-
-      const nuevaPlantilla = PLANTILLAS_SOLUCIONARIO[plantillaKey];
-      if (!nuevaPlantilla) return;
-
-      const sub = obtenerSubActa(acta);
-      const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
-      const fechaPub = hoyHoraFormateada();
-
-      datosActualizados.solucionario = {
-        plantilla_id: plantillaKey,
-        fecha_publicacion: fechaPub,
-        contenido: JSON.parse(JSON.stringify(nuevaPlantilla)),
-      };
-
-      datosActualizados.sub_acta = {
-        id: `cor-${acta.id}`,
-        codigo: sub.codigo,
-        acta_origen_id: acta.id,
-        acta_origen_codigo: acta.codigo,
-        tipo: plantillaKey,
-        titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
-        subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
-        fecha_emision: acta.fecha_emision || hoyISO(),
-        fecha_publicacion: fechaPub,
-        version: '1.0',
-        estado: 'subsanado',
-        auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
-        responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
-        plantilla_id: plantillaKey,
-        contenido: JSON.parse(JSON.stringify(nuevaPlantilla)),
-        proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
-      };
-
-      try {
-        await api.put(`/calidad/actas/${id}`, {
-          datos: datosActualizados,
-        });
-        toast(`Plantilla de Sub-Acta cambiada a ${nuevaPlantilla.nombre}`);
-        await recargarActas();
-        _solucionariosAbiertos.add(id);
-        renderBandeja();
-      } catch (e) {
-        toast(e.message || 'Error al cambiar plantilla', 'error');
       }
     });
   });
@@ -1171,31 +1310,36 @@ function renderBandeja() {
   });
 }
 
-// Flecha del selector de estado (el select usa appearance-none)
+// ─── CSS con aislamiento estricto (no afecta al solucionario) ─────────────────
 if (typeof document !== 'undefined' && !document.getElementById('css-estado-fila')) {
   const st = document.createElement('style'); st.id = 'css-estado-fila';
   st.textContent = ".estado-fila{background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .35rem center;background-size:.9rem}"
-    + ".tabla-actas th,.tabla-actas td{padding-left:.5rem!important;padding-right:.5rem!important}"
-    + ".tabla-actas td:last-child{white-space:normal}"
-    + ".tabla-actas td:last-child>div{display:inline-grid!important;grid-template-columns:repeat(4,auto);gap:2px;justify-items:center}"
-    + ".tabla-actas td:last-child>div>button{padding:.25rem!important}"
-    + ".tabla-actas td:first-child{font-size:12.5px}.tabla-actas td:first-child a{padding-left:0!important}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>th,.tabla-actas>tbody>tr:not(.fila-solucionario)>td,.tabla-actas>thead>tr>th{padding-left:.5rem!important;padding-right:.5rem!important}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:last-child{white-space:normal}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:last-child>div{display:inline-grid!important;grid-template-columns:repeat(4,auto);gap:2px;justify-items:center}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:last-child>div>button{padding:.25rem!important}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:first-child{font-size:12.5px}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:first-child a{padding-left:0!important}"
     + ".tabla-actas .ver-inline{display:none}"
-    + "@media (max-width:1439px){.tabla-actas th:nth-child(4),.tabla-actas td:nth-child(4){display:none}.tabla-actas .ver-inline{display:block}"
-    + ".tabla-actas td:nth-child(2) .material-icons,.tabla-actas td:nth-child(5) .material-icons{display:none}"
-    + ".tabla-actas th,.tabla-actas td{padding-left:.4rem!important;padding-right:.4rem!important}}"
-    + ".tabla-actas td:nth-child(2) span,.tabla-actas td:nth-child(5),.tabla-actas td:nth-child(5) span{white-space:normal}";
+    + "@media (max-width:1439px){"
+    + "  .tabla-actas>thead>tr>th:nth-child(4),.tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(4){display:none}"
+    + "  .tabla-actas .ver-inline{display:block}"
+    + "  .tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(2) .material-icons,.tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(5) .material-icons{display:none}"
+    + "  .tabla-actas>tbody>tr:not(.fila-solucionario)>th,.tabla-actas>tbody>tr:not(.fila-solucionario)>td{padding-left:.4rem!important;padding-right:.4rem!important}"
+    + "}"
+    + ".tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(2) span,.tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(5),.tabla-actas>tbody>tr:not(.fila-solucionario)>td:nth-child(5) span{white-space:normal}"
+    + ".fila-solucionario td{padding:0!important;white-space:normal!important;display:table-cell!important}"
+    + ".contenedor-panel-solucionario{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}";
   document.head.appendChild(st);
 }
 
 function renderFilaActa(a) {
   const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
   const est = ESTADOS_CONFIG[a.estado] || ESTADOS_CONFIG.borrador;
-  const res = a.resumen || { severidad: { critico: 0, alto: 0, medio: 0, bajo: 0 } };
-  const s = res.severidad || {};
   const estaAbierto = _solucionariosAbiertos.has(a.id) || a.id === _actaRecienCreadaId;
   const tieneSub = tieneSubActa(a);
   const sub = tieneSub ? obtenerSubActa(a) : null;
+  const prog = calcularProgresoSubsanacion(a);
 
   return `
     <!-- Fila principal: ACTA DE AUDITORÍA ORIGINAL -->
@@ -1242,14 +1386,18 @@ function renderFilaActa(a) {
       <td class="px-2.5 py-3 text-center font-mono text-xs text-gray-600">v${esc(a.version || '1.0')}</td>
       <td class="px-2.5 py-3 text-xs text-gray-700 whitespace-nowrap">${fmtDate(a.fecha_emision)}</td>
       <td class="px-2.5 py-3 text-xs text-gray-800">${esc(a.auditor || a.created_by_name || '—')}</td>
+      
+      <!-- Columna HALLAZGOS (Historial inicial intacto detectado en auditoría) -->
       <td class="px-2.5 py-3 text-center">
-        <div class="inline-flex items-center gap-0.5 text-xs font-mono font-semibold">
-          <span class="px-1.5 py-0.5 rounded text-white" style="background:#C0392B" title="${s.critico || 0} Críticos">${s.critico || 0}</span>
-          <span class="px-1.5 py-0.5 rounded text-white" style="background:#E67E22" title="${s.alto || 0} Altos">${s.alto || 0}</span>
-          <span class="px-1.5 py-0.5 rounded text-gray-900" style="background:#F1C40F" title="${s.medio || 0} Medios">${s.medio || 0}</span>
-          <span class="px-1.5 py-0.5 rounded text-white" style="background:#27AE60" title="${s.bajo || 0} Bajos">${s.bajo || 0}</span>
+        <div class="inline-flex items-center gap-0.5 text-xs font-mono font-semibold" title="Historial inicial detectado en la auditoría original">
+          <span class="px-1.5 py-0.5 rounded text-white" style="background:#C0392B" title="${prog.total.critico} Críticos detectados inicialmente">${prog.total.critico}</span>
+          <span class="px-1.5 py-0.5 rounded text-white" style="background:#E67E22" title="${prog.total.alto} Altos detectados inicialmente">${prog.total.alto}</span>
+          <span class="px-1.5 py-0.5 rounded text-gray-900" style="background:#F1C40F" title="${prog.total.medio} Medios detectados inicialmente">${prog.total.medio}</span>
+          <span class="px-1.5 py-0.5 rounded text-white" style="background:#27AE60" title="${prog.total.bajo} Bajos detectados inicialmente">${prog.total.bajo}</span>
         </div>
+        <div class="text-[10px] text-gray-400 font-medium mt-0.5">Historial inicial</div>
       </td>
+
       <td class="px-2.5 py-3 text-center">
         <select data-action="estado-fila" data-id="${a.id}" title="Cambiar estado del acta"
           class="estado-fila appearance-none cursor-pointer pl-2.5 pr-6 py-0.5 rounded-full text-xs font-medium border ${est.cls} focus:outline-none focus:ring-2 focus:ring-primary-300">
@@ -1314,20 +1462,29 @@ function renderFilaActa(a) {
         </span>
       </td>
       <td class="px-4 py-2.5 text-xs text-gray-700">${esc(sub.auditor || a.auditor || '—')}</td>
+      
+      <!-- Columna CORRECCIONES SUBSANADAS (Refleja cuánto se corrigió respecto al inicial) -->
       <td class="px-4 py-2.5 text-center">
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold font-mono">
-          ✓ Subsanado
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold font-mono ${prog.totalmenteSubsanado ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'}" title="${prog.corregidos.total} de ${prog.total.total} observaciones subsanadas">
+          ${prog.totalmenteSubsanado ? '✓ Subsanado' : `⏳ ${prog.corregidos.total}/${prog.total.total}`}
         </span>
+        <div class="text-[10px] font-mono font-semibold mt-0.5 ${prog.totalmenteSubsanado ? 'text-emerald-700' : 'text-amber-800'}">
+          ${prog.corregidos.critico}/${prog.total.critico}C · ${prog.corregidos.alto}/${prog.total.alto}A · ${prog.corregidos.medio}/${prog.total.medio}M
+        </div>
       </td>
+
       <td class="px-4 py-2.5 text-center">
-        <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-          Subsanado
+        <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${prog.totalmenteSubsanado ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'}">
+          ${prog.totalmenteSubsanado ? 'Subsanado' : 'En progreso'}
         </span>
       </td>
       <td class="px-4 py-2.5 text-right whitespace-nowrap">
         <div class="flex items-center justify-end gap-1">
           <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 transition-colors" title="Desplegar / Ocultar detalle del Solucionario">
             ${icon('expand_more', 18)}
+          </button>
+          <button data-action="editar-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition-colors" title="Editar Sub-Acta de Corrección (${esc(sub.codigo)})">
+            ${icon('edit', 18)}
           </button>
           <button data-action="ver-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 transition-colors" title="Ver documento fiel de la Sub-Acta (${esc(sub.codigo)})">
             ${icon('visibility', 18)}
@@ -1349,7 +1506,7 @@ function renderFilaActa(a) {
     </tr>
     <!-- Fila desplegable del Resumen de lo Corregido (Solucionario) -->
     <tr id="fila-solucionario-${a.id}" class="fila-solucionario ${estaAbierto ? '' : 'hidden'} bg-gradient-to-b from-gray-50/70 to-white border-b-2 border-emerald-200">
-      <td colspan="9" class="p-0">
+      <td colspan="9" class="p-0 celda-solucionario">
         ${renderPanelSolucionario(a)}
       </td>
     </tr>
@@ -3804,7 +3961,9 @@ function generarHtmlDocumentoSubActa(acta) {
             </tr>
           </thead>
           <tbody>
-            ${(sec.items || []).map(it => `
+            ${(sec.items || []).map(it => {
+              const isOk = it.corregido || ['corregido', 'verificado'].includes(it.estado);
+              return `
               <tr>
                 <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-family:monospace;font-size:8.5pt;font-weight:bold;color:#1F3A5F;vertical-align:top;">
                   ${esc(it.ref)}
@@ -3813,13 +3972,14 @@ function generarHtmlDocumentoSubActa(acta) {
                   ${esc(it.hallazgo)}
                 </td>
                 <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:9pt;color:#374151;vertical-align:top;line-height:1.25;">
-                  ${esc(it.accion)}
+                  ${it.accion ? esc(it.accion) : '<span style="color:#9CA3AF;font-style:italic;">(Sin acción registrada aún)</span>'}
                 </td>
-                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:8.5pt;color:#27AE60;vertical-align:top;text-align:center;font-weight:bold;">
-                  ✓ Corregido
+                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:8.5pt;color:${isOk ? '#27AE60' : '#C0392B'};vertical-align:top;text-align:center;font-weight:bold;">
+                  ${isOk ? '✓ Corregido' : '❌ Pendiente'}
                 </td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -4069,6 +4229,10 @@ async function verSubActa(id) {
               ${icon('description', 18)} Ver Acta Original (${esc(acta.codigo)})
             </button>
 
+            <button id="btn-editar-subacta-view" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-amber-800 bg-amber-50 border-amber-300 hover:bg-amber-100 font-semibold cursor-pointer" title="Editar observaciones y documentar acciones técnicas">
+              ${icon('edit', 18)} Editar Corrección
+            </button>
+
             <button id="btn-descargar-word-sub" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-blue-700 border-blue-200 hover:bg-blue-50">
               ${icon('file_download', 18)} Descargar Word (.doc)
             </button>
@@ -4112,6 +4276,7 @@ async function verSubActa(id) {
       renderBandeja();
     });
     document.getElementById('btn-ver-acta-origen')?.addEventListener('click', () => verActa(acta.id));
+    document.getElementById('btn-editar-subacta-view')?.addEventListener('click', () => editarSubActa(acta.id));
     document.getElementById('btn-descargar-word-sub')?.addEventListener('click', () => descargarWordSubActa(acta));
     document.getElementById('btn-descargar-txt-sub')?.addEventListener('click', () => descargarTxtSubActa(acta));
     document.getElementById('btn-imprimir-pdf-sub')?.addEventListener('click', () => window.print());
@@ -4277,14 +4442,14 @@ async function abrirModalNuevaSubActa(actaId) {
 
     const tipoSel = document.querySelector('input[name="sub_tipo"]:checked')?.value || tipoDef;
     const fechaPub = document.getElementById('sub-fecha-publicacion')?.value.trim() || hoyHoraFormateada();
-    const plantilla = PLANTILLAS_SOLUCIONARIO[tipoSel] || PLANTILLAS_SOLUCIONARIO.seguridad;
+    const contenidoEnBlanco = construirContenidoSubActaDesdeOrigen(acta, tipoSel);
 
     const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
 
     datosActualizados.solucionario = {
       plantilla_id: tipoSel,
       fecha_publicacion: fechaPub,
-      contenido: JSON.parse(JSON.stringify(plantilla)),
+      contenido: JSON.parse(JSON.stringify(contenidoEnBlanco)),
     };
 
     datosActualizados.sub_acta = {
@@ -4302,7 +4467,7 @@ async function abrirModalNuevaSubActa(actaId) {
       auditor: auditorNombre,
       responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
       plantilla_id: tipoSel,
-      contenido: JSON.parse(JSON.stringify(plantilla)),
+      contenido: JSON.parse(JSON.stringify(contenidoEnBlanco)),
       proyectos: Array.isArray(acta.datos?.proyectos) && acta.datos.proyectos.length ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
     };
 
@@ -4361,5 +4526,751 @@ async function eliminarSubActa(actaId, codigo) {
     toast(`Acta de Corrección ${codigo} eliminada exitosamente`);
   } catch (err) {
     toast(err.message || 'Error al eliminar el Acta de Corrección', 'error');
+  }
+}
+
+// ─── MODAL DESGLOSE DETALLADO DE ACTAS Y CONTEOS (Tarjetas KPI) ─────────────
+function abrirModalDesgloseKpi(filtro = 'todos') {
+  const titulos = {
+    todos: 'Desglose General de Actas y Correcciones Técnicas',
+    critico: 'Desglose de Hallazgos Críticos por Acta',
+    alto: 'Desglose de Hallazgos Altos por Acta',
+    medio: 'Desglose de Hallazgos Medios por Acta',
+    vencidos: 'Desglose de Actas Vencidas',
+  };
+
+  const subtitulos = {
+    todos: 'Resumen consolidado de todas las actas registradas, su historial de hallazgos y el estado de sus sub-actas de corrección.',
+    critico: 'Relación de observaciones de severidad CRÍTICA detectadas en la auditoría inicial versus las subsanadas en cada Sub-Acta.',
+    alto: 'Relación de observaciones de severidad ALTA detectadas en la auditoría inicial versus las subsanadas en cada Sub-Acta.',
+    medio: 'Relación de observaciones de severidad MEDIA detectadas en la auditoría inicial versus las subsanadas en cada Sub-Acta.',
+    vencidos: 'Relación de actas cuya fecha límite de subsanación ha vencido sin resolverse al 100%.',
+  };
+
+  let totalDetectadosGlobal = 0;
+  let totalSubsanadosGlobal = 0;
+  let totalAbiertosGlobal = 0;
+
+  const filasHtml = _actas.map(a => {
+    const prog = calcularProgresoSubsanacion(a);
+    const sub = obtenerSubActa(a);
+    const tieneSub = Boolean(sub);
+    const projNombres = nombreProyectosActa(a) || a.project_name || '—';
+
+    let detectados = 0;
+    let subsanados = 0;
+    let abiertos = 0;
+
+    if (filtro === 'critico') {
+      detectados = prog.total.critico;
+      subsanados = prog.corregidos.critico;
+      abiertos = prog.abiertos.critico;
+    } else if (filtro === 'alto') {
+      detectados = prog.total.alto;
+      subsanados = prog.corregidos.alto;
+      abiertos = prog.abiertos.alto;
+    } else if (filtro === 'medio') {
+      detectados = prog.total.medio;
+      subsanados = prog.corregidos.medio;
+      abiertos = prog.abiertos.medio;
+    } else if (filtro === 'vencidos') {
+      detectados = a.resumen?.vencidos || 0;
+      subsanados = 0;
+      abiertos = detectados;
+    } else {
+      detectados = prog.total.total;
+      subsanados = prog.corregidos.total;
+      abiertos = prog.abiertos.total;
+    }
+
+    totalDetectadosGlobal += detectados;
+    totalSubsanadosGlobal += subsanados;
+    totalAbiertosGlobal += abiertos;
+
+    const hallazgosActa = Array.isArray(a.datos?.hallazgos) ? a.datos.hallazgos : [];
+    const hallazgosFiltrados = ['critico', 'alto', 'medio'].includes(filtro)
+      ? hallazgosActa.filter(h => h.severidad === filtro)
+      : (filtro === 'todos' ? hallazgosActa : []);
+
+    const subItemsMap = new Map();
+    if (sub?.contenido?.secciones) {
+      sub.contenido.secciones.forEach(sec => {
+        (sec.items || []).forEach(it => {
+          if (it.ref) subItemsMap.set(it.ref, it);
+        });
+      });
+    }
+
+    return `
+      <div class="p-4 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="font-mono font-bold text-gray-900 text-sm bg-gray-100 px-2 py-0.5 rounded border border-gray-200">${esc(a.codigo)}</span>
+            <span class="text-xs text-gray-500">• Proyectos: <b class="text-gray-800 font-medium">${esc(projNombres)}</b></span>
+          </div>
+          <div class="flex items-center gap-2">
+            ${tieneSub ? `
+              <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                ${icon('verified', 14)} ${esc(sub.codigo)}
+              </span>
+            ` : `
+              <span class="text-xs text-gray-400 italic">Sin Sub-Acta creada</span>
+            `}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-center text-xs">
+          <div class="p-2 rounded-lg bg-gray-50 border border-gray-200">
+            <div class="text-[11px] text-gray-500 font-semibold uppercase">Detectados Inicialmente</div>
+            <div class="font-mono font-bold text-base text-gray-800 mt-0.5">${detectados}</div>
+            <div class="text-[10px] text-gray-400">Historial inmutable</div>
+          </div>
+          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div class="text-[11px] text-emerald-800 font-semibold uppercase">Subsanados en Sub-Acta</div>
+            <div class="font-mono font-bold text-base text-emerald-700 mt-0.5">${subsanados}</div>
+            <div class="text-[10px] text-emerald-600 font-medium">${detectados > 0 ? Math.round((subsanados / detectados) * 100) : 100}% corregido</div>
+          </div>
+          <div class="p-2 rounded-lg ${abiertos === 0 ? 'bg-emerald-50/50 border border-emerald-200' : 'bg-red-50 border border-red-200'}">
+            <div class="text-[11px] ${abiertos === 0 ? 'text-emerald-800' : 'text-red-700'} font-semibold uppercase">Abiertos / Pendientes</div>
+            <div class="font-mono font-bold text-base ${abiertos === 0 ? 'text-emerald-700' : 'text-red-700'} mt-0.5">
+              ${abiertos === 0 ? '0 ✓ (Llegó a Cero)' : abiertos}
+            </div>
+            <div class="text-[10px] ${abiertos === 0 ? 'text-emerald-600' : 'text-red-500'} font-medium">Aporta al contador superior</div>
+          </div>
+        </div>
+
+        ${hallazgosFiltrados.length > 0 ? `
+          <div class="overflow-x-auto border border-gray-100 rounded-lg mt-2">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-gray-50 text-[10px] text-gray-500 uppercase font-semibold">
+                <tr>
+                  <th class="py-1 px-2 w-16">Ref</th>
+                  <th class="py-1 px-2">Observación Original</th>
+                  <th class="py-1 px-2 text-center w-28">Estado Sub-Acta</th>
+                  <th class="py-1 px-2">Acción Técnica</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                ${hallazgosFiltrados.slice(0, 10).map(h => {
+                  const it = subItemsMap.get(h.id);
+                  const isOk = it ? (it.corregido || ['corregido', 'verificado'].includes(it.estado)) : ['corregido', 'verificado'].includes(h.estado);
+                  const accion = it?.accion || '';
+                  return `
+                    <tr class="hover:bg-gray-50/70">
+                      <td class="py-1.5 px-2 font-mono font-bold text-gray-900">${esc(h.id)}</td>
+                      <td class="py-1.5 px-2 font-medium text-gray-800">${esc(h.titulo)}</td>
+                      <td class="py-1.5 px-2 text-center">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isOk ? 'bg-emerald-100 text-emerald-800' : 'bg-red-50 text-red-700'}">
+                          ${isOk ? '✓ Corregido' : '❌ Pendiente'}
+                        </span>
+                      </td>
+                      <td class="py-1.5 px-2 text-gray-600 truncate max-w-xs" title="${esc(accion)}">
+                        ${accion ? esc(accion) : '<span class="text-gray-400 italic font-normal">Sin acción registrada</span>'}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+                ${hallazgosFiltrados.length > 10 ? `
+                  <tr>
+                    <td colspan="4" class="py-1.5 px-2 text-center text-[11px] text-gray-500 italic bg-gray-50">
+                      ... y ${hallazgosFiltrados.length - 10} observaciones más registradas.
+                    </td>
+                  </tr>
+                ` : ''}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        <div class="flex justify-end items-center gap-2 pt-2 border-t border-gray-100 text-xs">
+          <button type="button" class="btn-desglose-ver-acta btn-secondary py-1 px-2.5 text-xs text-primary-700 font-semibold cursor-pointer" data-id="${a.id}">
+            ${icon('description', 14)} Ver Acta Original
+          </button>
+          ${tieneSub ? `
+            <button type="button" class="btn-desglose-ver-sub btn-secondary py-1 px-2.5 text-xs text-emerald-800 font-semibold bg-emerald-50 border-emerald-200 cursor-pointer" data-id="${a.id}">
+              ${icon('visibility', 14)} Ver Hoja A4
+            </button>
+            <button type="button" class="btn-desglose-edit-sub btn-primary py-1 px-2.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold cursor-pointer" data-id="${a.id}">
+              ${icon('edit', 14)} Editar Corrección
+            </button>
+          ` : `
+            <button type="button" class="btn-desglose-crear-sub btn-primary py-1 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer" data-id="${a.id}">
+              ${icon('add_circle', 14)} Generar Sub-Acta
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  showModal(
+    titulos[filtro] || 'Desglose de Hallazgos por Acta',
+    `
+    <div class="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+      <p class="text-xs text-gray-600 leading-relaxed">${subtitulos[filtro] || ''}</p>
+
+      <div class="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+        <div>
+          <span class="text-gray-500 font-semibold uppercase tracking-wide">Actas evaluadas:</span>
+          <span class="font-mono font-bold text-gray-900 ml-1">${_actas.length} acta(s)</span>
+        </div>
+        <div class="flex items-center gap-3 font-mono font-semibold">
+          <span class="text-gray-700">Detectados Inicial: <b>${totalDetectadosGlobal}</b></span>
+          <span class="text-emerald-700">Subsanados: <b>${totalSubsanadosGlobal}</b></span>
+          <span class="${totalAbiertosGlobal === 0 ? 'text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded' : 'text-red-700 font-bold'}">
+            Abiertos: ${totalAbiertosGlobal} ${totalAbiertosGlobal === 0 ? '✓ (Llegó a Cero)' : ''}
+          </span>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        ${filasHtml}
+      </div>
+    </div>
+    `,
+    'xl',
+    `
+    <div class="flex justify-end">
+      <button id="modal-desglose-cerrar" class="btn-secondary">Cerrar</button>
+    </div>
+    `
+  );
+
+  document.getElementById('modal-desglose-cerrar')?.addEventListener('click', closeModal);
+
+  document.querySelectorAll('.btn-desglose-ver-acta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeModal();
+      verActa(btn.dataset.id);
+    });
+  });
+  document.querySelectorAll('.btn-desglose-ver-sub').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeModal();
+      verSubActa(btn.dataset.id);
+    });
+  });
+  document.querySelectorAll('.btn-desglose-edit-sub').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeModal();
+      editarSubActa(btn.dataset.id);
+    });
+  });
+  document.querySelectorAll('.btn-desglose-crear-sub').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeModal();
+      abrirModalNuevaSubActa(btn.dataset.id);
+    });
+  });
+}
+
+// ─── EDITAR SUB-ACTA DE CORRECCIÓN TÉCNICA ──────────────────────────────────
+async function editarSubActa(actaId) {
+  const c = document.getElementById('calidad-container');
+  if (!c) return;
+
+  c.innerHTML = spinner();
+
+  try {
+    let acta = _actas.find(x => x.id === actaId);
+    if (!acta) {
+      acta = await api.get(`/calidad/actas/${actaId}`);
+    }
+
+    _currentActa = acta;
+    _mode = 'edit_subacta';
+
+    const sub = asegurarContenidoSubActaSincronizado(acta, obtenerSubActa(acta) || obtenerSolucionarioActa(acta));
+    const cont = sub.contenido || {};
+    const secciones = Array.isArray(cont.secciones) ? cont.secciones : [];
+    const prog = calcularProgresoSubsanacion(acta);
+    const projsNombres = nombreProyectosActa(acta) || acta.project_name || '—';
+
+    asegurarEstilosLuzAmarilla();
+
+    c.innerHTML = `
+      <!-- Barra superior Sticky con Acciones Principales -->
+      <div class="sticky top-0 z-30 pt-1 pb-3 bg-gray-50/95 backdrop-blur-md mb-4 print:hidden" style="position: -webkit-sticky; position: sticky; top: 0;">
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-md">
+          <div class="flex items-center gap-3">
+            <button id="btn-volver-bandeja-subedit" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 cursor-pointer">
+              ${icon('arrow_back', 18)} Volver a la lista
+            </button>
+            <div class="h-6 w-px bg-gray-200"></div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-1">
+                  ${icon('edit_note', 16)} Edición de Sub-Acta:
+                </span>
+                <span class="font-mono font-bold text-gray-900 text-sm">${esc(sub.codigo)}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Acta Origen: ${esc(acta.codigo)}
+                </span>
+              </div>
+              <p class="text-[11px] text-gray-500 mt-0.5">Define si cada observación ha sido corregida y documenta la acción técnica realizada.</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button id="btn-marcar-todos-corregidos" type="button" class="btn-secondary text-xs py-2 px-3 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs" title="Marcar todas las observaciones como ✓ Corregido">
+              ${icon('done_all', 16)} Marcar Todos Corregidos
+            </button>
+
+            <button id="btn-llenar-plantilla-subacta" type="button" class="btn-secondary text-xs py-2 px-3 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs" title="Llenar campos de acción técnica vacíos con sugerencias de plantilla">
+              ${icon('auto_fix_high', 16)} Llenar sugerencias de plantilla
+            </button>
+
+            <button id="btn-ver-a4-desde-edicion" type="button" class="btn-secondary text-xs py-2 px-3 text-emerald-700 border-emerald-200 hover:bg-emerald-50 font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+              ${icon('visibility', 16)} Ver Hoja A4
+            </button>
+
+            <button id="btn-guardar-subacta-edit" type="button" class="btn-primary text-xs py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-sm">
+              ${icon('save', 16)} Guardar Sub-Acta
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="max-w-6xl mx-auto space-y-5 pb-16">
+        <!-- Monitor de Subsanación en Vivo -->
+        <div class="card p-4 sm:p-5 bg-gradient-to-r from-emerald-50/80 via-white to-blue-50/80 border border-emerald-200/90 shadow-sm space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+            <div>
+              <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                ${icon('speed', 18)} Monitor de Subsanación en Vivo
+              </h3>
+              <p class="text-xs text-gray-600 mt-0.5">
+                Al corregir todas las observaciones de una severidad, el contador de la cabecera llegará a <strong class="text-emerald-700 font-bold">CERO (0)</strong>. La columna <span class="font-mono font-bold text-gray-800">HALLAZGOS</span> del acta original siempre mantendrá los datos iniciales inmutables.
+              </p>
+            </div>
+            <div id="subacta-live-badge" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0 self-start sm:self-auto">
+              Calculando...
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div class="p-2.5 rounded-xl bg-white border border-red-200 shadow-2xs">
+              <span class="text-[11px] font-semibold text-red-700 uppercase tracking-wide">Críticos</span>
+              <div id="live-count-critico" class="font-mono text-base font-bold text-red-800 mt-0.5">0 / 0</div>
+              <div id="live-abiertos-critico" class="text-[10px] text-gray-500 font-medium mt-0.5">0 abiertos</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs">
+              <span class="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">Altos</span>
+              <div id="live-count-alto" class="font-mono text-base font-bold text-amber-800 mt-0.5">0 / 0</div>
+              <div id="live-abiertos-alto" class="text-[10px] text-gray-500 font-medium mt-0.5">0 abiertos</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-white border border-yellow-300 shadow-2xs">
+              <span class="text-[11px] font-semibold text-yellow-800 uppercase tracking-wide">Medios</span>
+              <div id="live-count-medio" class="font-mono text-base font-bold text-yellow-900 mt-0.5">0 / 0</div>
+              <div id="live-abiertos-medio" class="text-[10px] text-gray-500 font-medium mt-0.5">0 abiertos</div>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-white border border-emerald-200 shadow-2xs">
+              <span class="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Bajos</span>
+              <div id="live-count-bajo" class="font-mono text-base font-bold text-emerald-800 mt-0.5">0 / 0</div>
+              <div id="live-abiertos-bajo" class="text-[10px] text-gray-500 font-medium mt-0.5">0 abiertos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metadatos de la Sub-Acta -->
+        <div class="card p-5 bg-white border border-gray-200 shadow-sm space-y-4">
+          <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-100 pb-2">
+            ${icon('badge', 16)} 1. Datos Generales de la Corrección Técnica
+          </h3>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Código Sub-Acta</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-0.5">${icon('lock', 12)} Fijo</span>
+              </label>
+              <input type="text" class="input w-full font-mono font-bold text-emerald-800 bg-emerald-50/40 border-emerald-200 cursor-not-allowed select-none text-xs py-2" value="${esc(sub.codigo)}" readonly>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Acta Origen Auditada</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-0.5">${icon('lock', 12)} Fijo</span>
+              </label>
+              <input type="text" class="input w-full font-mono text-gray-800 bg-gray-100 border-gray-200 cursor-not-allowed select-none text-xs py-2" value="${esc(acta.codigo)}" readonly>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Auditor Responsable</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-0.5">${icon('lock', 12)} Fijo</span>
+              </label>
+              <input type="text" class="input w-full text-gray-800 bg-gray-100 border-gray-200 cursor-not-allowed select-none text-xs py-2" value="${esc(sub.auditor || acta.auditor || 'Abraham Aranda Cerna')}" readonly>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Proyectos Remediados</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-0.5">${icon('lock', 12)} Fijo</span>
+              </label>
+              <input type="text" class="input w-full text-gray-800 bg-gray-100 border-gray-200 cursor-not-allowed select-none text-xs py-2" value="${esc(projsNombres)}" readonly>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Fecha de Publicación</label>
+              <input type="text" id="edit-sub-fecha-pub" class="input w-full font-mono text-gray-800 text-xs py-2" value="${esc(sub.fecha_publicacion || hoyHoraFormateada())}">
+              <p class="text-[10px] text-gray-400 mt-0.5">Formato DD/MM/AAAA HH:mm</p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Estado Global de la Sub-Acta</label>
+              <select id="edit-sub-estado-global" class="input w-full text-xs py-2 font-semibold">
+                <option value="subsanado" ${sub.estado === 'subsanado' ? 'selected' : ''}>✓ Subsanado y Verificado</option>
+                <option value="en_progreso" ${sub.estado === 'en_progreso' ? 'selected' : ''}>⏳ En Progreso / Parcial</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Declaración de Subsanación y Metodología</label>
+            <textarea id="edit-sub-intro" class="input w-full text-xs font-sans text-gray-800 leading-relaxed" rows="2" placeholder="Describe brevemente el alcance de la remediación técnica sobre el código...">${esc(cont.descripcionIntroductoria || '')}</textarea>
+          </div>
+        </div>
+
+        <!-- Matriz de Observaciones Jaladas del Acta Inicial -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              ${icon('table_chart', 16)} 2. Matriz de Observaciones y Acciones de Remediación
+            </h3>
+            <span class="text-xs text-gray-500 font-medium">
+              Observaciones extraídas automáticamente del acta inicial
+            </span>
+          </div>
+
+          ${secciones.map(sec => {
+            const esCritico = sec.severidad === 'critico';
+            const esAlto = sec.severidad === 'alto';
+            const esMedio = sec.severidad === 'medio';
+            const borderColor = esCritico ? 'border-red-200' : (esAlto ? 'border-amber-200' : (esMedio ? 'border-yellow-300' : 'border-emerald-200'));
+            const headerBg = esCritico ? 'bg-red-50/70 text-red-950' : (esAlto ? 'bg-amber-50/70 text-amber-950' : (esMedio ? 'bg-yellow-50/70 text-yellow-950' : 'bg-emerald-50/70 text-emerald-950'));
+            
+            return `
+              <div class="card bg-white border ${borderColor} shadow-2xs overflow-hidden">
+                <div class="p-3 ${headerBg} border-b ${borderColor} flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-sm">${sec.label}</span>
+                    <span class="text-xs font-mono font-medium opacity-80">(${(sec.items || []).length} observaciones)</span>
+                  </div>
+                  <button type="button" class="btn-marcar-grupo-corregido text-[11px] font-bold text-emerald-800 bg-white/80 hover:bg-white px-2 py-0.5 rounded border border-emerald-300 cursor-pointer shadow-2xs" data-sev="${sec.severidad}">
+                    ✓ Marcar grupo como corregido
+                  </button>
+                </div>
+
+                <div class="p-3 sm:p-4 space-y-3.5">
+                  ${(sec.items || []).map(it => {
+                    const isOk = it.corregido || ['corregido', 'verificado'].includes(it.estado);
+                    return `
+                      <div class="item-observacion-card p-3 rounded-xl border ${isOk ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-200 bg-gray-50/30'} transition-all space-y-2.5" data-ref="${esc(it.ref)}" data-sev="${sec.severidad}">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div class="flex items-center gap-2">
+                            <span class="font-mono font-bold text-xs px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-900 shadow-2xs">
+                              ${esc(it.ref)}
+                            </span>
+                            <span class="text-xs font-bold text-gray-900">${esc(it.hallazgo)}</span>
+                            ${it.ubicacion ? `<span class="text-[11px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">${esc(it.ubicacion)}</span>` : ''}
+                          </div>
+
+                          <div class="flex items-center gap-1.5 shrink-0">
+                            <label class="text-[11px] font-semibold text-gray-500">Estado:</label>
+                            <select class="subacta-item-estado input text-xs py-1 px-2 font-bold rounded-lg cursor-pointer ${isOk ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-red-50 text-red-800 border-red-300'}" data-ref="${esc(it.ref)}">
+                              <option value="corregido" ${isOk ? 'selected' : ''}>✓ Corregido</option>
+                              <option value="pendiente" ${!isOk ? 'selected' : ''}>❌ Pendiente / Abierto</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label class="block text-[11px] font-semibold text-gray-600 uppercase tracking-wide mb-1 flex items-center justify-between">
+                            <span>Acción Técnica / Solución Aplicada</span>
+                            <span class="text-[10px] font-normal text-gray-400">Detalla qué archivo se editó o qué remediación se implementó</span>
+                          </label>
+                          <textarea
+                            class="subacta-item-accion input w-full text-xs font-sans leading-relaxed text-gray-800"
+                            data-ref="${esc(it.ref)}"
+                            data-sev="${sec.severidad}"
+                            rows="2"
+                            placeholder="Escribe la acción técnica de remediación aplicada para este hallazgo..."
+                          >${esc(it.accion || '')}</textarea>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Credenciales Seguras de Producción (Opcional) -->
+        <div class="card p-5 bg-white border border-gray-200 shadow-sm space-y-3">
+          <h3 class="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-gray-100 pb-2">
+            ${icon('vpn_key', 16)} 3. Parámetros Críticos y Credenciales Actualizadas (Opcional)
+          </h3>
+          <p class="text-xs text-gray-500">Si se cambiaron credenciales o parámetros en producción, puedes documentarlos aquí para que se visualicen en el panel seguro del solucionario.</p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Usuario / Identificador</label>
+              <input type="text" id="edit-sub-cred-usuario" class="input w-full text-xs font-mono" value="${esc(cont.credenciales?.usuario || '')}" placeholder="admin@qubira.com">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Contraseña Actualizada</label>
+              <input type="text" id="edit-sub-cred-password" class="input w-full text-xs font-mono font-bold text-emerald-800 bg-emerald-50/30" value="${esc(cont.credenciales?.password || '')}" placeholder="Contraseña rotada">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Nota o Advertencia de Desconexión</label>
+            <input type="text" id="edit-sub-cred-nota" class="input w-full text-xs" value="${esc(cont.credenciales?.nota || '')}" placeholder="Se invalidaron las sesiones activas en producción...">
+          </div>
+        </div>
+
+        <!-- Botones Inferiores -->
+        <div class="flex justify-between items-center pt-4 border-t border-gray-200">
+          <button id="btn-volver-bandeja-subedit-bottom" type="button" class="btn-secondary py-2 px-4 text-xs font-semibold cursor-pointer">
+            ${icon('arrow_back', 16)} Volver a la lista
+          </button>
+          <button id="btn-guardar-subacta-edit-bottom" type="button" class="btn-primary py-2.5 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center gap-2 text-xs shadow-md cursor-pointer">
+            ${icon('save', 18)} Guardar Sub-Acta y Actualizar Estado
+          </button>
+        </div>
+      </div>
+    `;
+
+    function actualizarStatsEnVivo() {
+      const items = document.querySelectorAll('.item-observacion-card');
+      const counts = {
+        critico: { total: 0, ok: 0 },
+        alto:    { total: 0, ok: 0 },
+        medio:   { total: 0, ok: 0 },
+        bajo:    { total: 0, ok: 0 },
+      };
+
+      items.forEach(card => {
+        const sev = card.dataset.sev || 'bajo';
+        const select = card.querySelector('.subacta-item-estado');
+        const isOk = select?.value === 'corregido';
+
+        if (counts[sev]) {
+          counts[sev].total++;
+          if (isOk) counts[sev].ok++;
+        }
+
+        if (isOk) {
+          card.classList.remove('border-gray-200', 'bg-gray-50/30');
+          card.classList.add('border-emerald-200', 'bg-emerald-50/20');
+          select.className = 'subacta-item-estado input text-xs py-1 px-2 font-bold rounded-lg cursor-pointer bg-emerald-50 text-emerald-800 border-emerald-300';
+        } else {
+          card.classList.remove('border-emerald-200', 'bg-emerald-50/20');
+          card.classList.add('border-gray-200', 'bg-gray-50/30');
+          select.className = 'subacta-item-estado input text-xs py-1 px-2 font-bold rounded-lg cursor-pointer bg-red-50 text-red-800 border-red-300';
+        }
+      });
+
+      let totalOk = 0, totalGeneral = 0;
+      ['critico', 'alto', 'medio', 'bajo'].forEach(sev => {
+        const c = counts[sev];
+        totalOk += c.ok;
+        totalGeneral += c.total;
+        const abiertos = c.total - c.ok;
+
+        const countEl = document.getElementById(`live-count-${sev}`);
+        const abiertosEl = document.getElementById(`live-abiertos-${sev}`);
+
+        if (countEl) countEl.textContent = `${c.ok} / ${c.total} corregidos`;
+        if (abiertosEl) {
+          if (abiertos === 0) {
+            abiertosEl.innerHTML = `<span class="text-emerald-700 font-bold font-mono">0 abiertos ✓ Llegó a Cero</span>`;
+          } else {
+            abiertosEl.innerHTML = `<span class="text-red-600 font-bold font-mono">${abiertos} abiertos</span>`;
+          }
+        }
+      });
+
+      const badge = document.getElementById('subacta-live-badge');
+      if (badge) {
+        if (totalGeneral > 0 && totalOk === totalGeneral) {
+          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 shrink-0';
+          badge.innerHTML = `✓ 100% Subsanado (${totalOk}/${totalGeneral}) — KPIs llegarán a Cero`;
+        } else {
+          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0';
+          badge.innerHTML = `⏳ ${totalOk} de ${totalGeneral} corregidos (${totalGeneral - totalOk} pendientes)`;
+        }
+      }
+    }
+
+    document.querySelectorAll('.subacta-item-estado').forEach(sel => {
+      sel.addEventListener('change', actualizarStatsEnVivo);
+    });
+
+    document.querySelectorAll('.btn-marcar-grupo-corregido').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sev = btn.dataset.sev;
+        document.querySelectorAll(`.item-observacion-card[data-sev="${sev}"] .subacta-item-estado`).forEach(sel => {
+          sel.value = 'corregido';
+        });
+        actualizarStatsEnVivo();
+        toast(`Grupo ${sev.toUpperCase()} marcado como corregido`);
+      });
+    });
+
+    document.getElementById('btn-marcar-todos-corregidos')?.addEventListener('click', () => {
+      document.querySelectorAll('.subacta-item-estado').forEach(sel => {
+        sel.value = 'corregido';
+      });
+      actualizarStatsEnVivo();
+      toast('Todas las observaciones se marcaron como corregidas');
+    });
+
+    document.getElementById('btn-llenar-plantilla-subacta')?.addEventListener('click', () => {
+      const tipoPlantilla = sub.plantilla_id || acta.tipo || 'seguridad';
+      const plantillaRef = PLANTILLAS_SOLUCIONARIO[tipoPlantilla] || PLANTILLAS_SOLUCIONARIO.seguridad;
+      const refMap = new Map();
+      (plantillaRef.secciones || []).forEach(s => {
+        (s.items || []).forEach(it => {
+          if (it.ref && it.accion) refMap.set(it.ref, it.accion);
+        });
+      });
+
+      let llenados = 0;
+      document.querySelectorAll('.subacta-item-accion').forEach(ta => {
+        const ref = ta.dataset.ref;
+        if (!ta.value.trim()) {
+          const sug = refMap.get(ref) || `Se verificó y corrigió la observación técnica ${ref} directamente sobre el código fuente de los proyectos vinculados.`;
+          ta.value = sug;
+          ta.classList.add('campo-plantilla-luz-amarilla');
+          llenados++;
+        }
+      });
+
+      if (llenados > 0) {
+        toast(`Se llenaron ${llenados} campos con plantilla (resaltados con luz amarilla)`, 'info');
+      } else {
+        toast('Todos los campos ya contenían texto redactado');
+      }
+    });
+
+    const fnVolver = async () => {
+      _mode = 'list';
+      await recargarActas();
+      renderBandeja();
+    };
+    document.getElementById('btn-volver-bandeja-subedit')?.addEventListener('click', fnVolver);
+    document.getElementById('btn-volver-bandeja-subedit-bottom')?.addEventListener('click', fnVolver);
+    document.getElementById('btn-ver-a4-desde-edicion')?.addEventListener('click', () => verSubActa(acta.id));
+
+    const guardarSubActa = async () => {
+      const btnTop = document.getElementById('btn-guardar-subacta-edit');
+      const btnBottom = document.getElementById('btn-guardar-subacta-edit-bottom');
+      if (btnTop) { btnTop.disabled = true; btnTop.innerHTML = `${icon('hourglass_empty', 16)} Guardando...`; }
+      if (btnBottom) { btnBottom.disabled = true; btnBottom.innerHTML = `${icon('hourglass_empty', 16)} Guardando...`; }
+
+      try {
+        const fechaPubVal = document.getElementById('edit-sub-fecha-pub')?.value.trim() || hoyHoraFormateada();
+        const estadoGlobalVal = document.getElementById('edit-sub-estado-global')?.value || 'subsanado';
+        const introVal = document.getElementById('edit-sub-intro')?.value.trim() || '';
+
+        const credUsuario = document.getElementById('edit-sub-cred-usuario')?.value.trim() || '';
+        const credPassword = document.getElementById('edit-sub-cred-password')?.value.trim() || '';
+        const credNota = document.getElementById('edit-sub-cred-nota')?.value.trim() || '';
+
+        const accionesMap = new Map();
+        const estadosMap = new Map();
+
+        document.querySelectorAll('.item-observacion-card').forEach(card => {
+          const ref = card.dataset.ref;
+          const estado = card.querySelector('.subacta-item-estado')?.value || 'pendiente';
+          const accion = card.querySelector('.subacta-item-accion')?.value.trim() || '';
+          if (ref) {
+            accionesMap.set(ref, accion);
+            estadosMap.set(ref, estado);
+          }
+        });
+
+        const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
+
+        if (!datosActualizados.sub_acta) {
+          datosActualizados.sub_acta = JSON.parse(JSON.stringify(sub));
+        }
+
+        datosActualizados.sub_acta.fecha_publicacion = fechaPubVal;
+        datosActualizados.sub_acta.estado = estadoGlobalVal;
+        if (!datosActualizados.sub_acta.contenido) datosActualizados.sub_acta.contenido = {};
+        datosActualizados.sub_acta.contenido.descripcionIntroductoria = introVal;
+
+        if (credUsuario || credPassword) {
+          datosActualizados.sub_acta.contenido.credenciales = {
+            titulo: 'Credenciales Seguras Actualizadas',
+            usuario: credUsuario,
+            password: credPassword,
+            nota: credNota,
+          };
+        }
+
+        (datosActualizados.sub_acta.contenido.secciones || []).forEach(sec => {
+          (sec.items || []).forEach(it => {
+            if (accionesMap.has(it.ref)) {
+              it.accion = accionesMap.get(it.ref);
+              const est = estadosMap.get(it.ref);
+              it.estado = est;
+              it.corregido = est === 'corregido';
+            }
+          });
+        });
+
+        datosActualizados.solucionario = JSON.parse(JSON.stringify(datosActualizados.sub_acta));
+
+        // ACTUALIZAR ESTADO DE LOS HALLAZGOS SIN TOCAR SEVERIDAD NI HISTORIAL INICIAL
+        if (Array.isArray(datosActualizados.hallazgos)) {
+          datosActualizados.hallazgos.forEach(h => {
+            if (estadosMap.has(h.id)) {
+              h.estado = estadosMap.get(h.id);
+            }
+          });
+        }
+
+        await api.put(`/calidad/actas/${acta.id}`, {
+          datos: datosActualizados,
+        });
+
+        toast(`Sub-Acta ${sub.codigo} guardada exitosamente`);
+        await recargarActas();
+        _solucionariosAbiertos.add(acta.id);
+        _mode = 'list';
+        renderBandeja();
+      } catch (err) {
+        if (btnTop) { btnTop.disabled = false; btnTop.innerHTML = `${icon('save', 16)} Guardar Sub-Acta`; }
+        if (btnBottom) { btnBottom.disabled = false; btnBottom.innerHTML = `${icon('save', 18)} Guardar Sub-Acta y Actualizar Estado`; }
+        toast(err.message || 'Error al guardar la Sub-Acta', 'error');
+      }
+    };
+
+    document.getElementById('btn-guardar-subacta-edit')?.addEventListener('click', guardarSubActa);
+    document.getElementById('btn-guardar-subacta-edit-bottom')?.addEventListener('click', guardarSubActa);
+
+    actualizarStatsEnVivo();
+
+  } catch (err) {
+    c.innerHTML = `
+      <div class="card p-8 text-center text-red-500">
+        <p class="font-bold">Error al cargar la edición de la Sub-Acta</p>
+        <p class="text-xs text-gray-500 mt-1 mb-4">${esc(err.message)}</p>
+        <button id="btn-volver-err-subedit" class="btn-primary">Volver a la lista</button>
+      </div>
+    `;
+    document.getElementById('btn-volver-err-subedit')?.addEventListener('click', () => {
+      _mode = 'list';
+      renderBandeja();
+    });
   }
 }
