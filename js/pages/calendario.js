@@ -40,7 +40,54 @@ let _checkToken = 0;
 let _draft = {};                  // texto en progreso del formulario — sobrevive a un re-render por filtro/recarga
 let _weekOffset = 0;
 let _projects = [];               // proyectos para «Proyecto relacionado»
-let _projectsCargados = false;              // semanas respecto a la actual, para la vista semanal
+let _projectsCargados = false;
+let _projectIds = [];             // proyectos de la reunión (el primero es el principal)
+
+const nombreProyecto = pr => `${pr.code ? pr.code + ' · ' : ''}${pr.name}${pr.client ? ' — ' + pr.client : ''}`;
+function cargarProyectos() {
+  if (_projectsCargados) return;
+  _projectsCargados = true;
+  api.get('/projects').then(list => {
+    _projects = Array.isArray(list) ? list : (list?.projects || []);
+    if (document.getElementById('cal-projects-box')) refreshProjects();
+  }).catch(() => { _projectsCargados = false; refreshProjects(); });
+}
+
+function projectsFieldHtml() {
+  const editing = _meetings.find(m => m.id === _editingId);
+  const principal = editing?.project_id || null;
+  const chips = _projectIds.map((id, i) => {
+    const pr = _projects.find(x => String(x.id) === String(id));
+    const fijo = principal && String(principal) === String(id);
+    return `<span class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full ${i === 0 ? 'bg-primary-50 text-primary-700' : 'bg-sky-50 text-sky-700'} text-xs font-medium" title="${fijo ? 'Proyecto principal de la reunión (no se cambia al editar)' : i === 0 ? 'Proyecto principal' : 'Proyecto relacionado'}">
+      ${i === 0 ? '★ ' : ''}${esc(pr ? nombreProyecto(pr) : 'Proyecto ' + id)}
+      ${fijo ? '' : `<button type="button" class="cal-remove-project text-sky-300 hover:text-red-500 flex items-center" data-id="${esc(id)}">${icon('close', 12)}</button>`}
+    </span>`;
+  }).join('');
+  const libres = _projects.filter(pr => !_projectIds.some(id => String(id) === String(pr.id)));
+  return `<div class="flex flex-wrap gap-1.5 ${_projectIds.length ? 'mb-1.5' : ''}">${chips}</div>
+    <select id="cal-in-project" class="input text-sm w-full" ${libres.length ? '' : 'disabled'}>
+      <option value="">${!_projects.length ? (_projectsCargados ? 'No hay proyectos disponibles' : 'Cargando proyectos…') : libres.length ? (_projectIds.length ? '+ Agregar otro proyecto…' : '+ Agregar proyecto…') : 'Ya agregaste todos los proyectos'}</option>
+      ${libres.map(pr => `<option value="${esc(pr.id)}">${esc(nombreProyecto(pr))}</option>`).join('')}
+    </select>
+    ${_projectIds.length > 1 ? '<p class="text-[11px] text-gray-400 mt-1">★ principal. La reunión aparece en el detalle y la actividad de cada proyecto.</p>' : ''}`;
+}
+function refreshProjects() {
+  const box = document.getElementById('cal-projects-box');
+  if (box) box.innerHTML = projectsFieldHtml();
+  wireProjects();
+}
+function wireProjects() {
+  document.getElementById('cal-in-project')?.addEventListener('change', e => {
+    const id = e.target.value;
+    if (id && !_projectIds.some(x => String(x) === String(id))) _projectIds.push(id);
+    refreshProjects();
+  });
+  document.querySelectorAll('.cal-remove-project').forEach(b => b.addEventListener('click', () => {
+    _projectIds = _projectIds.filter(x => String(x) !== b.dataset.id);
+    refreshProjects();
+  }));
+}              // semanas respecto a la actual, para la vista semanal
 const WEEK_START_HOUR = 7;
 const WEEK_END_HOUR = 21;
 
@@ -76,6 +123,7 @@ const MONTH_LABELS = ['enero','febrero','marzo','abril','mayo','junio','julio','
 
 export function render() {
   const main = document.getElementById('main');
+  cargarProyectos();
   main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="cal-page">${spinner()}</div>`;
   load();
 }
@@ -386,11 +434,8 @@ function formHtml() {
         </div>
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Proyecto relacionado (opcional)</label>
-        <select name="project_id" id="cal-in-project" class="input text-sm w-full mt-1">
-          <option value="">— Sin proyecto —</option>
-          ${_projects.map(pr => `<option value="${esc(pr.id)}" ${String(_draft.project_id ?? editing?.project_id ?? '') === String(pr.id) ? 'selected' : ''}>${esc(pr.code ? pr.code + ' · ' : '')}${esc(pr.name)}${pr.client ? ' — ' + esc(pr.client) : ''}</option>`).join('')}
-        </select>
+        <label class="text-xs font-medium text-gray-600">Proyectos relacionados (opcional)</label>
+        <div id="cal-projects-box">${projectsFieldHtml()}</div>
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600">Motivo</label>
@@ -448,6 +493,8 @@ function formHtml() {
 
 function openFormModal() {
   const editing = _meetings.find(m => m.id === _editingId);
+  _projectIds = editing ? (editing.project_ids?.length ? editing.project_ids.slice() : [editing.project_id].filter(Boolean)) : [];
+  if (editing?.project_id) _projectIds = [editing.project_id, ...(_projectIds.filter(x => String(x) !== String(editing.project_id)))];
   iniciarAgenda({
     area: OWN_AREA, areaLabel: AREA_LABEL,
     fecha: _draft.date ?? editing?.meeting_date ?? '',
@@ -456,13 +503,7 @@ function openFormModal() {
     excluirReunion: _editingId || null,
     permitirSerie: !_editingId,
   });
-  if (!_projectsCargados) {
-    _projectsCargados = true;
-    api.get('/projects').then(list => {
-      _projects = Array.isArray(list) ? list : (list?.projects || []);
-      if (document.getElementById('cal-in-project')) rerenderFormModal();
-    }).catch(() => { _projectsCargados = false; });
-  }
+  cargarProyectos();
   showModal(editing ? 'Editar reunión' : 'Nueva reunión', formHtml(), '2xl');
   document.getElementById('cal-form-cancel')?.addEventListener('click', closeModal);
   wireFormExtras();
@@ -534,7 +575,7 @@ function aplicarForma(forma) {
     form.elements.meeting_type.value = forma === 'revision' ? 'Revisión' : 'Auditoría';
     _draft.meeting_type = form.elements.meeting_type.value;
     ponerPlantilla(forma, true);
-    const proyecto = _projects.find(pr => String(pr.id) === String(form.elements.project_id?.value || ''));
+    const proyecto = _projects.find(pr => String(pr.id) === String(_projectIds[0] || ''));
     if (!form.elements.title.value.trim()) {
       form.elements.title.value = (forma === 'revision' ? 'Revisión' : 'Auditoría') + (proyecto ? ' — ' + proyecto.name : '');
       _draft.title = form.elements.title.value;
@@ -562,7 +603,7 @@ function refreshParticipants() {
 
 function wirePlantillas() {
   document.querySelectorAll('.cal-plantilla').forEach(b => b.addEventListener('click', () => ponerPlantilla(b.dataset.plantilla, false)));
-  document.getElementById('cal-in-project')?.addEventListener('change', e => { _draft.project_id = e.target.value; });
+  wireProjects();
 }
 
 function selectedParticipantsHtml() {
@@ -842,9 +883,8 @@ async function submitForm(e) {
   const editing = _meetings.find(m => m.id === _editingId);
   const image_url = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
 
-  const project_id = form.elements.project_id?.value || null;
   const payload = {
-    title, date, start_time, end_time, meeting_type, modality, location, motivo, description, image_url, project_id,
+    title, date, start_time, end_time, meeting_type, modality, location, motivo, description, image_url, project_ids: _projectIds.slice(),
     participants: _selectedParticipants.map(p => ({ user_id: p.user_id })),
     external_participants: _externalParticipants,
   };
@@ -950,6 +990,7 @@ function viewMeeting(id) {
       <p><span class="font-medium text-gray-700">Fecha:</span> ${fmtDateOnly(m.meeting_date)}</p>
       <p><span class="font-medium text-gray-700">Horario:</span> ${m.start_time.slice(0,5)} — ${m.end_time.slice(0,5)}</p>
       ${m.meeting_type ? `<p><span class="font-medium text-gray-700">Tipo:</span> ${esc(m.meeting_type)}</p>` : ''}
+      ${(m.project_ids || []).length ? `<p><span class="font-medium text-gray-700">${m.project_ids.length > 1 ? 'Proyectos' : 'Proyecto'}:</span> ${m.project_ids.map(id => { const pr = _projects.find(x => String(x.id) === String(id)); return esc(pr ? nombreProyecto(pr) : id); }).join(', ')}</p>` : ''}
       ${m.location ? `<p><span class="font-medium text-gray-700">${m.modality === 'virtual' ? 'Link' : 'Dirección'}:</span> ${esc(m.location)}</p>` : ''}
       ${m.motivo ? `<p><span class="font-medium text-gray-700">Motivo:</span> ${esc(m.motivo)}</p>` : ''}
       ${m.description ? `<div><span class="font-medium text-gray-700">Descripción:</span><p class="mt-1 text-gray-600" style="white-space:pre-wrap">${esc(m.description)}</p></div>` : ''}
