@@ -218,6 +218,39 @@ const DEFAULT_TOOLS = {
   ],
 };
 
+// ─── Estilos dinámicos para resaltado de plantilla en modo edición ───────────
+const ESTILOS_LUZ_AMARILLA = `
+<style id="estilos-calidad-luz-amarilla">
+  @keyframes pulsoLuzAmarilla {
+    0%, 100% {
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5), 0 0 14px rgba(251, 191, 36, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 4.5px rgba(245, 158, 11, 0.8), 0 0 22px rgba(251, 191, 36, 0.65);
+    }
+  }
+  .campo-plantilla-luz-amarilla {
+    background-color: #FEF9C3 !important; /* amarillo cálido */
+    border-color: #F59E0B !important; /* borde ámbar/dorado */
+    color: #78350F !important;
+    animation: pulsoLuzAmarilla 2.5s infinite ease-in-out;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+  .tarjeta-plantilla-luz-amarilla {
+    background-color: #FEFCE8 !important; /* fondo ámbar tenue */
+    border: 1.5px solid #F59E0B !important;
+    animation: pulsoLuzAmarilla 3s infinite ease-in-out;
+  }
+</style>
+`;
+
+function asegurarEstilosLuzAmarilla() {
+  if (!document.getElementById('estilos-calidad-luz-amarilla')) {
+    document.head.insertAdjacentHTML('beforeend', ESTILOS_LUZ_AMARILLA);
+  }
+}
+
 // ─── Estado local del módulo ──────────────────────────────────────────────────
 let _actas = [];
 let _projects = [];
@@ -641,7 +674,7 @@ function abrirModalNuevaActa() {
     const proj = _projects.find(p => p.id === projectId);
     const cfg = TIPOS_CONFIG[tipo];
 
-    // Estructura inicial del acta fiel a MODELO_DOC/AUDITORIA
+    // Estructura inicial del acta con campos en blanco (los no llenados quedan vacíos)
     const datosIniciales = {
       tipo,
       fecha_emision: fechaEmision,
@@ -649,52 +682,22 @@ function abrirModalNuevaActa() {
       clasificacion: 'Confidencial',
       auditor,
       auditor_dni: '',
-      auditor_cargo: 'Auditor de Seguridad y Calidad',
-      responsable_proyecto: proj?.responsible_name || 'Responsable del proyecto',
+      auditor_cargo: '',
+      responsable_proyecto: proj?.responsible_name || '',
       responsable_dni: '',
-      responsable_cargo: 'Líder de Proyecto / Contraparte',
-      entorno: proj?.website_url ? `Producción (${proj.website_url}) — [Hosting Frontend · Backend Render · Neon PostgreSQL]` : (proj?.project_type ? `Entorno ${proj.project_type.toUpperCase()} · PostgreSQL Neon` : 'Producción — [Hosting Backend · Hosting Frontend · PostgreSQL Neon]'),
-      repositorios: proj?.github_url ? `${proj.github_url} (Rama principal e historial de Git)` : 'Repositorio principal de código fuente e historial de Git',
-      alcance: cfg.alcanceDef,
-      metodologia: cfg.metodologiaDef,
-      periodo_desde: fechaEmision,
-      periodo_hasta: fechaEmision,
-      proxima_revision: sumarDias(fechaEmision, 90),
-      conclusion: 'La auditoría determinó la conformidad general de la arquitectura, requiriéndose subsanar los hallazgos críticos y altos en los plazos normativos.',
-      hallazgos: [
-        {
-          id: 'H-01',
-          titulo: tipo === 'seguridad' ? 'Autenticación en endpoints administrativos' : tipo === 'calidad' ? 'Optimización de consultas en base de datos' : 'Validación de idempotencia en pasarela',
-          severidad: 'medio',
-          estado: 'pendiente',
-          evidencia: 'Se ejecutaron pruebas controladas y se verificó la respuesta del sistema.',
-          impacto: 'Podría generar demoras o inconsistencias si aumenta el volumen de operaciones.',
-          ubicacion: 'src/routes/',
-          correccion: 'Implementar validación estricta y control de excepciones.',
-          responsable: proj?.responsible_name || auditor,
-          fecha_limite: sumarDias(fechaEmision, 14),
-        },
-      ],
-      controles: JSON.parse(JSON.stringify(DEFAULT_CONTROLES[tipo] || DEFAULT_CONTROLES.seguridad)),
-      herramientas: JSON.parse(JSON.stringify(DEFAULT_TOOLS[tipo] || DEFAULT_TOOLS.seguridad)),
-      plan_remediacion: [
-        {
-          accion: 'Subsanar hallazgo H-01 y verificar en staging',
-          ref: 'H-01',
-          prioridad: 'Medio',
-          responsable: proj?.responsible_name || auditor,
-          fecha: sumarDias(fechaEmision, 14),
-          hecho: false,
-        },
-        {
-          accion: 'Repetir pruebas de control y verificar conformidad técnica',
-          ref: 'Todos',
-          prioridad: 'Alto',
-          responsable: auditor,
-          fecha: sumarDias(fechaEmision, 20),
-          hecho: false,
-        },
-      ],
+      responsable_cargo: '',
+      entorno: '',
+      repositorios: '',
+      alcance: '',
+      metodologia: '',
+      periodo_desde: '',
+      periodo_hasta: '',
+      proxima_revision: '',
+      conclusion: '',
+      hallazgos: [],
+      controles: [],
+      herramientas: [],
+      plan_remediacion: [],
     };
 
     try {
@@ -704,8 +707,8 @@ function abrirModalNuevaActa() {
         datos: datosIniciales,
       });
       closeModal();
-      toast(`Acta ${resp.codigo} creada exitosamente`);
-      await verActa(resp.id);
+      toast(`Acta ${resp.codigo} creada en blanco exitosamente`);
+      await editarActa(resp.id);
     } catch (e) {
       toast(e.message || 'Error al crear acta', 'error');
     }
@@ -855,8 +858,8 @@ function generarHtmlDocumentoWord(acta) {
   const medios   = hs.filter(h => h.severidad === 'medio');
   const bajos    = hs.filter(h => h.severidad === 'bajo');
 
-  const controles = Array.isArray(d.controles) ? d.controles : (DEFAULT_CONTROLES[acta.tipo] || []);
-  const herramientas = Array.isArray(d.herramientas) ? d.herramientas : (DEFAULT_TOOLS[acta.tipo] || []);
+  const controles = Array.isArray(d.controles) ? d.controles : [];
+  const herramientas = Array.isArray(d.herramientas) ? d.herramientas : [];
   const plan = Array.isArray(d.plan_remediacion) ? d.plan_remediacion : [];
 
   return `
@@ -960,7 +963,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Entorno auditado</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.entorno || 'Producción / Staging')}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.entorno || '—')}</span></p>
           </td>
         </tr>
         <tr>
@@ -968,7 +971,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Repositorios</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.repositorios || 'Repositorios revisados, incluido historial de Git')}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.repositorios || '—')}</span></p>
           </td>
         </tr>
         <tr>
@@ -976,7 +979,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Alcance</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.alcance || 'Áreas cubiertas — ver sección 6')}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.alcance || '—')}</span></p>
           </td>
         </tr>
         <tr>
@@ -984,7 +987,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Metodología</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.metodologia || cfg.metodologiaDef)}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.metodologia || '—')}</span></p>
           </td>
         </tr>
         <tr>
@@ -992,7 +995,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Periodo de ejecución</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.periodo_desde || hoyISO())} al ${esc(d.periodo_hasta || hoyISO())}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${(d.periodo_desde || d.periodo_hasta) ? `${esc(d.periodo_desde || '—')} al ${esc(d.periodo_hasta || '—')}` : '—'}</span></p>
           </td>
         </tr>
         <tr>
@@ -1000,7 +1003,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Auditor responsable</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;">${esc(d.auditor || acta.auditor || 'Auditor asignado')}</span></p>
+            <p style="margin:1pt;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;">${esc(d.auditor || acta.auditor || '—')}</span></p>
           </td>
         </tr>
         <tr>
@@ -1008,7 +1011,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Próxima revisión</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:top;">
-            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.proxima_revision || sumarDias(hoyISO(), 90))}</span></p>
+            <p style="margin:1pt;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.proxima_revision || '—')}</span></p>
           </td>
         </tr>
       </tbody>
@@ -1025,7 +1028,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;">Conclusión</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:5pt 7pt;vertical-align:top;">
-            <p style="margin:1pt;line-height:1.4;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.conclusion || 'No se registraron observaciones críticas.')}</span></p>
+            <p style="margin:1pt;line-height:1.4;"><span style="color:#1F2937;font-size:9.5pt;">${esc(d.conclusion || '—')}</span></p>
           </td>
         </tr>
       </tbody>
@@ -1266,7 +1269,9 @@ function generarHtmlDocumentoWord(acta) {
         </tr>
       </thead>
       <tbody>
-        ${controles.map(dom => {
+        ${controles.length === 0 ? `
+          <tr><td colspan="4" style="border:0.5pt solid #C9D3DF;padding:8pt;text-align:center;color:#6B7280;font-size:9pt;">Sin controles registrados en el acta</td></tr>
+        ` : controles.map(dom => {
           const items = Array.isArray(dom.items) ? dom.items : [];
           return items.map((it, idx) => {
             const cumpleColor = it.cumple === 'si' ? '#27AE60' : it.cumple === 'no' ? '#C0392B' : '#6B7280';
@@ -1493,6 +1498,7 @@ async function editarActa(id) {
   c.innerHTML = spinner();
 
   try {
+    asegurarEstilosLuzAmarilla();
     const acta = await api.get(`/calidad/actas/${id}`);
     _currentActa = acta;
     _mode = 'edit';
@@ -1501,8 +1507,8 @@ async function editarActa(id) {
     const d = JSON.parse(JSON.stringify(acta.datos || {}));
 
     if (!Array.isArray(d.hallazgos)) d.hallazgos = [];
-    if (!Array.isArray(d.controles)) d.controles = DEFAULT_CONTROLES[acta.tipo] || DEFAULT_CONTROLES.seguridad;
-    if (!Array.isArray(d.herramientas)) d.herramientas = DEFAULT_TOOLS[acta.tipo] || DEFAULT_TOOLS.seguridad;
+    if (!Array.isArray(d.controles)) d.controles = [];
+    if (!Array.isArray(d.herramientas)) d.herramientas = [];
     if (!Array.isArray(d.plan_remediacion)) d.plan_remediacion = [];
 
     const projOpts = _projects.map(p => `
@@ -1529,6 +1535,9 @@ async function editarActa(id) {
           </div>
 
           <div class="flex items-center gap-2">
+            <button type="button" id="btn-rellenar-plantilla" class="btn-secondary inline-flex items-center gap-1.5 text-xs sm:text-sm py-2 px-3.5 text-amber-900 bg-amber-50 border border-amber-300 hover:bg-amber-100 hover:border-amber-400 font-semibold shadow-sm transition-all rounded-lg cursor-pointer" title="Completar únicamente los campos vacíos con los datos oficiales de la plantilla">
+              <span class="material-icons text-amber-600 text-base sm:text-lg">auto_fix_high</span> Llenar datos de plantilla
+            </button>
             <button id="btn-guardar-acta" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-4 shadow-sm">
               ${icon('save', 18)} Guardar Cambios
             </button>
@@ -1561,27 +1570,31 @@ async function editarActa(id) {
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Auditor Responsable</label>
-              <input type="text" id="edit-auditor" class="input w-full text-sm" value="${esc(d.auditor || acta.auditor || '')}">
+              <input type="text" id="edit-auditor" class="input w-full text-sm" value="${esc(d.auditor || acta.auditor || '')}" placeholder="Nombre del auditor">
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Periodo Desde</label>
-              <input type="date" id="edit-periodo_desde" class="input w-full text-sm" value="${esc(d.periodo_desde || hoyISO())}">
+              <input type="date" id="edit-periodo_desde" class="input w-full text-sm" value="${esc(d.periodo_desde || '')}">
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Periodo Hasta</label>
-              <input type="date" id="edit-periodo_hasta" class="input w-full text-sm" value="${esc(d.periodo_hasta || hoyISO())}">
+              <input type="date" id="edit-periodo_hasta" class="input w-full text-sm" value="${esc(d.periodo_hasta || '')}">
             </div>
             <div class="sm:col-span-3">
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Entorno Auditado</label>
-              <input type="text" id="edit-entorno" class="input w-full text-sm" value="${esc(d.entorno || 'Producción — [Backend · Frontend · Base de datos]')}" placeholder="Servidores, hosting, URLs">
+              <input type="text" id="edit-entorno" class="input w-full text-sm" value="${esc(d.entorno || '')}" placeholder="Servidores, hosting, URLs del sistema">
             </div>
             <div class="sm:col-span-3">
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Repositorios y Fuentes</label>
-              <input type="text" id="edit-repositorios" class="input w-full text-sm" value="${esc(d.repositorios || 'Repositorios Git auditados')}" placeholder="URL del repo, ramas revisadas">
+              <input type="text" id="edit-repositorios" class="input w-full text-sm" value="${esc(d.repositorios || '')}" placeholder="URL del repo, ramas revisadas">
             </div>
             <div class="sm:col-span-3">
-              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Alcance y Metodología</label>
-              <textarea id="edit-alcance" rows="2" class="input w-full text-sm">${esc(d.alcance || cfg.alcanceDef)}</textarea>
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Alcance</label>
+              <textarea id="edit-alcance" rows="2" class="input w-full text-sm" placeholder="Sistemas, APIs y módulos cubiertos">${esc(d.alcance || '')}</textarea>
+            </div>
+            <div class="sm:col-span-3">
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Metodología</label>
+              <textarea id="edit-metodologia" rows="2" class="input w-full text-sm" placeholder="Técnicas aplicadas (SAST, DAST, revisión de dependencias)">${esc(d.metodologia || '')}</textarea>
             </div>
           </div>
         </div>
@@ -1653,11 +1666,11 @@ async function editarActa(id) {
               <div class="space-y-3">
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Nombre Completo</label>
-                  <input type="text" id="edit-firmante-aud-nombre" class="input w-full text-sm bg-white" value="${esc(d.auditor || acta.auditor || '')}">
+                  <input type="text" id="edit-firmante-aud-nombre" class="input w-full text-sm bg-white" value="${esc(d.auditor || acta.auditor || '')}" placeholder="Nombre del auditor">
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Cargo / Especialidad</label>
-                  <input type="text" id="edit-firmante-aud-cargo" class="input w-full text-sm bg-white" value="${esc(d.auditor_cargo || 'Auditor de Seguridad y Calidad')}">
+                  <input type="text" id="edit-firmante-aud-cargo" class="input w-full text-sm bg-white" value="${esc(d.auditor_cargo || '')}" placeholder="Ej. Auditor de Seguridad y Calidad">
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">DNI / Identificación</label>
@@ -1674,11 +1687,11 @@ async function editarActa(id) {
               <div class="space-y-3">
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Nombre Completo</label>
-                  <input type="text" id="edit-firmante-resp-nombre" class="input w-full text-sm bg-white" value="${esc(d.responsable_proyecto || '')}">
+                  <input type="text" id="edit-firmante-resp-nombre" class="input w-full text-sm bg-white" value="${esc(d.responsable_proyecto || '')}" placeholder="Nombre del responsable">
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Cargo / Empresa</label>
-                  <input type="text" id="edit-firmante-resp-cargo" class="input w-full text-sm bg-white" value="${esc(d.responsable_cargo || 'Líder Técnico / QUBIRA')}">
+                  <input type="text" id="edit-firmante-resp-cargo" class="input w-full text-sm bg-white" value="${esc(d.responsable_cargo || '')}" placeholder="Ej. Líder Técnico / QUBIRA">
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">DNI / Identificación</label>
@@ -1703,26 +1716,31 @@ async function editarActa(id) {
       if (hallazgosLocales.length === 0) {
         cont.innerHTML = `
           <div class="p-6 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-            No hay hallazgos registrados. Presiona <b>Agregar Hallazgo</b> para añadir uno.
+            <p class="text-sm font-medium text-gray-600 mb-1">No hay hallazgos registrados</p>
+            <p class="text-xs text-gray-400">Presiona <b>Agregar Hallazgo</b> o utiliza el botón <b>Llenar datos de plantilla</b> superior.</p>
           </div>`;
         return;
       }
 
       cont.innerHTML = hallazgosLocales.map((h, idx) => `
-        <div class="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-3 hallazgo-card" data-idx="${idx}">
+        <div class="p-4 rounded-xl border transition-all ${h._dePlantilla ? 'tarjeta-plantilla-luz-amarilla' : 'border-gray-200 bg-gray-50/50'} space-y-3 hallazgo-card" data-idx="${idx}">
           <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <input type="text" class="input text-xs font-mono font-bold w-20 py-1" value="${esc(h.id || `H-${String(idx+1).padStart(2,'0')}`)}" placeholder="ID" data-f="id">
-              <input type="text" class="input text-sm font-semibold flex-1 py-1" value="${esc(h.titulo)}" placeholder="Título corto del hallazgo" data-f="titulo">
+            <div class="flex items-center gap-2 flex-1">
+              <input type="text" class="input text-xs font-mono font-bold w-20 py-1 ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.id || `H-${String(idx+1).padStart(2,'0')}`)}" placeholder="ID" data-f="id">
+              <input type="text" class="input text-sm font-semibold flex-1 py-1 ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.titulo)}" placeholder="Título corto del hallazgo" data-f="titulo">
+              ${h._dePlantilla ? `
+                <span class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full shrink-0 shadow-sm" title="Dato sugerido por la plantilla oficial">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Plantilla
+                </span>` : ''}
             </div>
             <div class="flex items-center gap-2">
-              <select class="input text-xs py-1 w-28 font-semibold" data-f="severidad">
+              <select class="input text-xs py-1 w-28 font-semibold ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" data-f="severidad">
                 <option value="critico" ${h.severidad === 'critico' ? 'selected' : ''}>🔴 Crítico</option>
                 <option value="alto" ${h.severidad === 'alto' ? 'selected' : ''}>🟠 Alto</option>
                 <option value="medio" ${h.severidad === 'medio' ? 'selected' : ''}>🟡 Medio</option>
                 <option value="bajo" ${h.severidad === 'bajo' ? 'selected' : ''}>🟢 Bajo</option>
               </select>
-              <select class="input text-xs py-1 w-28" data-f="estado">
+              <select class="input text-xs py-1 w-28 ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" data-f="estado">
                 <option value="pendiente" ${h.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
                 <option value="en_progreso" ${h.estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
                 <option value="corregido" ${h.estado === 'corregido' ? 'selected' : ''}>Corregido</option>
@@ -1737,27 +1755,27 @@ async function editarActa(id) {
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Evidencia (qué se probó / qué respondió)</label>
-              <textarea rows="2" class="input w-full text-xs" data-f="evidencia">${esc(h.evidencia || '')}</textarea>
+              <textarea rows="2" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" data-f="evidencia">${esc(h.evidencia || '')}</textarea>
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Impacto (riesgo sobre negocio o datos)</label>
-              <textarea rows="2" class="input w-full text-xs" data-f="impacto">${esc(h.impacto || '')}</textarea>
+              <textarea rows="2" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" data-f="impacto">${esc(h.impacto || '')}</textarea>
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Ubicación (archivo, línea, endpoint o variable)</label>
-              <input type="text" class="input w-full text-xs font-mono" value="${esc(h.ubicacion || '')}" data-f="ubicacion">
+              <input type="text" class="input w-full text-xs font-mono ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.ubicacion || '')}" data-f="ubicacion">
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Acción Correctiva Recomendada</label>
-              <input type="text" class="input w-full text-xs" value="${esc(h.correccion || '')}" data-f="correccion">
+              <input type="text" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.correccion || '')}" data-f="correccion">
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Responsable de Remediación</label>
-              <input type="text" class="input w-full text-xs" value="${esc(h.responsable || '')}" data-f="responsable">
+              <input type="text" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.responsable || '')}" data-f="responsable">
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Fecha Límite</label>
-              <input type="date" class="input w-full text-xs" value="${esc(h.fecha_limite || '')}" data-f="fecha_limite">
+              <input type="date" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.fecha_limite || '')}" data-f="fecha_limite">
             </div>
           </div>
         </div>
@@ -1786,11 +1804,23 @@ async function editarActa(id) {
       const cont = document.getElementById('lista-controles-editor');
       if (!cont) return;
 
+      if (controlesLocales.length === 0) {
+        cont.innerHTML = `
+          <div class="p-6 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+            <p class="text-sm font-medium text-gray-600 mb-1">No hay controles evaluados en esta acta</p>
+            <p class="text-xs text-gray-400">Utiliza el botón <b>Llenar datos de plantilla</b> superior para cargar la lista oficial de controles.</p>
+          </div>`;
+        return;
+      }
+
       cont.innerHTML = controlesLocales.map((dom, dIdx) => `
-        <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
-          <div class="bg-gray-100/80 px-4 py-2 font-bold text-xs uppercase tracking-wide text-gray-700 flex justify-between items-center">
-            <span>${esc(dom.dominio)}</span>
-            <span class="text-gray-400 font-normal lowercase">${dom.items.length} controles</span>
+        <div class="border rounded-xl overflow-hidden transition-all ${dom._dePlantilla ? 'border-amber-400 bg-amber-50/10 shadow-[0_0_12px_rgba(245,158,11,0.2)] ring-1 ring-amber-300' : 'border-gray-200 bg-white'}">
+          <div class="px-4 py-2 font-bold text-xs uppercase tracking-wide flex justify-between items-center ${dom._dePlantilla ? 'bg-amber-100/70 text-amber-900 border-b border-amber-200' : 'bg-gray-100/80 text-gray-700'}">
+            <div class="flex items-center gap-2">
+              <span>${esc(dom.dominio)}</span>
+              ${dom._dePlantilla ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-amber-600"></span> Plantilla</span>` : ''}
+            </div>
+            <span class="text-gray-500 font-normal lowercase text-[11px]">${dom.items.length} controles</span>
           </div>
           <div class="divide-y divide-gray-100 p-2">
             ${dom.items.map((it, iIdx) => `
@@ -1834,15 +1864,25 @@ async function editarActa(id) {
       const cont = document.getElementById('lista-herramientas-editor');
       if (!cont) return;
 
+      if (herramientasLocales.length === 0) {
+        cont.innerHTML = `
+          <div class="p-6 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+            <p class="text-sm font-medium text-gray-600 mb-1">No hay herramientas registradas</p>
+            <p class="text-xs text-gray-400">Presiona <b>Agregar Herramienta</b> o utiliza <b>Llenar datos de plantilla</b> superior.</p>
+          </div>`;
+        return;
+      }
+
       cont.innerHTML = herramientasLocales.map((t, idx) => `
-        <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200 tool-row" data-idx="${idx}">
-          <input type="text" class="input text-xs font-semibold flex-1 py-1" value="${esc(t.herramienta)}" placeholder="Nombre de herramienta" data-f="herramienta">
-          <select class="input text-xs py-1 w-24" data-f="prioridad">
+        <div class="flex items-center gap-2 p-2 rounded-lg border transition-all tool-row ${t._dePlantilla ? 'bg-amber-50/80 border-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]' : 'bg-gray-50 border-gray-200'}" data-idx="${idx}">
+          <input type="text" class="input text-xs font-semibold flex-1 py-1 ${t._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(t.herramienta)}" placeholder="Nombre de herramienta" data-f="herramienta">
+          <select class="input text-xs py-1 w-24 ${t._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" data-f="prioridad">
             <option value="Alta" ${t.prioridad === 'Alta' ? 'selected' : ''}>Alta</option>
             <option value="Media" ${t.prioridad === 'Media' ? 'selected' : ''}>Media</option>
             <option value="Baja" ${t.prioridad === 'Baja' ? 'selected' : ''}>Baja</option>
           </select>
-          <input type="text" class="input text-xs flex-2 py-1" value="${esc(t.justificacion)}" placeholder="Justificación técnica" data-f="justificacion" style="flex:2">
+          <input type="text" class="input text-xs flex-2 py-1 ${t._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(t.justificacion)}" placeholder="Justificación técnica" data-f="justificacion" style="flex:2">
+          ${t._dePlantilla ? `<span class="inline-flex items-center text-[10px] font-bold text-amber-900 bg-amber-200 px-1.5 py-0.5 rounded shrink-0">Plantilla</span>` : ''}
           <button type="button" class="btn-eliminar-t p-1 text-gray-400 hover:text-red-600" data-idx="${idx}">
             ${icon('delete', 16)}
           </button>
@@ -1871,7 +1911,110 @@ async function editarActa(id) {
     renderControlesInputs();
     renderHerramientasInputs();
 
-    // Agregar nuevo hallazgo
+    // ─── LÓGICA DE BOTÓN «LLENAR DATOS DE PLANTILLA» (Solo campos vacíos con luz amarilla) ───
+    document.getElementById('btn-rellenar-plantilla')?.addEventListener('click', () => {
+      asegurarEstilosLuzAmarilla();
+
+      const selectedProjectId = document.getElementById('edit-project_id')?.value;
+      const selectedProj = _projects.find(p => p.id === selectedProjectId) || _projects.find(p => p.id === acta.project_id);
+      const cfgTipo = TIPOS_CONFIG[acta.tipo] || TIPOS_CONFIG.seguridad;
+
+      let llenadosCount = 0;
+
+      // Helper: SOLO llena el input si su valor actual está completamente vacío
+      function llenarSiVacio(elementId, valorPlantilla) {
+        const inp = document.getElementById(elementId);
+        if (!inp) return;
+        if (!inp.value || inp.value.trim() === '') {
+          inp.value = valorPlantilla || '';
+          inp.classList.add('campo-plantilla-luz-amarilla');
+          llenadosCount++;
+        }
+      }
+
+      // 1. Datos generales según el tipo de acta
+      const entornoDefault = selectedProj?.website_url
+        ? `Producción (${selectedProj.website_url}) — [Hosting Frontend · Backend Render · Neon PostgreSQL]`
+        : (selectedProj?.project_type ? `Entorno ${selectedProj.project_type.toUpperCase()} · PostgreSQL Neon` : 'Producción — [Hosting Backend · Hosting Frontend · PostgreSQL Neon]');
+      llenarSiVacio('edit-entorno', entornoDefault);
+
+      const repoDefault = selectedProj?.github_url
+        ? `${selectedProj.github_url} (Rama principal e historial de Git)`
+        : 'Repositorio principal de código fuente e historial de Git';
+      llenarSiVacio('edit-repositorios', repoDefault);
+
+      llenarSiVacio('edit-alcance', cfgTipo.alcanceDef);
+      llenarSiVacio('edit-metodologia', cfgTipo.metodologiaDef);
+      llenarSiVacio('edit-periodo_desde', acta.fecha_emision || hoyISO());
+      llenarSiVacio('edit-periodo_hasta', acta.fecha_emision || hoyISO());
+
+      const conclusionDefault = acta.tipo === 'seguridad'
+        ? 'La auditoría determinó la conformidad general de la arquitectura, requiriéndose subsanar los hallazgos críticos y altos en los plazos normativos.'
+        : acta.tipo === 'calidad'
+        ? 'Se validó la estructura modular y buenas prácticas de codificación, recomendándose optimizar consultas e incrementar cobertura de pruebas automatizadas.'
+        : 'Los flujos transaccionales y de cálculo de precios son consistentes; se requiere reforzar el control de concurrencia y validación de idempotencia.';
+      llenarSiVacio('edit-conclusion', conclusionDefault);
+
+      // 2. Firmantes
+      const user = getUser();
+      const auditorNombre = document.getElementById('edit-auditor')?.value.trim() || user?.name || 'Auditor QUBIRA';
+      llenarSiVacio('edit-auditor', auditorNombre);
+      llenarSiVacio('edit-firmante-aud-nombre', auditorNombre);
+      llenarSiVacio('edit-firmante-aud-cargo', 'Auditor de Seguridad y Calidad');
+      llenarSiVacio('edit-firmante-aud-dni', '45892147');
+
+      const responsableNombre = selectedProj?.responsible_name || 'Líder Técnico de Desarrollo';
+      llenarSiVacio('edit-firmante-resp-nombre', responsableNombre);
+      llenarSiVacio('edit-firmante-resp-cargo', 'Líder de Proyecto / Contraparte Técnica');
+      llenarSiVacio('edit-firmante-resp-dni', '72458912');
+
+      // 3. Hallazgos (solo llena si la lista está completamente vacía)
+      if (hallazgosLocales.length === 0) {
+        hallazgosLocales.push({
+          id: 'H-01',
+          titulo: acta.tipo === 'seguridad' ? 'Autenticación en endpoints administrativos' : acta.tipo === 'calidad' ? 'Optimización de consultas en base de datos' : 'Validación de idempotencia en pasarela',
+          severidad: 'medio',
+          estado: 'pendiente',
+          evidencia: 'Se ejecutaron pruebas controladas y se verificó la respuesta del sistema.',
+          impacto: 'Podría generar inconsistencias si aumenta el volumen de operaciones.',
+          ubicacion: 'src/routes/',
+          correccion: 'Implementar validación estricta y control de excepciones.',
+          responsable: document.getElementById('edit-firmante-resp-nombre')?.value || responsableNombre,
+          fecha_limite: sumarDias(acta.fecha_emision || hoyISO(), 14),
+          _dePlantilla: true,
+        });
+        renderHallazgosInputs();
+        llenadosCount++;
+      }
+
+      // 4. Controles (solo llena si la lista está completamente vacía)
+      if (controlesLocales.length === 0) {
+        controlesLocales = JSON.parse(JSON.stringify(DEFAULT_CONTROLES[acta.tipo] || DEFAULT_CONTROLES.seguridad)).map(dom => ({
+          ...dom,
+          _dePlantilla: true,
+        }));
+        renderControlesInputs();
+        llenadosCount++;
+      }
+
+      // 5. Herramientas (solo llena si la lista está completamente vacía)
+      if (herramientasLocales.length === 0) {
+        herramientasLocales = JSON.parse(JSON.stringify(DEFAULT_TOOLS[acta.tipo] || DEFAULT_TOOLS.seguridad)).map(tool => ({
+          ...tool,
+          _dePlantilla: true,
+        }));
+        renderHerramientasInputs();
+        llenadosCount++;
+      }
+
+      if (llenadosCount > 0) {
+        toast(`Se autocompletaron ${llenadosCount} campo(s) vacíos con datos de plantilla (resaltados con luz amarilla).`);
+      } else {
+        toast('Todos los campos ya contenían información. No se sobreescribió ningún dato ingresado.');
+      }
+    });
+
+    // Agregar nuevo hallazgo manual
     document.getElementById('btn-agregar-hallazgo')?.addEventListener('click', () => {
       const nextNum = hallazgosLocales.length + 1;
       hallazgosLocales.push({
@@ -1883,13 +2026,13 @@ async function editarActa(id) {
         impacto: '',
         ubicacion: '',
         correccion: '',
-        responsable: d.auditor || '',
+        responsable: document.getElementById('edit-firmante-resp-nombre')?.value || d.auditor || '',
         fecha_limite: sumarDias(hoyISO(), 14),
       });
       renderHallazgosInputs();
     });
 
-    // Agregar nueva herramienta
+    // Agregar nueva herramienta manual
     document.getElementById('btn-agregar-herramienta')?.addEventListener('click', () => {
       herramientasLocales.push({
         herramienta: '',
@@ -1913,6 +2056,7 @@ async function editarActa(id) {
       d.entorno = document.getElementById('edit-entorno').value;
       d.repositorios = document.getElementById('edit-repositorios').value;
       d.alcance = document.getElementById('edit-alcance').value;
+      d.metodologia = document.getElementById('edit-metodologia').value;
       d.periodo_desde = document.getElementById('edit-periodo_desde').value;
       d.periodo_hasta = document.getElementById('edit-periodo_hasta').value;
       d.auditor = document.getElementById('edit-auditor').value;
@@ -1925,30 +2069,36 @@ async function editarActa(id) {
       d.responsable_cargo = document.getElementById('edit-firmante-resp-cargo').value;
       d.responsable_dni = document.getElementById('edit-firmante-resp-dni').value;
 
-      // Sub-listas
-      d.hallazgos = hallazgosLocales;
-      d.controles = controlesLocales;
-      d.herramientas = herramientasLocales;
-
-      // Sincronizar automáticamente el Plan de Remediación con los hallazgos
-      d.plan_remediacion = hallazgosLocales.map(h => ({
-        accion: `Corregir ${h.id}: ${h.titulo}`,
-        ref: h.id,
-        prioridad: h.severidad === 'critico' ? 'Crítico' : h.severidad === 'alto' ? 'Alto' : h.severidad === 'medio' ? 'Medio' : 'Bajo',
-        responsable: h.responsable || d.responsable_proyecto || 'Equipo de desarrollo',
-        fecha: h.fecha_limite || sumarDias(hoyISO(), 14),
-        hecho: ['corregido', 'verificado'].includes(h.estado),
+      // Sub-listas limpias (eliminar marcadores internos _dePlantilla antes de persistir)
+      d.hallazgos = hallazgosLocales.map(({ _dePlantilla, ...resto }) => resto);
+      d.controles = controlesLocales.map(({ _dePlantilla, ...resto }) => ({
+        ...resto,
+        items: (resto.items || []).map(({ _dePlantilla: _dp, ...itResto }) => itResto),
       }));
+      d.herramientas = herramientasLocales.map(({ _dePlantilla, ...resto }) => resto);
 
-      // Repetir pruebas como cierre
-      d.plan_remediacion.push({
-        accion: 'Repetir pruebas sobre hallazgos y verificar remediación técnica',
-        ref: 'Todos',
-        prioridad: 'Alto',
-        responsable: d.auditor,
-        fecha: sumarDias(hoyISO(), 20),
-        hecho: false,
-      });
+      // Sincronizar automáticamente el Plan de Remediación con los hallazgos (si existen)
+      if (d.hallazgos.length > 0) {
+        d.plan_remediacion = d.hallazgos.map(h => ({
+          accion: `Corregir ${h.id}: ${h.titulo}`,
+          ref: h.id,
+          prioridad: h.severidad === 'critico' ? 'Crítico' : h.severidad === 'alto' ? 'Alto' : h.severidad === 'medio' ? 'Medio' : 'Bajo',
+          responsable: h.responsable || d.responsable_proyecto || 'Equipo de desarrollo',
+          fecha: h.fecha_limite || sumarDias(hoyISO(), 14),
+          hecho: ['corregido', 'verificado'].includes(h.estado),
+        }));
+
+        d.plan_remediacion.push({
+          accion: 'Repetir pruebas sobre hallazgos y verificar remediación técnica',
+          ref: 'Todos',
+          prioridad: 'Alto',
+          responsable: d.auditor || 'Auditor',
+          fecha: sumarDias(hoyISO(), 20),
+          hecho: false,
+        });
+      } else {
+        d.plan_remediacion = [];
+      }
 
       const projectId = document.getElementById('edit-project_id').value || null;
       const version = document.getElementById('edit-version').value || '1.0';
