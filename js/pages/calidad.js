@@ -439,22 +439,88 @@ function hoyHoraFormateada() {
   return `${dia}/${mes}/${anio} ${hora}:${min}`;
 }
 
-function obtenerSolucionarioActa(acta) {
-  if (acta.datos?.solucionario?.contenido) {
-    return acta.datos.solucionario;
+function obtenerSubActa(acta) {
+  const tipo = acta.tipo || 'seguridad';
+  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
+
+  if (acta.datos?.sub_acta) {
+    const s = acta.datos.sub_acta;
+    return {
+      id: s.id || `cor-${acta.id}`,
+      codigo: s.codigo && s.codigo.startsWith('COR-') ? s.codigo : codigoCor,
+      acta_origen_id: acta.id,
+      acta_origen_codigo: acta.codigo,
+      tipo: s.tipo || tipo,
+      titulo: s.titulo || 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+      subtitulo: s.subtitulo || 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+      fecha_emision: s.fecha_emision || acta.fecha_emision || hoyISO(),
+      fecha_publicacion: s.fecha_publicacion || acta.datos?.solucionario?.fecha_publicacion || fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
+      version: s.version || '1.0',
+      estado: s.estado || 'subsanado',
+      auditor: s.auditor || acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
+      responsable_proyecto: s.responsable_proyecto || acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
+      plantilla_id: s.plantilla_id || acta.datos?.solucionario?.plantilla_id || tipo,
+      contenido: s.contenido || acta.datos?.solucionario?.contenido || JSON.parse(JSON.stringify(PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
+      proyectos: Array.isArray(s.proyectos) && s.proyectos.length ? s.proyectos : (Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : [])),
+    };
   }
-  const key = acta.tipo && PLANTILLAS_SOLUCIONARIO[acta.tipo] ? acta.tipo : 'seguridad';
-  const plantilla = PLANTILLAS_SOLUCIONARIO[key];
+
+  if (acta.datos?.solucionario) {
+    const sol = acta.datos.solucionario;
+    return {
+      id: `cor-${acta.id}`,
+      codigo: codigoCor,
+      acta_origen_id: acta.id,
+      acta_origen_codigo: acta.codigo,
+      tipo,
+      titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+      subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+      fecha_emision: acta.fecha_emision || hoyISO(),
+      fecha_publicacion: sol.fecha_publicacion || fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
+      version: '1.0',
+      estado: 'subsanado',
+      auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
+      responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
+      plantilla_id: sol.plantilla_id || tipo,
+      contenido: JSON.parse(JSON.stringify(sol.contenido || PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
+      proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
+    };
+  }
+
+  const plantilla = PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad;
   return {
-    plantilla_id: key,
-    fecha_publicacion: fmtDate(acta.fecha_emision),
+    id: `cor-${acta.id}`,
+    codigo: codigoCor,
+    acta_origen_id: acta.id,
+    acta_origen_codigo: acta.codigo,
+    tipo,
+    titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+    subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+    fecha_emision: acta.fecha_emision || hoyISO(),
+    fecha_publicacion: fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
+    version: '1.0',
+    estado: 'subsanado',
+    auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
+    responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
+    plantilla_id: tipo,
     contenido: JSON.parse(JSON.stringify(plantilla)),
+    proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
   };
 }
 
+function obtenerSolucionarioActa(acta) {
+  return obtenerSubActa(acta);
+}
+
 function generarTextoPlanoSolucionario(sol, acta) {
+  const sub = obtenerSubActa(acta);
   const cont = sol.contenido || sol;
-  let txt = `Resumen de lo corregido — ${acta.codigo}\n`;
+  let txt = `QUBIRA S.A.C. — SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO\n`;
+  txt += `Código de Sub-Acta: ${sub.codigo}\n`;
+  txt += `Acta de origen auditada: ${acta.codigo}\n`;
+  txt += `Fecha de publicación: ${sub.fecha_publicacion || sol.fecha_publicacion || fmtDate(acta.fecha_emision)}\n`;
+  txt += `Estado: Subsanado y Verificado\n\n`;
   txt += `${cont.descripcionIntroductoria || ''}\n\n`;
   (cont.secciones || []).forEach(sec => {
     txt += `${sec.label}\n#\tHallazgo\tAcción\n`;
@@ -466,19 +532,19 @@ function generarTextoPlanoSolucionario(sol, acta) {
   if (cont.credenciales) {
     txt += `${cont.credenciales.titulo}\nUsuario: ${cont.credenciales.usuario}\nContraseña: ${cont.credenciales.password}\n${cont.credenciales.nota}\n\n`;
   }
-  txt += `Fecha de publicación: ${sol.fecha_publicacion || fmtDate(acta.fecha_emision)}`;
   return txt;
 }
 
 function renderPanelSolucionario(a) {
-  const sol = obtenerSolucionarioActa(a);
+  const sub = obtenerSubActa(a);
+  const sol = sub;
   const cont = sol.contenido || sol;
-  const fechaPub = sol.fecha_publicacion || fmtDate(a.fecha_emision);
+  const fechaPub = sub.fecha_publicacion || sol.fecha_publicacion || fmtDate(a.fecha_emision);
   const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
 
   return `
     <div class="p-4 sm:p-6 bg-white rounded-2xl border border-gray-200/90 shadow-lg space-y-4 my-2 mx-2">
-      <!-- Encabezado del Solucionario -->
+      <!-- Encabezado del Solucionario / Sub-Acta -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-gray-100">
         <div class="flex items-center gap-3">
           <span class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 shadow-sm">
@@ -486,16 +552,41 @@ function renderPanelSolucionario(a) {
           </span>
           <div>
             <div class="flex items-center gap-2 flex-wrap">
-              <h4 class="font-bold text-gray-900 text-base">Resumen de lo Corregido</h4>
+              <h4 class="font-bold text-gray-900 text-base">Sub-Acta de Solucionado</h4>
+              <span class="font-mono text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                ${esc(sub.codigo)}
+              </span>
               <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.badgeCls}">${cfg.label}</span>
-              <span class="font-mono text-xs text-gray-500 font-semibold">#${esc(a.codigo)}</span>
+              <span class="text-xs text-gray-500 font-medium">Ref: Acta #${esc(a.codigo)}</span>
             </div>
-            <p class="text-xs text-gray-500 mt-0.5">Solucionario de auditoría técnica verificado directamente sobre el código fuente</p>
+            <p class="text-xs text-gray-500 mt-0.5">Resolución técnica oficial y solucionario verificado directamente sobre el código fuente</p>
           </div>
         </div>
 
-        <!-- Al costado de la visualización: Selector de plantillas y Fecha de Publicación -->
+        <!-- Acciones del Sub-Acta, Selector de plantillas y Fecha de Publicación -->
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <!-- Ver documento oficial A4 de Sub-Acta -->
+          <button
+            type="button"
+            data-action="ver-subacta"
+            data-id="${a.id}"
+            class="btn-primary text-xs py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 shadow-sm font-semibold"
+            title="Ver documento oficial en hoja A4 con membrete institucional"
+          >
+            ${icon('visibility', 14)} Ver Sub-Acta
+          </button>
+
+          <!-- Descargar Word de Sub-Acta -->
+          <button
+            type="button"
+            data-action="word-subacta"
+            data-id="${a.id}"
+            class="btn-secondary text-xs py-1.5 px-3 text-blue-700 border-blue-200 hover:bg-blue-50 inline-flex items-center gap-1.5 shadow-sm font-medium"
+            title="Descargar Sub-Acta en formato Word (.doc)"
+          >
+            ${icon('file_download', 14)} Word (.doc)
+          </button>
+
           <!-- Selector de Plantillas -->
           <div class="flex items-center gap-1 bg-gray-100/90 p-1 rounded-xl text-xs font-medium border border-gray-200/60">
             <span class="text-gray-500 px-2 flex items-center gap-1 font-semibold text-[11px]">
@@ -506,7 +597,7 @@ function renderPanelSolucionario(a) {
               data-action="cambiar-plantilla-sol"
               data-id="${a.id}"
               data-plantilla="seguridad"
-              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'seguridad' || (!sol.plantilla_id && a.tipo === 'seguridad') ? 'bg-white text-indigo-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'seguridad' || (!sub.plantilla_id && a.tipo === 'seguridad') ? 'bg-white text-indigo-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
               title="Cargar plantilla de Seguridad Web + API"
             >
               Seguridad
@@ -516,7 +607,7 @@ function renderPanelSolucionario(a) {
               data-action="cambiar-plantilla-sol"
               data-id="${a.id}"
               data-plantilla="calidad"
-              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'calidad' || (!sol.plantilla_id && a.tipo === 'calidad') ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'calidad' || (!sub.plantilla_id && a.tipo === 'calidad') ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
               title="Cargar plantilla de Calidad & Refactorización"
             >
               Calidad
@@ -526,7 +617,7 @@ function renderPanelSolucionario(a) {
               data-action="cambiar-plantilla-sol"
               data-id="${a.id}"
               data-plantilla="reglas"
-              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'reglas' || (!sol.plantilla_id && a.tipo === 'reglas') ? 'bg-white text-purple-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              class="px-2.5 py-1 rounded-lg transition-all ${sub.plantilla_id === 'reglas' || (!sub.plantilla_id && a.tipo === 'reglas') ? 'bg-white text-purple-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
               title="Cargar plantilla de Reglas de Negocio"
             >
               Reglas
@@ -700,6 +791,18 @@ export async function render(params = {}) {
   }
 }
 
+// Un acta puede auditar varios proyectos (p. ej. WEB + API): todos cuentan por igual
+function idsProyectosActa(a) {
+  const d = a.datos || {};
+  return [...new Set([a.project_id, ...(d.proyectos_ids || []), ...((d.proyectos || []).map(p => p.id))].filter(Boolean))];
+}
+function nombreProyectosActa(acta) {
+  const d = acta.datos || {};
+  if (d.proyecto_nombre) return d.proyecto_nombre;
+  if (Array.isArray(d.proyectos) && d.proyectos.length > 1) return d.proyectos.map(p => `${p.name} (${p.code || 'S/C'})`).join(' · ');
+  return acta.project_name || '';
+}
+
 // ─── BANDEJA DE ACTAS (List View) ─────────────────────────────────────────────
 function renderBandeja() {
   const c = document.getElementById('calidad-container');
@@ -709,11 +812,11 @@ function renderBandeja() {
   const filtradas = _actas.filter(a => {
     if (_filters.tipo && a.tipo !== _filters.tipo) return false;
     if (_filters.estado && a.estado !== _filters.estado) return false;
-    if (_filters.project_id && a.project_id !== _filters.project_id) return false;
+    if (_filters.project_id && !idsProyectosActa(a).includes(_filters.project_id)) return false;
     if (_filters.q) {
       const q = _filters.q.toLowerCase();
       const code = (a.codigo || '').toLowerCase();
-      const proj = (a.project_name || '').toLowerCase();
+      const proj = [a.project_name, a.project_code, ...((a.datos?.proyectos) || []).flatMap(p => [p.name, p.code])].filter(Boolean).join(' ').toLowerCase();
       const aud = (a.auditor || '').toLowerCase();
       if (!code.includes(q) && !proj.includes(q) && !aud.includes(q)) return false;
     }
@@ -840,15 +943,15 @@ function renderBandeja() {
         <table class="w-full text-sm text-left">
           <thead class="bg-gray-50/90 text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
             <tr>
-              <th class="px-4 py-3">Código</th>
-              <th class="px-4 py-3">Tipo</th>
-              <th class="px-4 py-3">Proyecto / Cliente</th>
-              <th class="px-4 py-3 text-center">Versión</th>
-              <th class="px-4 py-3">Fecha Emisión</th>
-              <th class="px-4 py-3">Auditor</th>
-              <th class="px-4 py-3 text-center">Hallazgos</th>
-              <th class="px-4 py-3 text-center">Estado</th>
-              <th class="px-4 py-3 text-right">Acciones</th>
+              <th class="px-2.5 py-3">Código</th>
+              <th class="px-2.5 py-3">Tipo</th>
+              <th class="px-2.5 py-3">Proyecto / Cliente</th>
+              <th class="px-2 py-3 text-center">Versión</th>
+              <th class="px-2.5 py-3">Fecha Emisión</th>
+              <th class="px-2.5 py-3">Auditor</th>
+              <th class="px-2.5 py-3 text-center">Hallazgos</th>
+              <th class="px-2.5 py-3 text-center">Estado</th>
+              <th class="px-2.5 py-3 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
@@ -928,6 +1031,36 @@ function renderBandeja() {
   c.querySelectorAll('[data-action="eliminar"]').forEach(btn => {
     btn.addEventListener('click', () => eliminarActa(btn.dataset.id, btn.dataset.codigo));
   });
+  c.querySelectorAll('[data-action="estado-fila"]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const acta = _actas.find(x => x.id === sel.dataset.id);
+      const previo = acta?.estado || 'borrador';
+      sel.disabled = true;
+      try {
+        await api.put(`/calidad/actas/${sel.dataset.id}`, { estado: sel.value });
+        if (acta) acta.estado = sel.value;
+        toast(`${acta?.codigo || 'Acta'}: estado «${ESTADOS_CONFIG[sel.value].label}»`);
+        renderBandeja();
+      } catch (err) {
+        sel.value = previo; sel.disabled = false;
+        toast(err.message || 'No se pudo cambiar el estado', 'error');
+      }
+    });
+  });
+
+  // Acciones dedicadas de la Sub-Acta de Solucionado
+  c.querySelectorAll('[data-action="ver-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => verSubActa(btn.dataset.id));
+  });
+  c.querySelectorAll('[data-action="word-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => descargarWordSubActaPorId(btn.dataset.id));
+  });
+  c.querySelectorAll('[data-action="txt-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => descargarTxtSubActaPorId(btn.dataset.id));
+  });
+  c.querySelectorAll('[data-action="pdf-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => imprimirSubActaPorId(btn.dataset.id));
+  });
 
   // Listeners del Solucionario desplegable
   c.querySelectorAll('[data-action="toggle-solucionario"]').forEach(btn => {
@@ -955,18 +1088,40 @@ function renderBandeja() {
       const nuevaPlantilla = PLANTILLAS_SOLUCIONARIO[plantillaKey];
       if (!nuevaPlantilla) return;
 
+      const sub = obtenerSubActa(acta);
       const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
+      const fechaPub = hoyHoraFormateada();
+
       datosActualizados.solucionario = {
         plantilla_id: plantillaKey,
-        fecha_publicacion: hoyHoraFormateada(),
+        fecha_publicacion: fechaPub,
         contenido: JSON.parse(JSON.stringify(nuevaPlantilla)),
+      };
+
+      datosActualizados.sub_acta = {
+        id: `cor-${acta.id}`,
+        codigo: sub.codigo,
+        acta_origen_id: acta.id,
+        acta_origen_codigo: acta.codigo,
+        tipo: plantillaKey,
+        titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+        subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+        fecha_emision: acta.fecha_emision || hoyISO(),
+        fecha_publicacion: fechaPub,
+        version: '1.0',
+        estado: 'subsanado',
+        auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
+        responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
+        plantilla_id: plantillaKey,
+        contenido: JSON.parse(JSON.stringify(nuevaPlantilla)),
+        proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
       };
 
       try {
         await api.put(`/calidad/actas/${id}`, {
           datos: datosActualizados,
         });
-        toast(`Plantilla de solucionario cambiada a ${nuevaPlantilla.nombre}`);
+        toast(`Plantilla de Sub-Acta cambiada a ${nuevaPlantilla.nombre}`);
         await recargarActas();
         _solucionariosAbiertos.add(id);
         renderBandeja();
@@ -1006,32 +1161,41 @@ function renderBandeja() {
   });
 }
 
+// Flecha del selector de estado (el select usa appearance-none)
+if (typeof document !== 'undefined' && !document.getElementById('css-estado-fila')) {
+  const st = document.createElement('style'); st.id = 'css-estado-fila';
+  st.textContent = ".estado-fila{background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .35rem center;background-size:.9rem}";
+  document.head.appendChild(st);
+}
+
 function renderFilaActa(a) {
   const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
   const est = ESTADOS_CONFIG[a.estado] || ESTADOS_CONFIG.borrador;
   const res = a.resumen || { severidad: { critico: 0, alto: 0, medio: 0, bajo: 0 } };
   const s = res.severidad || {};
   const estaAbierto = _solucionariosAbiertos.has(a.id) || a.id === _actaRecienCreadaId;
+  const sub = obtenerSubActa(a);
 
   return `
+    <!-- Fila principal: ACTA DE AUDITORÍA ORIGINAL -->
     <tr class="hover:bg-blue-50/40 transition-colors ${estaAbierto ? 'bg-emerald-50/20' : ''}">
-      <td class="px-4 py-3.5 font-mono font-semibold text-primary-700">
-        <a href="javascript:void(0)" data-action="ver" data-id="${a.id}" class="hover:underline flex items-center gap-1.5">
+      <td class="px-2.5 py-3 font-mono font-semibold text-primary-700 whitespace-nowrap">
+        <a href="javascript:void(0)" data-action="ver" data-id="${a.id}" class="hover:underline inline-flex items-center gap-1.5 whitespace-nowrap">
           ${icon('description', 16)} ${esc(a.codigo)}
         </a>
       </td>
-      <td class="px-4 py-3.5">
+      <td class="px-2.5 py-3">
         <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.badgeCls}">
           ${icon(cfg.iconName, 14)} ${cfg.label}
         </span>
       </td>
-      <td class="px-4 py-3.5">
+      <td class="px-2.5 py-3">
         ${Array.isArray(a.datos?.proyectos) && a.datos.proyectos.length > 1 ? `
           <div class="space-y-1">
             <div class="flex flex-wrap gap-1 items-center">
               ${a.datos.proyectos.map(p => `
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-xs font-semibold" title="${esc(p.name)} (${esc(p.code || 'S/C')})">
-                  ${esc(p.name)} <span class="font-mono text-[10px] text-blue-500 font-normal">(${esc(p.code || 'S/C')})</span>
+                <span class="inline-flex flex-col px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-xs font-semibold leading-tight whitespace-nowrap" title="${esc(p.name)} (${esc(p.code || 'S/C')})">
+                  ${esc(p.name)} <span class="font-mono text-[10px] text-blue-500 font-normal">${esc(p.code || 'S/C')}</span>
                 </span>
               `).join('')}
             </div>
@@ -1042,28 +1206,29 @@ function renderFilaActa(a) {
           <div class="text-xs text-gray-500">${esc(a.project_client || a.project_code || 'QUBIRA interno')}</div>
         `}
       </td>
-      <td class="px-4 py-3.5 text-center font-mono text-xs text-gray-600">v${esc(a.version || '1.0')}</td>
-      <td class="px-4 py-3.5 text-xs text-gray-700 whitespace-nowrap">${fmtDate(a.fecha_emision)}</td>
-      <td class="px-4 py-3.5 text-xs text-gray-800">${esc(a.auditor || a.created_by_name || '—')}</td>
-      <td class="px-4 py-3.5 text-center">
-        <div class="inline-flex items-center gap-1 text-xs font-mono font-semibold">
+      <td class="px-2.5 py-3 text-center font-mono text-xs text-gray-600">v${esc(a.version || '1.0')}</td>
+      <td class="px-2.5 py-3 text-xs text-gray-700 whitespace-nowrap">${fmtDate(a.fecha_emision)}</td>
+      <td class="px-2.5 py-3 text-xs text-gray-800">${esc(a.auditor || a.created_by_name || '—')}</td>
+      <td class="px-2.5 py-3 text-center">
+        <div class="inline-flex items-center gap-0.5 text-xs font-mono font-semibold">
           <span class="px-1.5 py-0.5 rounded text-white" style="background:#C0392B" title="${s.critico || 0} Críticos">${s.critico || 0}</span>
           <span class="px-1.5 py-0.5 rounded text-white" style="background:#E67E22" title="${s.alto || 0} Altos">${s.alto || 0}</span>
           <span class="px-1.5 py-0.5 rounded text-gray-900" style="background:#F1C40F" title="${s.medio || 0} Medios">${s.medio || 0}</span>
           <span class="px-1.5 py-0.5 rounded text-white" style="background:#27AE60" title="${s.bajo || 0} Bajos">${s.bajo || 0}</span>
         </div>
       </td>
-      <td class="px-4 py-3.5 text-center">
-        <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium border ${est.cls}">
-          ${est.label}
-        </span>
+      <td class="px-2.5 py-3 text-center">
+        <select data-action="estado-fila" data-id="${a.id}" title="Cambiar estado del acta"
+          class="estado-fila appearance-none cursor-pointer pl-2.5 pr-6 py-0.5 rounded-full text-xs font-medium border ${est.cls} focus:outline-none focus:ring-2 focus:ring-primary-300">
+          ${Object.entries(ESTADOS_CONFIG).map(([k, v]) => `<option value="${k}" ${(a.estado || 'borrador') === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+        </select>
       </td>
-      <td class="px-4 py-3.5 text-right whitespace-nowrap">
-        <div class="flex items-center justify-end gap-1">
-          <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors" title="Ver / Ocultar Resumen de lo Corregido (Solucionario)">
+      <td class="px-2.5 py-3 text-right">
+        <div class="inline-grid grid-cols-4 gap-0.5 justify-items-center">
+          <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors" title="Ver / Ocultar Sub-Acta de Solucionado">
             ${icon('task_alt', 18)}
           </button>
-          <button data-action="ver" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-gray-100" title="Ver documento fiel">
+          <button data-action="ver" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-gray-100" title="Ver acta original">
             ${icon('visibility', 18)}
           </button>
           <button data-action="editar" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-amber-600 hover:bg-gray-100" title="Editar acta">
@@ -1080,6 +1245,61 @@ function renderFilaActa(a) {
           </button>
           <button data-action="eliminar" data-id="${a.id}" data-codigo="${esc(a.codigo)}" class="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50" title="Eliminar acta">
             ${icon('delete', 18)}
+          </button>
+        </div>
+      </td>
+    </tr>
+
+    <!-- Fila subordinada: SUB-ACTA DE RESOLUCIÓN / SOLUCIONADO -->
+    <tr class="transition-colors border-t border-dashed border-emerald-200/90 bg-emerald-50/20 hover:bg-emerald-50/50">
+      <td class="px-4 py-2.5 font-mono font-bold text-emerald-800 whitespace-nowrap">
+        <a href="javascript:void(0)" data-action="ver-subacta" data-id="${a.id}" class="hover:underline inline-flex items-center gap-1.5 pl-3 whitespace-nowrap" title="Ver Documento Oficial de la Sub-Acta">
+          <span class="text-emerald-500 font-extrabold text-sm">↳</span>
+          <span class="tracking-tight text-xs bg-emerald-100/90 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 font-mono shadow-2xs">${esc(sub.codigo)}</span>
+        </a>
+      </td>
+      <td class="px-4 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          ${icon('task_alt', 13)} Sub-Acta Solucionado
+        </span>
+      </td>
+      <td class="px-4 py-2.5 text-xs text-gray-600">
+        <span class="text-gray-400 text-[11px]">Subsanación de:</span> <strong class="font-mono text-gray-700">${esc(a.codigo)}</strong>
+      </td>
+      <td class="px-4 py-2.5 text-center font-mono text-xs text-gray-500">v${esc(sub.version || '1.0')}</td>
+      <td class="px-4 py-2.5 text-xs text-blue-900 whitespace-nowrap font-medium">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[11px] font-semibold">
+          <span class="material-icons text-blue-600 text-xs">event</span>
+          ${esc(sub.fecha_publicacion || fmtDate(a.fecha_emision))}
+        </span>
+      </td>
+      <td class="px-4 py-2.5 text-xs text-gray-700">${esc(sub.auditor || a.auditor || '—')}</td>
+      <td class="px-4 py-2.5 text-center">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold font-mono">
+          ✓ Subsanado
+        </span>
+      </td>
+      <td class="px-4 py-2.5 text-center">
+        <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          Subsanado
+        </span>
+      </td>
+      <td class="px-4 py-2.5 text-right whitespace-nowrap">
+        <div class="flex items-center justify-end gap-1">
+          <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 transition-colors" title="Desplegar / Ocultar detalle del Solucionario">
+            ${icon('expand_more', 18)}
+          </button>
+          <button data-action="ver-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/80 transition-colors" title="Ver documento fiel de la Sub-Acta (${esc(sub.codigo)})">
+            ${icon('visibility', 18)}
+          </button>
+          <button data-action="word-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors" title="Descargar Word (.doc) de la Sub-Acta">
+            ${icon('article', 18)}
+          </button>
+          <button data-action="txt-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors" title="Descargar Bloc de notas (.txt) de la Sub-Acta">
+            ${icon('description', 18)}
+          </button>
+          <button data-action="pdf-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors" title="Imprimir / Exportar PDF de la Sub-Acta">
+            ${icon('picture_as_pdf', 18)}
           </button>
         </div>
       </td>
@@ -1488,6 +1708,26 @@ function abrirModalNuevaActa() {
         fecha_publicacion: hoyHoraFormateada(),
         contenido: JSON.parse(JSON.stringify(plantillaSel)),
       },
+      sub_acta: {
+        codigo: '',
+        tipo,
+        titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+        subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+        fecha_emision: fechaEmision,
+        fecha_publicacion: hoyHoraFormateada(),
+        version: '1.0',
+        estado: 'subsanado',
+        auditor,
+        responsable_proyecto: respNombres || (proyectosSeleccionados[0]?.responsible_name || ''),
+        plantilla_id: tipo,
+        contenido: JSON.parse(JSON.stringify(plantillaSel)),
+        proyectos: proyectosSeleccionados.map(p => ({
+          id: p.id,
+          name: p.name,
+          code: p.code || 'S/C',
+          client: p.client || 'Interno',
+        })),
+      },
     };
 
     try {
@@ -1496,13 +1736,23 @@ function abrirModalNuevaActa() {
         project_id: projectId,
         datos: datosIniciales,
       });
+
+      // Persistir código exacto COR-[acta.codigo] en la Sub-Acta en BD Neon
+      if (resp?.codigo) {
+        datosIniciales.sub_acta.id = `cor-${resp.id}`;
+        datosIniciales.sub_acta.codigo = `COR-${resp.codigo}`;
+        datosIniciales.sub_acta.acta_origen_id = resp.id;
+        datosIniciales.sub_acta.acta_origen_codigo = resp.codigo;
+        await api.put(`/calidad/actas/${resp.id}`, { datos: datosIniciales }).catch(() => {});
+      }
+
       closeModal();
       _solucionariosAbiertos.add(resp.id);
       _actaRecienCreadaId = resp.id;
       _mode = 'list';
       await recargarActas();
       renderBandeja();
-      toast(`Acta ${resp.codigo} creada con solucionario desplegado exitosamente`);
+      toast(`Acta ${resp.codigo} y Sub-Acta COR-${resp.codigo} creadas exitosamente`);
     } catch (e) {
       toast(e.message || 'Error al crear acta', 'error');
     }
@@ -1726,7 +1976,7 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Proyecto</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
-            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(d.proyecto_nombre || acta.project_name || 'Proyecto QUBIRA')}</span></p>
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(nombreProyectosActa(acta) || 'Proyecto QUBIRA')}</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;background:#EAF1F8;padding:3.5pt 5.5pt;vertical-align:middle;">
             <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Cliente</span></p>
@@ -3260,7 +3510,7 @@ function generarTextoActa(acta) {
   L.push(linea);
   L.push(txtTabla([{ titulo: 'Campo', ancho: 20 }, { titulo: 'Valor', ancho: 73 }], [
     ['N.º de acta', acta.codigo], ['Fecha de emisión', acta.fecha_emision || d.fecha_emision || ''], ['Versión', acta.version || '1.0'],
-    ['Clasificación', d.clasificacion || 'Confidencial'], ['Proyecto', d.proyecto_nombre || acta.project_name || ''], ['Cliente', d.cliente || acta.project_client || ''],
+    ['Clasificación', d.clasificacion || 'Confidencial'], ['Proyecto', nombreProyectosActa(acta)], ['Cliente', d.cliente || acta.project_client || ''],
   ]));
 
   L.push(txtTitulo('1. DATOS GENERALES DE LA AUDITORÍA'));
@@ -3368,6 +3618,456 @@ async function descargarWordPorId(id) {
 async function imprimirPorId(id) {
   await verActa(id);
   setTimeout(() => window.print(), 300);
+}
+
+// ─── SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO ──────────────────────────
+function generarHtmlDocumentoSubActa(acta) {
+  const cfg = TIPOS_CONFIG[acta.tipo] || TIPOS_CONFIG.seguridad;
+  const sub = obtenerSubActa(acta);
+  const cont = sub.contenido || {};
+  const d = acta.datos || {};
+  const proyectos = Array.isArray(sub.proyectos) && sub.proyectos.length ? sub.proyectos : (Array.isArray(d.proyectos) ? d.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []));
+  const proyectosNombres = proyectos.map(p => `${p.name} (${p.code || 'S/C'})`).join(' · ') || (acta.project_name || 'Proyecto QUBIRA');
+
+  return `
+    <!-- ENCABEZADO SUPERIOR DEL DOCUMENTO -->
+    <div style="border-bottom:0.5pt solid #C9D3DF;padding-bottom:4pt;margin-bottom:12pt;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-weight:bold;color:#1F3A5F;font-size:8pt;font-family:'Calibri', Arial, sans-serif;">
+        QUBIRA S.A.C. &nbsp;·&nbsp; <span style="font-weight:normal;color:#6B7280;">SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO</span>
+      </span>
+      <span style="font-weight:bold;color:#27AE60;font-size:8pt;font-family:'Calibri', Arial, sans-serif;">
+        ${esc(sub.codigo)}
+      </span>
+    </div>
+
+    <!-- TÍTULOS CORPORATIVOS -->
+    <p style="margin-top:4pt;margin-bottom:2pt;line-height:1.15;">
+      <span style="font-weight:bold;color:#2E6DA4;font-size:10pt;font-family:'Calibri', Arial, sans-serif;letter-spacing:0.5px;">QUBIRA S.A.C. &nbsp;|&nbsp; DIVISIÓN DE ASEGURAMIENTO DE LA CALIDAD</span>
+    </p>
+    <p style="margin-top:0pt;margin-bottom:3pt;line-height:1.15;">
+      <span style="font-weight:bold;color:#1F3A5F;font-size:18pt;font-family:'Calibri', Arial, sans-serif;">SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO</span>
+    </p>
+    <p style="margin-top:0pt;margin-bottom:11pt;border-bottom:2.25pt solid #27AE60;padding-bottom:6pt;line-height:1.2;">
+      <span style="font-style:italic;color:#6B7280;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(sub.subtitulo)} &nbsp;·&nbsp; ${cfg.label}</span>
+    </p>
+
+    <!-- TABLA DE METADATOS DEL SUB-ACTA -->
+    <table style="border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 10pt 0;">
+      <colgroup>
+        <col style="width:24%">
+        <col style="width:26%">
+        <col style="width:24%">
+        <col style="width:26%">
+      </colgroup>
+      <tbody>
+        <tr>
+          <td style="border:0.5pt solid #C9D3DF;background:#E8F8F0;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#196F3D;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">N.º de Sub-Acta</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#27AE60;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(sub.codigo)}</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;background:#EAF1F8;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Acta Origen Auditada</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#2E6DA4;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(acta.codigo)}</span></p>
+          </td>
+        </tr>
+        <tr>
+          <td style="border:0.5pt solid #C9D3DF;background:#E8F8F0;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#196F3D;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Fecha de Emisión</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(acta.fecha_emision || d.fecha_emision || hoyISO())}</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;background:#EAF1F8;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Fecha de Publicación</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(sub.fecha_publicacion || hoyHoraFormateada())}</span></p>
+          </td>
+        </tr>
+        <tr>
+          <td style="border:0.5pt solid #C9D3DF;background:#E8F8F0;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#196F3D;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Estado Resolución</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#27AE60;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Subsanado y Verificado</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;background:#EAF1F8;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Clasificación</span></p>
+          </td>
+          <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#C0392B;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(d.clasificacion || 'Confidencial')}</span></p>
+          </td>
+        </tr>
+        <tr>
+          <td style="border:0.5pt solid #C9D3DF;background:#E8F8F0;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#196F3D;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Proyectos Remediados</span></p>
+          </td>
+          <td colspan="3" style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(proyectosNombres)}</span></p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- SECCIÓN 1: DECLARACIÓN DE SUBSANACIÓN Y METODOLOGÍA -->
+    <p style="margin-top:14pt;margin-bottom:6pt;">
+      <span style="font-weight:bold;color:#1F3A5F;font-size:12pt;font-family:'Calibri', Arial, sans-serif;">1. DECLARACIÓN DE SUBSANACIÓN Y METODOLOGÍA DE VERIFICACIÓN</span>
+    </p>
+    <div style="border:0.5pt solid #C9D3DF;background:#F9FBFC;padding:8pt 10pt;border-left:3pt solid #27AE60;margin-bottom:12pt;font-size:9.5pt;line-height:1.35;color:#374151;">
+      <p style="margin:0 0 4pt 0;font-weight:bold;color:#1F3A5F;">${esc(cont.nombre || 'Resumen de lo corregido')}</p>
+      <p style="margin:0;">${esc(cont.descripcionIntroductoria || 'Se ha trabajado directamente sobre el código fuente de los proyectos involucrados y se verificó cada cambio técnico (conexión real a base de datos Neon PostgreSQL, servidor levantado localmente, pruebas de autenticación, validaciones de seguridad, CORS y límites de tasa).')}</p>
+    </div>
+
+    <!-- SECCIÓN 2: MATRIZ DETALLADA DE HALLAZGOS SUBSANADOS -->
+    <p style="margin-top:14pt;margin-bottom:6pt;">
+      <span style="font-weight:bold;color:#1F3A5F;font-size:12pt;font-family:'Calibri', Arial, sans-serif;">2. MATRIZ DETALLADA DE HALLAZGOS Y ACCIONES DE REMEDIACIÓN</span>
+    </p>
+
+    ${(cont.secciones || []).map(sec => `
+      <div style="margin-top:8pt;margin-bottom:10pt;">
+        <p style="margin:0 0 4pt 0;font-weight:bold;font-size:10pt;color:${sec.colorBadge || '#1F3A5F'};font-family:'Calibri', Arial, sans-serif;">
+          ${sec.label} &nbsp;·&nbsp; ${(sec.items || []).length} acción(es) ejecutada(s)
+        </p>
+        <table style="border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 6pt 0;">
+          <colgroup>
+            <col style="width:12%">
+            <col style="width:34%">
+            <col style="width:42%">
+            <col style="width:12%">
+          </colgroup>
+          <thead>
+            <tr style="background:#EAF1F8;">
+              <th style="border:0.5pt solid #C9D3DF;padding:4pt;font-size:9pt;color:#1F3A5F;text-align:left;">#</th>
+              <th style="border:0.5pt solid #C9D3DF;padding:4pt;font-size:9pt;color:#1F3A5F;text-align:left;">Hallazgo Original</th>
+              <th style="border:0.5pt solid #C9D3DF;padding:4pt;font-size:9pt;color:#1F3A5F;text-align:left;">Acción Técnica / Solución Aplicada</th>
+              <th style="border:0.5pt solid #C9D3DF;padding:4pt;font-size:9pt;color:#1F3A5F;text-align:center;">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(sec.items || []).map(it => `
+              <tr>
+                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-family:monospace;font-size:8.5pt;font-weight:bold;color:#1F3A5F;vertical-align:top;">
+                  ${esc(it.ref)}
+                </td>
+                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:9pt;color:#1F2937;vertical-align:top;font-weight:bold;">
+                  ${esc(it.hallazgo)}
+                </td>
+                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:9pt;color:#374151;vertical-align:top;line-height:1.25;">
+                  ${esc(it.accion)}
+                </td>
+                <td style="border:0.5pt solid #C9D3DF;padding:4pt 5pt;font-size:8.5pt;color:#27AE60;vertical-align:top;text-align:center;font-weight:bold;">
+                  ✓ Corregido
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `).join('')}
+
+    <!-- SECCIÓN 3: GESTIÓN DE CREDENCIALES Y SECRETOS (si aplica) -->
+    ${cont.credenciales ? `
+      <p style="margin-top:14pt;margin-bottom:6pt;">
+        <span style="font-weight:bold;color:#1F3A5F;font-size:12pt;font-family:'Calibri', Arial, sans-serif;">3. PARÁMETROS CRÍTICOS Y CREDENCIALES DE PRODUCCIÓN ACTUALIZADOS</span>
+      </p>
+      <div style="background:#0F172A;color:#FFFFFF;border:1pt solid #334155;border-radius:4pt;padding:10pt 12pt;margin-bottom:12pt;font-size:9pt;line-height:1.4;">
+        <p style="margin:0 0 4pt 0;font-weight:bold;color:#FBBF24;font-size:10pt;">${esc(cont.credenciales.titulo)}</p>
+        <p style="margin:0 0 2pt 0;font-family:monospace;">
+          <span style="color:#94A3B8;">Usuario Administrador:</span> <strong style="color:#FFFFFF;">${esc(cont.credenciales.usuario)}</strong>
+        </p>
+        <p style="margin:0 0 4pt 0;font-family:monospace;">
+          <span style="color:#94A3B8;">Contraseña Actualizada:</span> <strong style="color:#34D399;background:#1E293B;padding:1pt 4pt;border-radius:2pt;">${esc(cont.credenciales.password)}</strong>
+        </p>
+        <p style="margin:0;font-style:italic;color:#94A3B8;font-size:8pt;">${esc(cont.credenciales.nota)}</p>
+      </div>
+    ` : ''}
+
+    <!-- SECCIÓN 4: CONFORMIDAD Y FIRMAS -->
+    <p style="margin-top:16pt;margin-bottom:6pt;">
+      <span style="font-weight:bold;color:#1F3A5F;font-size:12pt;font-family:'Calibri', Arial, sans-serif;">${cont.credenciales ? '4' : '3'}. CONFORMIDAD Y CIERRE TÉCNICO</span>
+    </p>
+    <p style="font-size:9.5pt;line-height:1.35;color:#374151;margin:0 0 24pt 0;">
+      Las partes firmantes declaran conocer y validar las acciones técnicas de subsanación implementadas y verificadas directamente sobre el código fuente y servicios en producción, dándose por remediados los hallazgos señalados en el acta de auditoría de origen.
+    </p>
+
+    <table style="border-collapse:collapse;width:100%;margin-top:30pt;">
+      <tr>
+        <td style="width:48%;text-align:center;vertical-align:top;">
+          <div style="border-top:1pt solid #1F2937;width:80%;margin:0 auto 4pt auto;"></div>
+          <p style="margin:0;font-weight:bold;font-size:9.5pt;color:#1F2937;">${esc(sub.auditor || d.auditor || 'Abraham Aranda Cerna')}</p>
+          <p style="margin:0;font-size:8.5pt;color:#6B7280;">Auditor de Seguridad & Calidad</p>
+          <p style="margin:0;font-size:8pt;color:#9CA3AF;">DNI: 45892147 &nbsp;·&nbsp; Fecha: ${esc(sub.fecha_publicacion || hoyISO())}</p>
+        </td>
+        <td style="width:4%;"></td>
+        <td style="width:48%;text-align:center;vertical-align:top;">
+          <div style="border-top:1pt solid #1F2937;width:80%;margin:0 auto 4pt auto;"></div>
+          <p style="margin:0;font-weight:bold;font-size:9.5pt;color:#1F2937;">${esc(sub.responsable_proyecto || d.responsable_proyecto || 'Responsable del Proyecto')}</p>
+          <p style="margin:0;font-size:8.5pt;color:#6B7280;">Líder Técnico de Desarrollo</p>
+          <p style="margin:0;font-size:8pt;color:#9CA3AF;">DNI: 72458912 &nbsp;·&nbsp; Fecha: ${esc(sub.fecha_publicacion || hoyISO())}</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- PIE INSTITUCIONAL -->
+    <div style="border-top:0.5pt solid #C9D3DF;margin-top:28pt;padding-top:4pt;text-align:center;font-size:7.5pt;color:#9CA3AF;font-family:'Calibri', Arial, sans-serif;">
+      Documento confidencial — uso interno &nbsp;·&nbsp; QUBIRA S.A.C. &nbsp;·&nbsp; Sub-Acta oficial: ${esc(sub.codigo)}
+    </div>
+  `;
+}
+
+function generarTextoSubActa(acta) {
+  const sub = obtenerSubActa(acta);
+  const cont = sub.contenido || {};
+  const L = [];
+  const linea = '═'.repeat(TXT_ANCHO);
+
+  L.push(linea);
+  L.push('QUBIRA S.A.C.');
+  L.push('SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO');
+  L.push(sub.subtitulo || 'Verificación directa sobre código fuente y remediación de hallazgos');
+  L.push(linea);
+  L.push(txtTabla([{ titulo: 'Campo', ancho: 25 }, { titulo: 'Valor', ancho: 68 }], [
+    ['N.º de Sub-Acta', sub.codigo],
+    ['Acta de auditoría origen', acta.codigo],
+    ['Fecha de emisión', acta.fecha_emision || ''],
+    ['Fecha de publicación', sub.fecha_publicacion || ''],
+    ['Versión', sub.version || '1.0'],
+    ['Estado de resolución', 'Subsanado y Verificado'],
+    ['Clasificación', 'Confidencial'],
+    ['Proyectos corregidos', Array.isArray(sub.proyectos) ? sub.proyectos.map(p => `${p.name} (${p.code || 'S/C'})`).join(', ') : (acta.project_name || '')],
+    ['Auditor responsable', sub.auditor || 'Abraham Aranda Cerna'],
+  ]));
+
+  L.push(txtTitulo('1. DECLARACIÓN DE SUBSANACIÓN Y ALCANCE'));
+  txtPartir(cont.descripcionIntroductoria || 'Se trabajó directamente sobre el código fuente y servicios en producción, verificando cada remediación técnica y ejecutando pruebas de regresión.', TXT_ANCHO - 2).forEach(x => L.push('  ' + x));
+  L.push('');
+
+  L.push(txtTitulo('2. RESUMEN DE REMEDIACIONES POR SEVERIDAD'));
+  const secciones = Array.isArray(cont.secciones) ? cont.secciones : [];
+  secciones.forEach(sec => {
+    L.push(`\n${sec.label.toUpperCase()}:`);
+    L.push(txtTabla([{ titulo: 'Ref.', ancho: 8 }, { titulo: 'Hallazgo Original', ancho: 38 }, { titulo: 'Acción Técnica Aplicada', ancho: 45 }],
+      (sec.items || []).map(it => [it.ref, it.hallazgo, it.accion])));
+  });
+
+  if (cont.credenciales) {
+    L.push(txtTitulo('3. PARÁMETROS Y CREDENCIALES DE SEGURIDAD ACTUALIZADOS'));
+    L.push(txtTabla([{ titulo: 'Parámetro', ancho: 25 }, { titulo: 'Valor Asignado', ancho: 68 }], [
+      ['Título', cont.credenciales.titulo],
+      ['Usuario administrador', cont.credenciales.usuario],
+      ['Contraseña actualizada', cont.credenciales.password],
+      ['Nota operativa', cont.credenciales.nota],
+    ]));
+  }
+
+  L.push(txtTitulo('4. CONFORMIDAD Y CIERRE TÉCNICO'));
+  txtPartir('Se declara la conformidad con las remediaciones técnicas ejecutadas, verificando el cierre satisfactorio de los hallazgos descritos en el acta de auditoría de origen.', TXT_ANCHO).forEach(x => L.push(x));
+  L.push('');
+  L.push('');
+  const firma = (nombre, cargo, dni, fecha) => [`______________________________________`, nombre, cargo, `DNI: ${dni || '__________'}   Fecha: ${fecha}`];
+  const f1 = firma(sub.auditor || 'Auditor responsable', 'Auditor de Seguridad y Calidad', '45892147', sub.fecha_publicacion || acta.fecha_emision || '');
+  const f2 = firma(sub.responsable_proyecto || 'Responsable del proyecto', 'Líder Técnico de Desarrollo', '72458912', sub.fecha_publicacion || acta.fecha_emision || '');
+  f1.forEach((x, i) => L.push(x.padEnd(50) + f2[i]));
+  L.push('');
+  L.push(linea);
+  L.push(`Documento confidencial — uso interno · QUBIRA S.A.C. · ${sub.codigo}`);
+  return L.join('\r\n').replace(/(?<!\r)\n/g, '\r\n');
+}
+
+function descargarWordSubActa(acta) {
+  const sub = obtenerSubActa(acta);
+  const contenidoHtml = generarHtmlDocumentoSubActa(acta);
+
+  const docHtml = `
+    <!DOCTYPE html>
+    <html xmlns:o='urn:schemas-microsoft-com:office:office'
+          xmlns:w='urn:schemas-microsoft-com:office:word'
+          xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <meta charset='utf-8'>
+      <title>${esc(sub.codigo)} - SUB-ACTA DE RESOLUCION Y SOLUCIONARIO</title>
+      <!--[if gte mso 9]>
+      <xml>
+        <w:WordDocument>
+          <w:View>Print</w:View>
+          <w:Zoom>100</w:Zoom>
+          <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+      </xml>
+      <![endif]-->
+      <style>
+        @page {
+          size: 210mm 297mm;
+          margin: 15mm 20mm 15mm 20mm;
+          mso-header-margin: 10mm;
+          mso-footer-margin: 10mm;
+        }
+        body {
+          font-family: 'Calibri', Arial, sans-serif;
+          font-size: 10pt;
+          color: #1F2937;
+          line-height: 1.25;
+        }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+        }
+        td, th {
+          font-family: 'Calibri', Arial, sans-serif;
+        }
+      </style>
+    </head>
+    <body>
+      ${contenidoHtml}
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sub.codigo} - RESOLUCION DE SOLUCIONADO - QUBIRA.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Sub-Acta Word descargada: ${sub.codigo}.doc`);
+}
+
+function descargarTxtSubActa(acta) {
+  const sub = obtenerSubActa(acta);
+  const blob = new Blob(['\ufeff', generarTextoSubActa(acta)], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sub.codigo} - RESOLUCION DE SOLUCIONADO - QUBIRA.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Sub-Acta Bloc de notas descargada: ${sub.codigo}.txt`);
+}
+
+async function descargarWordSubActaPorId(id) {
+  try {
+    const acta = await api.get(`/calidad/actas/${id}`);
+    descargarWordSubActa(acta);
+  } catch (e) {
+    toast('Error al descargar Sub-Acta Word', 'error');
+  }
+}
+
+async function descargarTxtSubActaPorId(id) {
+  try {
+    const acta = await api.get(`/calidad/actas/${id}`);
+    descargarTxtSubActa(acta);
+  } catch (e) {
+    toast('Error al descargar Sub-Acta Bloc de notas', 'error');
+  }
+}
+
+async function imprimirSubActaPorId(id) {
+  await verSubActa(id);
+  setTimeout(() => window.print(), 300);
+}
+
+// ─── VER SUB-ACTA (Vista Hoja A4 Fiel - RESOLUCIÓN Y SOLUCIONARIO) ───────────
+async function verSubActa(id) {
+  const c = document.getElementById('calidad-container');
+  if (!c) return;
+
+  c.innerHTML = spinner();
+
+  try {
+    const acta = await api.get(`/calidad/actas/${id}`);
+    _currentActa = acta;
+    _mode = 'view_subacta';
+
+    const sub = obtenerSubActa(acta);
+
+    c.innerHTML = `
+      <!-- Toolbar superior de la vista de Sub-Acta -->
+      <div class="sticky top-0 z-30 pt-1 pb-3 bg-gray-50/95 backdrop-blur-md mb-4 print:hidden" style="position: -webkit-sticky; position: sticky; top: 0;">
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-md">
+          <div class="flex items-center gap-3">
+            <button id="btn-volver-bandeja-sub" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
+              ${icon('arrow_back', 18)} Volver a la lista
+            </button>
+            <div class="h-6 w-px bg-gray-200"></div>
+            <div>
+              <span class="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1">
+                ${icon('task_alt', 16)} Sub-Acta de Solucionado:
+              </span>
+              <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(sub.codigo)}</span>
+              <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Subsanado & Verificado</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btn-ver-acta-origen" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-primary-700 border-primary-200 hover:bg-primary-50">
+              ${icon('description', 18)} Ver Acta Original (${esc(acta.codigo)})
+            </button>
+
+            <button id="btn-descargar-word-sub" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-blue-700 border-blue-200 hover:bg-blue-50">
+              ${icon('file_download', 18)} Descargar Word (.doc)
+            </button>
+
+            <button id="btn-descargar-txt-sub" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-gray-700 border-gray-300 hover:bg-gray-50" title="Descargar como texto plano para el Bloc de notas">
+              ${icon('description', 18)} Bloc de notas (.txt)
+            </button>
+
+            <button id="btn-imprimir-pdf-sub" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-3 bg-emerald-600 hover:bg-emerald-700">
+              ${icon('print', 18)} Imprimir / PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contenedor de la Hoja A4 oficial del Sub-Acta -->
+      <div class="flex justify-center mb-12">
+        <div id="word-document-root" class="word-paper-container" style="
+          width: 210mm;
+          min-height: 297mm;
+          background: #FFFFFF;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.12), 0 0 1px rgba(0,0,0,0.2);
+          padding: 12mm 20mm 15mm 20mm;
+          box-sizing: border-box;
+          font-family: 'Calibri', Arial, sans-serif;
+          color: #1F2937;
+          line-height: 1.25;
+        ">
+          ${generarHtmlDocumentoSubActa(acta)}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-volver-bandeja-sub')?.addEventListener('click', async () => {
+      _mode = 'list';
+      await recargarActas();
+      renderBandeja();
+    });
+    document.getElementById('btn-ver-acta-origen')?.addEventListener('click', () => verActa(acta.id));
+    document.getElementById('btn-descargar-word-sub')?.addEventListener('click', () => descargarWordSubActa(acta));
+    document.getElementById('btn-descargar-txt-sub')?.addEventListener('click', () => descargarTxtSubActa(acta));
+    document.getElementById('btn-imprimir-pdf-sub')?.addEventListener('click', () => window.print());
+
+  } catch (e) {
+    c.innerHTML = `
+      <div class="card p-8 text-center text-red-500">
+        <p class="font-bold">Error al cargar la sub-acta</p>
+        <p class="text-xs text-gray-500 mt-1 mb-4">${esc(e.message)}</p>
+        <button id="btn-volver-err" class="btn-primary">Volver a la lista</button>
+      </div>`;
+    document.getElementById('btn-volver-err')?.addEventListener('click', () => {
+      _mode = 'list';
+      renderBandeja();
+    });
+  }
 }
 
 // ─── ELIMINAR ACTA ────────────────────────────────────────────────────────────
