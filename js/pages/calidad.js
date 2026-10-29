@@ -577,7 +577,7 @@ function abrirModalNuevaActa() {
                 <span class="font-bold text-sm text-gray-900">${tc.label}</span>
               </div>
               <p class="text-xs text-gray-500 leading-relaxed">${tc.descripcion}</p>
-              <span class="mt-2 text-[11px] font-mono font-semibold text-primary-700">QB-AUD-${tc.sigla}-[AAAA]-[NNN]</span>
+              <span class="mt-2 text-[11px] font-mono font-semibold text-primary-700">AUD-${tc.sigla}-[AAAA]-[NNN]</span>
             </label>
           `).join('')}
         </div>
