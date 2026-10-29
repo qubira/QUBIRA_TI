@@ -1,11 +1,11 @@
 import { api }        from '../api.js';
 import { getUser }    from '../state.js';
 import { toast, showModal, closeModal, confirmModal, pageHeader, spinner, icon } from '../utils.js';
-import { iniciarAgenda, montarAgenda, repintarAgenda } from '../components/agenda-reunion.js';
+import { iniciarAgenda, montarAgenda, repintarAgenda, obtenerOcurrencias, formaActual, conflictosDeSerie } from '../components/agenda-reunion.js';
 
 const OWN_AREA = 'TI';
 const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
-const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Otro'];
+const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Auditoría','Seguimiento','Otro'];
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };
 const MODALITY_LABEL = { presencial: 'Presencial', virtual: 'Virtual' };
@@ -38,7 +38,9 @@ let _dirResults = [];
 let _dirDebounce, _filterDebounce;
 let _checkToken = 0;
 let _draft = {};                  // texto en progreso del formulario — sobrevive a un re-render por filtro/recarga
-let _weekOffset = 0;              // semanas respecto a la actual, para la vista semanal
+let _weekOffset = 0;
+let _projects = [];               // proyectos para «Proyecto relacionado»
+let _projectsCargados = false;              // semanas respecto a la actual, para la vista semanal
 const WEEK_START_HOUR = 7;
 const WEEK_END_HOUR = 21;
 
@@ -176,6 +178,8 @@ function renderPage() {
    casi siempre serían todas del mismo color. Se colorea por tipo de
    reunión en su lugar, que varía más seguido. */
 const MEETING_TYPE_COLORS = {
+  'Auditoría': 'bg-rose-600',
+  'Seguimiento': 'bg-teal-600',
   'Reunión técnica': 'bg-indigo-500',
   'Planificación': 'bg-sky-500',
   'Revisión': 'bg-rose-500',
@@ -358,9 +362,9 @@ function formHtml() {
   const fv = (name, fallback) => esc(_draft[name] ?? fallback ?? '');
   const currentImage = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
   return `
-    <form id="cal-form" class="grid lg:grid-cols-2 gap-5 items-start">
-      <div id="cal-agenda"></div>
-      <div class="space-y-3">
+    <form id="cal-form" class="cal-cols grid lg:grid-cols-2 gap-5">
+      <div id="cal-agenda" class="cal-col"></div>
+      <div class="cal-col space-y-3">
       <div>
         <label class="text-xs font-medium text-gray-600">Nombre de la reunión *</label>
         <input name="title" class="input text-sm w-full mt-1" required autocomplete="off" value="${fv('title', editing?.title)}">
@@ -382,12 +386,20 @@ function formHtml() {
         </div>
       </div>
       <div>
+        <label class="text-xs font-medium text-gray-600">Proyecto relacionado (opcional)</label>
+        <select name="project_id" id="cal-in-project" class="input text-sm w-full mt-1">
+          <option value="">— Sin proyecto —</option>
+          ${_projects.map(pr => `<option value="${esc(pr.id)}" ${String(_draft.project_id ?? editing?.project_id ?? '') === String(pr.id) ? 'selected' : ''}>${esc(pr.code ? pr.code + ' · ' : '')}${esc(pr.name)}${pr.client ? ' — ' + esc(pr.client) : ''}</option>`).join('')}
+        </select>
+      </div>
+      <div>
         <label class="text-xs font-medium text-gray-600">Motivo</label>
         <input name="motivo" class="input text-sm w-full mt-1" autocomplete="off" value="${fv('motivo', editing?.motivo)}">
       </div>
       <div>
-        <label class="text-xs font-medium text-gray-600">Descripción</label>
-        <textarea name="description" class="input text-sm w-full mt-1" rows="2">${fv('description', editing?.description)}</textarea>
+        <label class="text-xs font-medium text-gray-600 flex justify-between items-center">Descripción / agenda
+          <span class="flex gap-2">${Object.entries(PLANTILLAS_AGENDA).map(([k, t]) => `<button type="button" class="cal-plantilla text-[11px] text-primary-600 hover:underline font-semibold" data-plantilla="${k}">+ ${t.nombre}</button>`).join('')}</span></label>
+        <textarea name="description" class="input text-sm w-full mt-1" rows="3">${fv('description', editing?.description)}</textarea>
       </div>
       <div>
         <label class="text-xs font-medium text-gray-600" id="cal-location-label">${(_draft.modality ?? editing?.modality ?? 'presencial')==='virtual' ? 'Link de la reunión' : 'Dirección'}</label>
@@ -427,7 +439,7 @@ function formHtml() {
 
       <div id="cal-conflict-banner">${conflictBannerHtml()}</div>
       <div class="flex gap-2 pt-1">
-        <button type="submit" id="cal-save-btn" class="btn-primary text-sm flex-1 justify-center" ${_conflicts.length ? 'disabled' : ''}>${editing ? 'Guardar cambios' : 'Guardar reunión'}</button>
+        <button type="submit" id="cal-save-btn" class="btn-primary text-sm flex-1 justify-center" ${_conflicts.length ? 'disabled' : ''}>${textoGuardar(editing)}</button>
         <button type="button" id="cal-form-cancel" class="btn-secondary text-sm">Cancelar</button>
       </div>
       </div>
@@ -442,12 +454,21 @@ function openFormModal() {
     inicio: _draft.start_time ?? (editing ? editing.start_time.slice(0, 5) : ''),
     fin: _draft.end_time ?? (editing ? editing.end_time.slice(0, 5) : ''),
     excluirReunion: _editingId || null,
+    permitirSerie: !_editingId,
   });
+  if (!_projectsCargados) {
+    _projectsCargados = true;
+    api.get('/projects').then(list => {
+      _projects = Array.isArray(list) ? list : (list?.projects || []);
+      if (document.getElementById('cal-in-project')) rerenderFormModal();
+    }).catch(() => { _projectsCargados = false; });
+  }
   showModal(editing ? 'Editar reunión' : 'Nueva reunión', formHtml(), '2xl');
   document.getElementById('cal-form-cancel')?.addEventListener('click', closeModal);
   wireFormExtras();
   wireFormDraftCapture();
   wireImageControls();
+  wirePlantillas();
   mountAgenda();
 }
 
@@ -462,7 +483,16 @@ function mountAgenda() {
     seleccionados: () => _selectedParticipants.map(p => p.user_id),
     alCambiarHorario: ({ date, start_time, end_time }) => {
       _draft.date = date; _draft.start_time = start_time; _draft.end_time = end_time;
+      actualizarBotonGuardar();
       liveCheck();
+    },
+    alCambiarForma: forma => aplicarForma(forma),
+    verificar: async (date, start_time, end_time) => {
+      const ids = _selectedParticipants.map(p => p.user_id);
+      if (!ids.length) return [];
+      const modality = document.getElementById('cal-form')?.elements.modality?.value || 'presencial';
+      const res = await api.post('/calendar/check-availability', { date, start_time, end_time, participant_ids: ids, modality });
+      return res.conflicts || [];
     },
     alMarcarPersona: (m, agregar) => {
       if (agregar) {
@@ -477,11 +507,62 @@ function mountAgenda() {
   });
 }
 
+const PLANTILLAS_AGENDA = {
+  revision: { nombre: 'Revisión', tipo: 'Revisión', texto: 'Agenda de la revisión:\n1. Avance desde la revisión anterior\n2. Entregables terminados y pendientes\n3. Riesgos, bloqueos y cambios de alcance\n4. Acuerdos y responsables\n5. Fecha y objetivos de la próxima revisión' },
+  auditoria: { nombre: 'Auditoría', tipo: 'Auditoría', texto: 'Plan de auditoría:\n• Apertura: objetivo, alcance, criterios y cronograma\n• Revisión de evidencias, documentación y registros\n• Entrevistas y verificación en sitio o en el sistema\n• Hallazgos, observaciones y no conformidades\n• Cierre: informe, conclusiones y plan de acción con responsables y plazos' },
+  seguimiento: { nombre: 'Seguimiento', tipo: 'Seguimiento', texto: 'Seguimiento:\n1. Estado de los acuerdos anteriores\n2. Indicadores y avance\n3. Incidencias\n4. Nuevos acuerdos' },
+};
+
+function ponerPlantilla(clave, soloSiVacia) {
+  const t = PLANTILLAS_AGENDA[clave];
+  const form = document.getElementById('cal-form');
+  if (!t || !form) return;
+  const desc = form.elements.description;
+  if (soloSiVacia && desc.value.trim()) return;
+  desc.value = desc.value.trim() ? desc.value.trim() + '\n\n' + t.texto : t.texto;
+  _draft.description = desc.value;
+  if (form.elements.meeting_type && MEETING_TYPES.includes(t.tipo) && (!soloSiVacia || !form.elements.meeting_type.value)) {
+    form.elements.meeting_type.value = t.tipo; _draft.meeting_type = t.tipo;
+  }
+}
+
+// Al elegir revisiones o auditoría se proponen el tipo y la agenda
+function aplicarForma(forma) {
+  const form = document.getElementById('cal-form');
+  if (!form) return;
+  if (forma === 'revision' || forma === 'auditoria') {
+    form.elements.meeting_type.value = forma === 'revision' ? 'Revisión' : 'Auditoría';
+    _draft.meeting_type = form.elements.meeting_type.value;
+    ponerPlantilla(forma, true);
+    const proyecto = _projects.find(pr => String(pr.id) === String(form.elements.project_id?.value || ''));
+    if (!form.elements.title.value.trim()) {
+      form.elements.title.value = (forma === 'revision' ? 'Revisión' : 'Auditoría') + (proyecto ? ' — ' + proyecto.name : '');
+      _draft.title = form.elements.title.value;
+    }
+  }
+  actualizarBotonGuardar();
+}
+
+function textoGuardar(editing) {
+  if (editing) return 'Guardar cambios';
+  const n = formaActual() === 'unica' ? 1 : obtenerOcurrencias().length;
+  return n > 1 ? `Guardar ${n} reuniones` : 'Guardar reunión';
+}
+function actualizarBotonGuardar() {
+  const b = document.getElementById('cal-save-btn');
+  if (b) b.textContent = textoGuardar(_meetings.find(m => m.id === _editingId));
+}
+
 function refreshParticipants() {
   const box = document.getElementById('cal-selected-participants');
   if (box) box.innerHTML = selectedParticipantsHtml();
   wireRemoveParticipants();
   liveCheck();
+}
+
+function wirePlantillas() {
+  document.querySelectorAll('.cal-plantilla').forEach(b => b.addEventListener('click', () => ponerPlantilla(b.dataset.plantilla, false)));
+  document.getElementById('cal-in-project')?.addEventListener('change', e => { _draft.project_id = e.target.value; });
 }
 
 function selectedParticipantsHtml() {
@@ -609,6 +690,7 @@ function rerenderFormModal() {
   wireFormExtras();
   wireFormDraftCapture();
   wireImageControls();
+  wirePlantillas();
   mountAgenda();
 }
 
@@ -760,11 +842,38 @@ async function submitForm(e) {
   const editing = _meetings.find(m => m.id === _editingId);
   const image_url = _draft.image_url !== undefined ? _draft.image_url : (editing?.image_url || null);
 
+  const project_id = form.elements.project_id?.value || null;
   const payload = {
-    title, date, start_time, end_time, meeting_type, modality, location, motivo, description, image_url,
+    title, date, start_time, end_time, meeting_type, modality, location, motivo, description, image_url, project_id,
     participants: _selectedParticipants.map(p => ({ user_id: p.user_id })),
     external_participants: _externalParticipants,
   };
+
+  // Serie: una reunión por sesión, verificadas antes de crear ninguna
+  if (!_editingId && formaActual() !== 'unica') {
+    const sesiones = obtenerOcurrencias();
+    if (sesiones.length < 1) return toast('Elige en la agenda los días de la serie', 'error');
+    const malas = conflictosDeSerie();
+    if (malas.length) return toast(`${malas.length} ${malas.length === 1 ? 'sesión tiene' : 'sesiones tienen'} cruces de horario: quítalas o cambia la hora`, 'error');
+    const btn = document.getElementById('cal-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    const fallidas = [];
+    let creadas = 0;
+    for (const ses of sesiones) {
+      try {
+        await api.post('/calendar/meetings', {
+          ...payload, title: `${title} — ${ses.etiqueta}`, date: ses.date, start_time: ses.start_time, end_time: ses.end_time,
+          description: [`${ses.etiqueta}.`, description].filter(Boolean).join('\n\n'),
+        });
+        creadas++;
+      } catch (err) { fallidas.push(`${fmtDateOnly(ses.date)} (${err.message || 'error'})`); }
+    }
+    if (creadas) { closeModal(); _editingId = null; _conflicts = []; _draft = {}; await load(); }
+    else if (btn) { btn.disabled = false; btn.textContent = textoGuardar(null); }
+    if (!fallidas.length) toast(`${creadas} reuniones programadas`);
+    else toast(`Se programaron ${creadas} de ${sesiones.length}. No se pudo: ${fallidas.join(', ')}`, 'error');
+    return;
+  }
 
   try {
     if (_editingId) {
