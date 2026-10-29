@@ -739,40 +739,42 @@ async function verActa(id) {
     hs.forEach(h => { if (cnt[h.severidad] !== undefined) cnt[h.severidad]++; else cnt.bajo++; });
 
     c.innerHTML = `
-      <!-- Toolbar superior de la vista documento -->
-      <div class="mb-5 flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm print:hidden">
-        <div class="flex items-center gap-3">
-          <button id="btn-volver-bandeja" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
-            ${icon('arrow_back', 18)} Volver a la lista
-          </button>
-          <div class="h-6 w-px bg-gray-200"></div>
-          <div>
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documento Activo:</span>
-            <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(acta.codigo)}</span>
-            <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium border ${est.cls}">${est.label}</span>
+      <!-- Toolbar superior de la vista documento (Fijo / Sticky al hacer scroll) -->
+      <div class="sticky top-0 z-30 pt-1 pb-3 bg-gray-50/95 backdrop-blur-md mb-4 print:hidden" style="position: -webkit-sticky; position: sticky; top: 0;">
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-md">
+          <div class="flex items-center gap-3">
+            <button id="btn-volver-bandeja" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
+              ${icon('arrow_back', 18)} Volver a la lista
+            </button>
+            <div class="h-6 w-px bg-gray-200"></div>
+            <div>
+              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documento Activo:</span>
+              <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(acta.codigo)}</span>
+              <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium border ${est.cls}">${est.label}</span>
+            </div>
           </div>
-        </div>
 
-        <div class="flex items-center gap-2">
-          <!-- Selector rápido de estado -->
-          <select id="cambiar-estado-select" class="input w-auto text-xs py-1.5">
-            <option value="borrador" ${acta.estado === 'borrador' ? 'selected' : ''}>Borrador</option>
-            <option value="en_revision" ${acta.estado === 'en_revision' ? 'selected' : ''}>En revisión</option>
-            <option value="emitida" ${acta.estado === 'emitida' ? 'selected' : ''}>Emitida</option>
-            <option value="cerrada" ${acta.estado === 'cerrada' ? 'selected' : ''}>Cerrada</option>
-          </select>
+          <div class="flex items-center gap-2">
+            <!-- Selector rápido de estado -->
+            <select id="cambiar-estado-select" class="input w-auto text-xs py-1.5">
+              <option value="borrador" ${acta.estado === 'borrador' ? 'selected' : ''}>Borrador</option>
+              <option value="en_revision" ${acta.estado === 'en_revision' ? 'selected' : ''}>En revisión</option>
+              <option value="emitida" ${acta.estado === 'emitida' ? 'selected' : ''}>Emitida</option>
+              <option value="cerrada" ${acta.estado === 'cerrada' ? 'selected' : ''}>Cerrada</option>
+            </select>
 
-          <button id="btn-editar-doc" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-amber-700 border-amber-200 hover:bg-amber-50">
-            ${icon('edit_note', 18)} Editar Acta
-          </button>
+            <button id="btn-editar-doc" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-amber-700 border-amber-200 hover:bg-amber-50">
+              ${icon('edit_note', 18)} Editar Acta
+            </button>
 
-          <button id="btn-descargar-word" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-blue-700 border-blue-200 hover:bg-blue-50">
-            ${icon('file_download', 18)} Descargar Word (.doc)
-          </button>
+            <button id="btn-descargar-word" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-blue-700 border-blue-200 hover:bg-blue-50">
+              ${icon('file_download', 18)} Descargar Word (.doc)
+            </button>
 
-          <button id="btn-imprimir-pdf" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-3">
-            ${icon('print', 18)} Imprimir / PDF
-          </button>
+            <button id="btn-imprimir-pdf" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-3">
+              ${icon('print', 18)} Imprimir / PDF
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1505,24 +1507,27 @@ async function editarActa(id) {
     `).join('');
 
     c.innerHTML = `
-      <div class="mb-5 flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div class="flex items-center gap-3">
-          <button id="btn-cancelar-edicion" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
-            ${icon('arrow_back', 18)} Cancelar
-          </button>
-          <div>
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Editando Acta:</span>
-            <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(acta.codigo)}</span>
-            <span class="ml-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.badgeCls}">
-              ${cfg.label}
-            </span>
+      <!-- Toolbar superior de edición (Fijo / Sticky al hacer scroll) -->
+      <div class="sticky top-0 z-30 pt-1 pb-3 bg-gray-50/95 backdrop-blur-md mb-4 print:hidden" style="position: -webkit-sticky; position: sticky; top: 0;">
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-md">
+          <div class="flex items-center gap-3">
+            <button id="btn-cancelar-edicion" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3">
+              ${icon('arrow_back', 18)} Cancelar
+            </button>
+            <div>
+              <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Editando Acta:</span>
+              <span class="font-mono font-bold text-gray-900 text-sm ml-1">${esc(acta.codigo)}</span>
+              <span class="ml-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.badgeCls}">
+                ${cfg.label}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <div class="flex items-center gap-2">
-          <button id="btn-guardar-acta" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-4 shadow-sm">
-            ${icon('save', 18)} Guardar Cambios
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btn-guardar-acta" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-4 shadow-sm">
+              ${icon('save', 18)} Guardar Cambios
+            </button>
+          </div>
         </div>
       </div>
 
