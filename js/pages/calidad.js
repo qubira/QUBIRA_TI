@@ -640,22 +640,74 @@ function abrirModalNuevaActa() {
       </div>
 
       <div>
-        <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Proyecto a Auditar</label>
-        <select id="new-project_id" class="input w-full text-sm">
-          <option value="">-- Seleccionar proyecto --</option>
-          ${projOpts}
-        </select>
-        <p class="text-xs text-gray-400 mt-1">Se extraerán repositorios, cliente y entorno automáticamente del proyecto.</p>
+        <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center justify-between">
+          <span>Proyecto a Auditar</span>
+          <span id="label-proyecto-seleccionado" class="text-[11px] font-medium text-primary-700 font-mono"></span>
+        </label>
+        <div class="relative" id="contenedor-filtro-proyecto">
+          <input type="hidden" id="new-project_id" value="">
+          <div class="relative flex items-center">
+            <span class="absolute left-3 text-gray-400 pointer-events-none flex items-center">
+              ${icon('search', 18)}
+            </span>
+            <input
+              type="text"
+              id="new-project-search"
+              class="input w-full pl-9 pr-9 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              placeholder="Escribe para buscar proyecto por nombre, código o cliente..."
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button
+              type="button"
+              id="btn-limpiar-proyecto-search"
+              class="absolute right-2.5 text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 hidden transition-colors"
+              title="Limpiar selección"
+            >
+              ${icon('close', 16)}
+            </button>
+          </div>
+
+          <!-- Dropdown flotante con las opciones filtradas -->
+          <div
+            id="new-project-dropdown"
+            class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-gray-100"
+            style="scrollbar-width: thin;"
+          ></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Escribe para filtrar proyectos. Se extraerán repositorios, cliente y entorno automáticamente.</p>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Auditor Responsable</label>
-          <input type="text" id="new-auditor" class="input w-full text-sm" value="${esc(user?.name || '')}" placeholder="Nombre y cargo">
+          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center justify-between">
+            <span>Auditor Responsable</span>
+            <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+          </label>
+          <input
+            type="text"
+            id="new-auditor"
+            class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+            value="${esc(user?.name || 'Abraham Aranda Cerna')}"
+            readonly
+            tabindex="-1"
+          >
+          <p class="text-[11px] text-gray-400 mt-1">Usuario de sesión activo</p>
         </div>
         <div>
-          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Fecha de Emisión</label>
-          <input type="date" id="new-fecha_emision" class="input w-full text-sm" value="${hoyISO()}">
+          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center justify-between">
+            <span>Fecha de Emisión</span>
+            <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+          </label>
+          <input
+            type="date"
+            id="new-fecha_emision"
+            class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium pointer-events-none"
+            value="${hoyISO()}"
+            readonly
+            tabindex="-1"
+          >
+          <p class="text-[11px] text-gray-400 mt-1">Fecha actual del sistema</p>
         </div>
       </div>
     </form>
@@ -684,6 +736,153 @@ function abrirModalNuevaActa() {
       c.querySelector('input[type="radio"]').checked = true;
     });
   });
+
+  // Buscador y filtro en tiempo real para el proyecto
+  const inputSearch = document.getElementById('new-project-search');
+  const hiddenId = document.getElementById('new-project_id');
+  const dropdown = document.getElementById('new-project-dropdown');
+  const btnLimpiar = document.getElementById('btn-limpiar-proyecto-search');
+  const labelSeleccion = document.getElementById('label-proyecto-seleccionado');
+
+  function renderOpcionesProyecto(filtro = '') {
+    if (!dropdown) return;
+    const q = filtro.trim().toLowerCase();
+    const filtrados = _projects.filter(p => {
+      if (!q) return true;
+      const nombre = (p.name || '').toLowerCase();
+      const codigo = (p.code || '').toLowerCase();
+      const cliente = (p.client || '').toLowerCase();
+      return nombre.includes(q) || codigo.includes(q) || cliente.includes(q);
+    });
+
+    if (filtrados.length === 0) {
+      dropdown.innerHTML = `
+        <div class="p-3.5 text-center text-xs text-gray-400">
+          No se encontraron proyectos con "${esc(filtro)}"
+        </div>
+      `;
+      dropdown.classList.remove('hidden');
+      return;
+    }
+
+    dropdown.innerHTML = filtrados.map(p => {
+      const isSelected = p.id === hiddenId.value;
+      return `
+        <div
+          class="p-2.5 hover:bg-primary-50 cursor-pointer flex items-center justify-between transition-colors option-proj-item ${isSelected ? 'bg-primary-50/70 font-semibold' : ''}"
+          data-id="${p.id}"
+          data-name="${esc(p.name)}"
+          data-code="${esc(p.code || 'S/C')}"
+          data-client="${esc(p.client || 'Interno')}"
+        >
+          <div class="min-w-0 pr-2">
+            <div class="text-sm font-medium text-gray-900 truncate">${esc(p.name)}</div>
+            <div class="text-xs text-gray-500 truncate flex items-center gap-1.5 mt-0.5">
+              <span class="font-medium text-gray-700">${esc(p.client || 'Interno')}</span>
+              ${p.code ? `<span class="text-gray-300">•</span><span class="font-mono text-gray-400">Código: ${esc(p.code)}</span>` : ''}
+            </div>
+          </div>
+          ${p.code ? `<span class="shrink-0 px-2 py-0.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 font-semibold">${esc(p.code)}</span>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    dropdown.querySelectorAll('.option-proj-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        const name = el.dataset.name;
+        const code = el.dataset.code;
+        const client = el.dataset.client;
+
+        hiddenId.value = id;
+        inputSearch.value = `${name} (${code}) — ${client}`;
+        if (labelSeleccion) labelSeleccion.textContent = `[Seleccionado: ${code}]`;
+        btnLimpiar?.classList.remove('hidden');
+        dropdown.classList.add('hidden');
+      });
+    });
+
+    dropdown.classList.remove('hidden');
+  }
+
+  let activeIndex = -1;
+
+  function resaltarOpcionActiva(items) {
+    items.forEach((it, idx) => {
+      if (idx === activeIndex) {
+        it.classList.add('bg-primary-100', 'text-primary-900');
+        it.scrollIntoView({ block: 'nearest' });
+      } else {
+        it.classList.remove('bg-primary-100', 'text-primary-900');
+      }
+    });
+  }
+
+  inputSearch?.addEventListener('focus', () => {
+    activeIndex = -1;
+    renderOpcionesProyecto(hiddenId.value ? '' : inputSearch.value);
+  });
+
+  inputSearch?.addEventListener('input', (e) => {
+    activeIndex = -1;
+    const val = e.target.value;
+    if (!val) {
+      hiddenId.value = '';
+      if (labelSeleccion) labelSeleccion.textContent = '';
+      btnLimpiar?.classList.add('hidden');
+    } else {
+      btnLimpiar?.classList.remove('hidden');
+    }
+    renderOpcionesProyecto(val);
+  });
+
+  inputSearch?.addEventListener('keydown', (e) => {
+    const items = dropdown?.querySelectorAll('.option-proj-item');
+    if (!items || items.length === 0 || dropdown?.classList.contains('hidden')) {
+      if (e.key === 'ArrowDown') {
+        renderOpcionesProyecto(inputSearch.value);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+      resaltarOpcionActiva(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + items.length) % items.length;
+      resaltarOpcionActiva(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < items.length) {
+        items[activeIndex].click();
+      } else if (items.length === 1) {
+        items[0].click();
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.classList.add('hidden');
+    }
+  });
+
+  btnLimpiar?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    activeIndex = -1;
+    hiddenId.value = '';
+    inputSearch.value = '';
+    if (labelSeleccion) labelSeleccion.textContent = '';
+    btnLimpiar.classList.add('hidden');
+    inputSearch.focus();
+    renderOpcionesProyecto('');
+  });
+
+  const cerrarDropdownHandler = (e) => {
+    const cont = document.getElementById('contenedor-filtro-proyecto');
+    if (cont && !cont.contains(e.target)) {
+      dropdown?.classList.add('hidden');
+    }
+  };
+  document.addEventListener('click', cerrarDropdownHandler);
 
   document.getElementById('modal-cancel-btn')?.addEventListener('click', closeModal);
   document.getElementById('modal-crear-btn')?.addEventListener('click', async () => {
