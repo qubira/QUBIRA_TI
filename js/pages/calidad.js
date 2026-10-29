@@ -439,12 +439,17 @@ function hoyHoraFormateada() {
   return `${dia}/${mes}/${anio} ${hora}:${min}`;
 }
 
+function tieneSubActa(acta) {
+  return Boolean(acta?.datos?.sub_acta && acta.datos.sub_acta.codigo);
+}
+
 function obtenerSubActa(acta) {
+  if (!acta) return null;
   const tipo = acta.tipo || 'seguridad';
   const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
   const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
 
-  if (acta.datos?.sub_acta) {
+  if (acta.datos?.sub_acta && acta.datos.sub_acta.codigo) {
     const s = acta.datos.sub_acta;
     return {
       id: s.id || `cor-${acta.id}`,
@@ -455,39 +460,27 @@ function obtenerSubActa(acta) {
       titulo: s.titulo || 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
       subtitulo: s.subtitulo || 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
       fecha_emision: s.fecha_emision || acta.fecha_emision || hoyISO(),
-      fecha_publicacion: s.fecha_publicacion || acta.datos?.solucionario?.fecha_publicacion || fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
+      fecha_publicacion: s.fecha_publicacion || fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
       version: s.version || '1.0',
       estado: s.estado || 'subsanado',
       auditor: s.auditor || acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
       responsable_proyecto: s.responsable_proyecto || acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
-      plantilla_id: s.plantilla_id || acta.datos?.solucionario?.plantilla_id || tipo,
-      contenido: s.contenido || acta.datos?.solucionario?.contenido || JSON.parse(JSON.stringify(PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
+      plantilla_id: s.plantilla_id || tipo,
+      contenido: s.contenido || JSON.parse(JSON.stringify(PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
       proyectos: Array.isArray(s.proyectos) && s.proyectos.length ? s.proyectos : (Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : [])),
     };
   }
 
-  if (acta.datos?.solucionario) {
-    const sol = acta.datos.solucionario;
-    return {
-      id: `cor-${acta.id}`,
-      codigo: codigoCor,
-      acta_origen_id: acta.id,
-      acta_origen_codigo: acta.codigo,
-      tipo,
-      titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
-      subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
-      fecha_emision: acta.fecha_emision || hoyISO(),
-      fecha_publicacion: sol.fecha_publicacion || fmtDate(acta.fecha_emision) || hoyHoraFormateada(),
-      version: '1.0',
-      estado: 'subsanado',
-      auditor: acta.auditor || acta.datos?.auditor || 'Abraham Aranda Cerna',
-      responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
-      plantilla_id: sol.plantilla_id || tipo,
-      contenido: JSON.parse(JSON.stringify(sol.contenido || PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad)),
-      proyectos: Array.isArray(acta.datos?.proyectos) ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
-    };
-  }
+  return null;
+}
 
+function obtenerSolucionarioActa(acta) {
+  const sub = obtenerSubActa(acta);
+  if (sub) return sub;
+
+  const tipo = acta.tipo || 'seguridad';
+  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
   const plantilla = PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad;
   return {
     id: `cor-${acta.id}`,
@@ -509,12 +502,8 @@ function obtenerSubActa(acta) {
   };
 }
 
-function obtenerSolucionarioActa(acta) {
-  return obtenerSubActa(acta);
-}
-
 function generarTextoPlanoSolucionario(sol, acta) {
-  const sub = obtenerSubActa(acta);
+  const sub = obtenerSubActa(acta) || sol;
   const cont = sol.contenido || sol;
   let txt = `QUBIRA S.A.C. — SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO\n`;
   txt += `Código de Sub-Acta: ${sub.codigo}\n`;
@@ -536,11 +525,12 @@ function generarTextoPlanoSolucionario(sol, acta) {
 }
 
 function renderPanelSolucionario(a) {
-  const sub = obtenerSubActa(a);
+  const sub = obtenerSolucionarioActa(a);
   const sol = sub;
   const cont = sol.contenido || sol;
   const fechaPub = sub.fecha_publicacion || sol.fecha_publicacion || fmtDate(a.fecha_emision);
   const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
+  const tieneSub = tieneSubActa(a);
 
   return `
     <div class="p-4 sm:p-6 bg-white rounded-2xl border border-gray-200/90 shadow-lg space-y-4 my-2 mx-2">
@@ -640,6 +630,20 @@ function renderPanelSolucionario(a) {
           >
             ${icon('content_copy', 14)} Copiar
           </button>
+
+          ${tieneSub ? `
+            <!-- Botón Eliminar Sub-Acta de Corrección -->
+            <button
+              type="button"
+              data-action="eliminar-subacta"
+              data-id="${a.id}"
+              data-codigo="${esc(sub.codigo)}"
+              class="btn-secondary text-xs py-1.5 px-3 text-red-600 border-red-200 hover:bg-red-50 inline-flex items-center gap-1.5 shadow-sm font-medium"
+              title="Eliminar Sub-Acta de Corrección (${esc(sub.codigo)})"
+            >
+              ${icon('delete', 14)} Eliminar
+            </button>
+          ` : ''}
         </div>
       </div>
 
@@ -940,7 +944,7 @@ function renderBandeja() {
     <!-- Tabla de Actas -->
     <div class="card overflow-hidden bg-white border border-gray-200 shadow-sm rounded-xl">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left">
+        <table class="tabla-actas w-full text-sm text-left">
           <thead class="bg-gray-50/90 text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
             <tr>
               <th class="px-2.5 py-3">Código</th>
@@ -1049,6 +1053,12 @@ function renderBandeja() {
   });
 
   // Acciones dedicadas de la Sub-Acta de Solucionado
+  c.querySelectorAll('[data-action="crear-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => abrirModalNuevaSubActa(btn.dataset.id));
+  });
+  c.querySelectorAll('[data-action="eliminar-subacta"]').forEach(btn => {
+    btn.addEventListener('click', () => eliminarSubActa(btn.dataset.id, btn.dataset.codigo));
+  });
   c.querySelectorAll('[data-action="ver-subacta"]').forEach(btn => {
     btn.addEventListener('click', () => verSubActa(btn.dataset.id));
   });
@@ -1164,7 +1174,17 @@ function renderBandeja() {
 // Flecha del selector de estado (el select usa appearance-none)
 if (typeof document !== 'undefined' && !document.getElementById('css-estado-fila')) {
   const st = document.createElement('style'); st.id = 'css-estado-fila';
-  st.textContent = ".estado-fila{background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .35rem center;background-size:.9rem}";
+  st.textContent = ".estado-fila{background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right .35rem center;background-size:.9rem}"
+    + ".tabla-actas th,.tabla-actas td{padding-left:.5rem!important;padding-right:.5rem!important}"
+    + ".tabla-actas td:last-child{white-space:normal}"
+    + ".tabla-actas td:last-child>div{display:inline-grid!important;grid-template-columns:repeat(4,auto);gap:2px;justify-items:center}"
+    + ".tabla-actas td:last-child>div>button{padding:.25rem!important}"
+    + ".tabla-actas td:first-child{font-size:12.5px}.tabla-actas td:first-child a{padding-left:0!important}"
+    + ".tabla-actas .ver-inline{display:none}"
+    + "@media (max-width:1439px){.tabla-actas th:nth-child(4),.tabla-actas td:nth-child(4){display:none}.tabla-actas .ver-inline{display:block}"
+    + ".tabla-actas td:nth-child(2) .material-icons,.tabla-actas td:nth-child(5) .material-icons{display:none}"
+    + ".tabla-actas th,.tabla-actas td{padding-left:.4rem!important;padding-right:.4rem!important}}"
+    + ".tabla-actas td:nth-child(2) span,.tabla-actas td:nth-child(5),.tabla-actas td:nth-child(5) span{white-space:normal}";
   document.head.appendChild(st);
 }
 
@@ -1174,7 +1194,8 @@ function renderFilaActa(a) {
   const res = a.resumen || { severidad: { critico: 0, alto: 0, medio: 0, bajo: 0 } };
   const s = res.severidad || {};
   const estaAbierto = _solucionariosAbiertos.has(a.id) || a.id === _actaRecienCreadaId;
-  const sub = obtenerSubActa(a);
+  const tieneSub = tieneSubActa(a);
+  const sub = tieneSub ? obtenerSubActa(a) : null;
 
   return `
     <!-- Fila principal: ACTA DE AUDITORÍA ORIGINAL -->
@@ -1183,6 +1204,18 @@ function renderFilaActa(a) {
         <a href="javascript:void(0)" data-action="ver" data-id="${a.id}" class="hover:underline inline-flex items-center gap-1.5 whitespace-nowrap">
           ${icon('description', 16)} ${esc(a.codigo)}
         </a>
+        <div class="ver-inline text-[10px] text-gray-500 font-normal pl-6">v${esc(a.version || '1.0')}</div>
+        ${!tieneSub ? `
+          <div class="mt-1">
+            <button data-action="crear-subacta" data-id="${a.id}" data-codigo="${esc(a.codigo)}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 hover:text-emerald-900 transition-all shadow-2xs cursor-pointer" title="Generar Acta de Corrección (COR-${esc(a.codigo)})">
+              ${icon('post_add', 13)} Generar Corrección
+            </button>
+          </div>
+        ` : `
+          <div class="mt-0.5 text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+            <span>↳</span> Corrección generada
+          </div>
+        `}
       </td>
       <td class="px-2.5 py-3">
         <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.badgeCls}">
@@ -1225,9 +1258,15 @@ function renderFilaActa(a) {
       </td>
       <td class="px-2.5 py-3 text-right">
         <div class="inline-grid grid-cols-4 gap-0.5 justify-items-center">
-          <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors" title="Ver / Ocultar Sub-Acta de Solucionado">
-            ${icon('task_alt', 18)}
-          </button>
+          ${tieneSub ? `
+            <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors" title="Ver / Ocultar Sub-Acta de Solucionado">
+              ${icon('task_alt', 18)}
+            </button>
+          ` : `
+            <button data-action="crear-subacta" data-id="${a.id}" data-codigo="${esc(a.codigo)}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors" title="Generar Acta de Corrección (COR-${esc(a.codigo)})">
+              ${icon('post_add', 18)}
+            </button>
+          `}
           <button data-action="ver" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-gray-100" title="Ver acta original">
             ${icon('visibility', 18)}
           </button>
@@ -1250,6 +1289,7 @@ function renderFilaActa(a) {
       </td>
     </tr>
 
+    ${tieneSub && sub ? `
     <!-- Fila subordinada: SUB-ACTA DE RESOLUCIÓN / SOLUCIONADO -->
     <tr class="transition-colors border-t border-dashed border-emerald-200/90 bg-emerald-50/20 hover:bg-emerald-50/50">
       <td class="px-4 py-2.5 font-mono font-bold text-emerald-800 whitespace-nowrap">
@@ -1301,6 +1341,9 @@ function renderFilaActa(a) {
           <button data-action="pdf-subacta" data-id="${a.id}" class="p-1.5 rounded-lg text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors" title="Imprimir / Exportar PDF de la Sub-Acta">
             ${icon('picture_as_pdf', 18)}
           </button>
+          <button data-action="eliminar-subacta" data-id="${a.id}" data-codigo="${esc(sub.codigo)}" class="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors" title="Eliminar Acta de Corrección (${esc(sub.codigo)})">
+            ${icon('delete', 18)}
+          </button>
         </div>
       </td>
     </tr>
@@ -1310,6 +1353,7 @@ function renderFilaActa(a) {
         ${renderPanelSolucionario(a)}
       </td>
     </tr>
+    ` : ''}
   `;
 }
 
@@ -1815,6 +1859,16 @@ async function verActa(id) {
               <option value="cerrada" ${acta.estado === 'cerrada' ? 'selected' : ''}>Cerrada</option>
             </select>
 
+            ${!tieneSubActa(acta) ? `
+              <button id="btn-crear-subacta-view" class="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 text-xs py-2 px-3 font-semibold shadow-sm" title="Generar Acta de Corrección Técnica (COR-${esc(acta.codigo)})">
+                ${icon('post_add', 18)} Generar Corrección
+              </button>
+            ` : `
+              <button id="btn-ver-subacta-view" class="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 text-xs py-2 px-3 font-semibold shadow-sm" title="Ver Sub-Acta de Solucionado Oficial">
+                ${icon('task_alt', 18)} Ver Corrección
+              </button>
+            `}
+
             <button id="btn-editar-doc" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-amber-700 border-amber-200 hover:bg-amber-50">
               ${icon('edit_note', 18)} Editar Acta
             </button>
@@ -1858,6 +1912,8 @@ async function verActa(id) {
       await recargarActas();
       renderBandeja();
     });
+    document.getElementById('btn-crear-subacta-view')?.addEventListener('click', () => abrirModalNuevaSubActa(acta.id));
+    document.getElementById('btn-ver-subacta-view')?.addEventListener('click', () => verSubActa(acta.id));
     document.getElementById('btn-editar-doc')?.addEventListener('click', () => editarActa(acta.id));
     document.getElementById('btn-descargar-word')?.addEventListener('click', () => descargarWord(acta));
     document.getElementById('btn-descargar-txt')?.addEventListener('click', () => descargarTxt(acta));
@@ -4024,6 +4080,10 @@ async function verSubActa(id) {
             <button id="btn-imprimir-pdf-sub" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-3 bg-emerald-600 hover:bg-emerald-700">
               ${icon('print', 18)} Imprimir / PDF
             </button>
+
+            <button id="btn-eliminar-subacta-view" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-red-600 border-red-200 hover:bg-red-50" title="Eliminar Sub-Acta de Corrección">
+              ${icon('delete', 18)} Eliminar Sub-Acta
+            </button>
           </div>
         </div>
       </div>
@@ -4055,6 +4115,7 @@ async function verSubActa(id) {
     document.getElementById('btn-descargar-word-sub')?.addEventListener('click', () => descargarWordSubActa(acta));
     document.getElementById('btn-descargar-txt-sub')?.addEventListener('click', () => descargarTxtSubActa(acta));
     document.getElementById('btn-imprimir-pdf-sub')?.addEventListener('click', () => window.print());
+    document.getElementById('btn-eliminar-subacta-view')?.addEventListener('click', () => eliminarSubActa(acta.id, sub.codigo));
 
   } catch (e) {
     c.innerHTML = `
@@ -4070,7 +4131,7 @@ async function verSubActa(id) {
   }
 }
 
-// ─── ELIMINAR ACTA ────────────────────────────────────────────────────────────
+// ─── ELIMINAR ACTA DE AUDITORÍA ORIGINAL ─────────────────────────────────────
 async function eliminarActa(id, codigo) {
   if (!(await confirmModal(`¿Estás seguro de eliminar el acta ${codigo}? Esta acción no se puede deshacer.`, {
     title: 'Eliminar Acta de Auditoría',
@@ -4085,5 +4146,220 @@ async function eliminarActa(id, codigo) {
     renderBandeja();
   } catch (err) {
     toast(err.message || 'Error al eliminar el acta', 'error');
+  }
+}
+
+// ─── MODAL GENERAR NUEVA SUB-ACTA DE CORRECCIÓN ──────────────────────────────
+async function abrirModalNuevaSubActa(actaId) {
+  let acta = _actas.find(x => x.id === actaId);
+  if (!acta) {
+    try {
+      acta = await api.get(`/calidad/actas/${actaId}`);
+    } catch {
+      toast('No se pudo encontrar el acta de auditoría', 'error');
+      return;
+    }
+  }
+
+  const user = getUser();
+  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
+  const tipoDef = acta.tipo || 'seguridad';
+  const projsNombres = nombreProyectosActa(acta) || acta.project_name || 'Proyecto principal';
+  const auditorNombre = acta.auditor || acta.datos?.auditor || user?.name || 'Abraham Aranda Cerna';
+  const fechaPubDef = hoyHoraFormateada();
+
+  showModal(
+    `Generar Acta de Corrección Técnica — ${codigoCor}`,
+    `
+    <form id="form-nueva-subacta" class="space-y-4">
+      <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+        <div>
+          <span class="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Código de la Corrección a Generar:</span>
+          <div class="font-mono text-base font-bold text-emerald-950 mt-0.5">${esc(codigoCor)}</div>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Acta de Origen Auditada:</span>
+          <div class="font-mono text-sm font-semibold text-gray-800 mt-0.5">${esc(acta.codigo)}</div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Plantilla de Solucionario Técnico</label>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          ${Object.values(TIPOS_CONFIG).map(tc => `
+            <label class="relative flex flex-col p-3 border-2 rounded-xl cursor-pointer hover:border-emerald-500 transition-all ${tc.tipo === tipoDef ? 'border-emerald-600 bg-emerald-50/30' : 'border-gray-200'} tipo-radio-card-sub">
+              <input type="radio" name="sub_tipo" value="${tc.tipo}" class="sr-only" ${tc.tipo === tipoDef ? 'checked' : ''}>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="w-7 h-7 rounded-lg ${tc.badgeCls} flex items-center justify-center shrink-0">
+                  ${icon(tc.iconName, 18)}
+                </span>
+                <span class="font-bold text-sm text-gray-900">${tc.label}</span>
+              </div>
+              <p class="text-xs text-gray-500 leading-relaxed">${tc.descripcion}</p>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+          <span>Proyectos Remediados</span>
+          <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Del Acta</span>
+        </label>
+        <input
+          type="text"
+          class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+          value="${esc(projsNombres)}"
+          readonly
+          tabindex="-1"
+        >
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+            <span>Auditor / Responsable Técnico</span>
+            <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+          </label>
+          <input
+            type="text"
+            id="sub-auditor"
+            class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+            value="${esc(auditorNombre)}"
+            readonly
+            tabindex="-1"
+          >
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+            <span>Fecha de Publicación</span>
+          </label>
+          <input
+            type="text"
+            id="sub-fecha-publicacion"
+            class="input w-full text-sm font-mono text-gray-800"
+            value="${esc(fechaPubDef)}"
+          >
+          <p class="text-[11px] text-gray-400 mt-1">Formato DD/MM/AAAA HH:mm</p>
+        </div>
+      </div>
+    </form>
+    `,
+    'md',
+    `
+    <div class="flex justify-end gap-2">
+      <button id="modal-sub-cancel-btn" class="btn-secondary">Cancelar</button>
+      <button id="modal-sub-crear-btn" class="btn-primary bg-emerald-600 hover:bg-emerald-700 inline-flex items-center gap-2 text-white font-semibold shadow-sm">
+        ${icon('task_alt', 18)} Generar y Publicar Corrección
+      </button>
+    </div>
+    `
+  );
+
+  document.getElementById('modal-sub-cancel-btn')?.addEventListener('click', closeModal);
+
+  // Selector visual de tarjetas
+  const cards = document.querySelectorAll('.tipo-radio-card-sub');
+  cards.forEach(card => {
+    card.addEventListener('click', () => {
+      cards.forEach(c => c.classList.remove('border-emerald-600', 'bg-emerald-50/30'));
+      card.classList.add('border-emerald-600', 'bg-emerald-50/30');
+      const radio = card.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+    });
+  });
+
+  document.getElementById('modal-sub-crear-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('modal-sub-crear-btn');
+    btn.disabled = true;
+    btn.innerHTML = `${icon('hourglass_empty', 18)} Generando...`;
+
+    const tipoSel = document.querySelector('input[name="sub_tipo"]:checked')?.value || tipoDef;
+    const fechaPub = document.getElementById('sub-fecha-publicacion')?.value.trim() || hoyHoraFormateada();
+    const plantilla = PLANTILLAS_SOLUCIONARIO[tipoSel] || PLANTILLAS_SOLUCIONARIO.seguridad;
+
+    const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
+
+    datosActualizados.solucionario = {
+      plantilla_id: tipoSel,
+      fecha_publicacion: fechaPub,
+      contenido: JSON.parse(JSON.stringify(plantilla)),
+    };
+
+    datosActualizados.sub_acta = {
+      id: `cor-${acta.id}`,
+      codigo: codigoCor,
+      acta_origen_id: acta.id,
+      acta_origen_codigo: acta.codigo,
+      tipo: tipoSel,
+      titulo: 'SUB-ACTA DE RESOLUCIÓN Y SOLUCIONARIO TÉCNICO',
+      subtitulo: 'Verificación directa sobre código fuente, remediación de hallazgos y pruebas de regresión',
+      fecha_emision: acta.fecha_emision || hoyISO(),
+      fecha_publicacion: fechaPub,
+      version: '1.0',
+      estado: 'subsanado',
+      auditor: auditorNombre,
+      responsable_proyecto: acta.datos?.responsable_proyecto || 'Responsable de Desarrollo',
+      plantilla_id: tipoSel,
+      contenido: JSON.parse(JSON.stringify(plantilla)),
+      proyectos: Array.isArray(acta.datos?.proyectos) && acta.datos.proyectos.length ? acta.datos.proyectos : (acta.project_name ? [{ name: acta.project_name, code: acta.project_code, client: acta.project_client }] : []),
+    };
+
+    try {
+      await api.put(`/calidad/actas/${acta.id}`, {
+        datos: datosActualizados,
+      });
+
+      closeModal();
+      _solucionariosAbiertos.add(acta.id);
+      await recargarActas();
+      renderBandeja();
+      toast(`Acta de Corrección ${codigoCor} generada con éxito`);
+    } catch (e) {
+      btn.disabled = false;
+      btn.innerHTML = `${icon('task_alt', 18)} Generar y Publicar Corrección`;
+      toast(e.message || 'Error al generar la Sub-Acta de Corrección', 'error');
+    }
+  });
+}
+
+// ─── ELIMINAR SUB-ACTA DE CORRECCIÓN ─────────────────────────────────────────
+async function eliminarSubActa(actaId, codigo) {
+  const conf = await confirmModal(
+    `¿Estás seguro de eliminar el Acta de Corrección ${codigo}? El acta de auditoría original se mantendrá intacta.`,
+    {
+      title: 'Eliminar Acta de Corrección',
+      confirmLabel: 'Eliminar Corrección',
+      danger: true,
+    }
+  );
+  if (!conf) return;
+
+  try {
+    let acta = _actas.find(x => x.id === actaId);
+    if (!acta) {
+      acta = await api.get(`/calidad/actas/${actaId}`);
+    }
+
+    const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
+    delete datosActualizados.sub_acta;
+    delete datosActualizados.solucionario;
+
+    await api.put(`/calidad/actas/${actaId}`, {
+      datos: datosActualizados,
+    });
+
+    _solucionariosAbiertos.delete(actaId);
+    await recargarActas();
+
+    if (_mode === 'view_subacta') {
+      _mode = 'list';
+    }
+
+    renderBandeja();
+    toast(`Acta de Corrección ${codigo} eliminada exitosamente`);
+  } catch (err) {
+    toast(err.message || 'Error al eliminar el Acta de Corrección', 'error');
   }
 }
