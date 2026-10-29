@@ -251,12 +251,174 @@ function asegurarEstilosLuzAmarilla() {
   }
 }
 
+// ─── PLANTILLAS DE SOLUCIONARIO / RESUMEN DE CORRECCIONES ──────────────────
+export const PLANTILLAS_SOLUCIONARIO = {
+  seguridad: {
+    id: 'seguridad',
+    nombre: 'Seguridad Fullstack (Web + API — Caso Express / Neon / Vercel)',
+    subtitulo: 'Correcciones de endpoints, rate-limit, CORS, sesiones y hardening de base de datos',
+    badgeCls: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    descripcionIntroductoria: 'He trabajado directamente sobre el código de WEB y API y verifiqué cada cambio (conexión real a Neon, servidor levantado localmente, pruebas de login/CORS/rate-limit). Esto es lo que quedó:',
+    secciones: [
+      {
+        severidad: 'critico',
+        label: '🔴 Críticos',
+        colorBadge: '#C0392B',
+        items: [
+          { ref: 'H-02', hallazgo: 'Admin con contraseña débil', accion: 'Contraseña cambiada en producción (ver credencial abajo) y cerré las 4 sesiones admin activas con la contraseña vieja — quien estuviera conectado tendrá que volver a entrar.' },
+          { ref: 'H-03', hallazgo: 'CORS abierto a cualquier origen', accion: 'Código corregido: ya falla cerrado si CORS_ORIGIN no está definida. ⚠️ Esto es lo primero que debes revisar — ver "Acción urgente" abajo.' },
+          { ref: 'H-04', hallazgo: 'Sin rate limiting', accion: 'Instalé express-rate-limit: límite global (300/15min) + límite estricto en los 5 logins (10/15min) + PIN de entrega (15/15min) + consultas DNI/CE (20/15min). Probado: al 10.º intento de login ya responde 429.' },
+          { ref: 'H-05', hallazgo: 'proxy-addr vulnerable', accion: 'npm audit fix ejecutado → 0 vulnerabilidades.' },
+          { ref: 'H-01, H-06, H-07', hallazgo: 'Repos públicos / XSS / fallbacks simulados', accion: 'Ya estaban cubiertos de sesiones anteriores (o requieren acción tuya, ver abajo).' },
+        ],
+      },
+      {
+        severidad: 'alto',
+        label: '🟠 Altos',
+        colorBadge: '#E67E22',
+        items: [
+          { ref: 'H-08 / H-09', hallazgo: 'Pedidos sin autenticación adecuada', accion: 'Ahora, si el pedido pertenece a un cliente con cuenta, GET /pedidos/:id y POST /pedidos/:id/pago exigen el token de ese cliente. Los pedidos de invitado (sin cuenta) siguen funcionando por enlace/UUID, que es el diseño actual de checkout sin registro — no lo rompí. Ajusté también js/api.js en WEB para que esas dos llamadas manden el token cuando existe.' },
+          { ref: 'H-10', hallazgo: '2FA / Doble Factor pendiente', accion: 'No lo puedo activar yo — necesita tu sesión en cada plataforma (GitHub, Vercel, Neon). Procedimiento detallado en guía de hardening.' },
+        ],
+      },
+      {
+        severidad: 'medio',
+        label: '🟡 Medios',
+        colorBadge: '#F1C40F',
+        items: [
+          { ref: 'H-12', hallazgo: 'Precio / stock negativos en transacciones', accion: 'Agregué validación en la API con mensaje claro. (Dato: la base de datos ya tenía CHECK (precio >= 0) y CHECK (stock >= 0), así que nunca se pudo insertar un valor negativo — solo se veía un error 500 feo en vez de un 400 claro. Ya corregido.)' },
+          { ref: 'H-13', hallazgo: 'TLS sin validar hacia Neon', accion: 'Cambié rejectUnauthorized: false → true y verifiqué la conexión real — sigue funcionando perfecto.' },
+          { ref: 'H-14', hallazgo: 'Errores internos expuestos (stack trace)', accion: 'El manejador global de errores ya no filtra err.message en errores 500; además agregué try/catch a las dos rutas de admin.js que no lo tenían.' },
+          { ref: 'H-15', hallazgo: 'Cambio de contraseña no cierra otras sesiones', accion: 'Ahora cliente, tienda y repartidor cierran automáticamente todas sus otras sesiones al cambiar su contraseña.' },
+          { ref: 'H-16 / H-17', hallazgo: 'Sin CSP ni cabeceras anti-clickjacking', accion: 'Creé vercel.json con Content-Security-Policy, X-Frame-Options: DENY, X-Content-Type-Options, Strict-Transport-Security y Referrer-Policy, cubriendo todo el sitio.' },
+          { ref: 'H-18', hallazgo: 'Protección de ramas y secretos en Git', accion: 'Requiere configuración de branch protection rules en la interfaz de GitHub.' },
+          { ref: 'H-11', hallazgo: 'Enumeración por mensajes de login', accion: 'Revisé a fondo — decidí no fusionar el mensaje "cuenta inactiva" con el genérico, porque solo se revela después de que ya se acertó la contraseña real (no es explotable por simple adivinanza de email), y perderlo rompe la UX de tiendas/repartidores pendientes de activación. El rate limiting que ya instalé es la mitigación real aquí.' },
+        ],
+      },
+      {
+        severidad: 'bajo',
+        label: '⚪ Bajos',
+        colorBadge: '#27AE60',
+        items: [
+          { ref: 'H-19', hallazgo: 'Enlaces externos sin rel seguro', accion: 'Los 3 target="_blank" ahora tienen rel="noopener noreferrer".' },
+          { ref: 'H-20', hallazgo: 'UPDATE de productos vulnerable a sobreescritura', accion: 'El UPDATE de productos en tienda.js ahora incluye AND tienda_id = $14 en el propio WHERE, no solo en el SELECT previo.' },
+          { ref: 'H-21', hallazgo: 'Falta de autocompletado semántico en contraseñas', accion: 'Agregué autocomplete="current-password" / "new-password" a los 3 campos de mi-cuenta.html.' },
+        ],
+      },
+    ],
+    credenciales: {
+      titulo: '🔑 Nueva contraseña admin (guárdala ahora, no la volveré a mostrar)',
+      usuario: 'admin@express-ancon.pe',
+      password: '7BCX@QipRqZkSLJVCn',
+      nota: 'Guárdala en un gestor de contraseñas. Ya no es texto predecible.',
+    },
+  },
+  calidad: {
+    id: 'calidad',
+    nombre: 'Calidad de Software & Refactorización Modular',
+    subtitulo: 'Optimización de base de datos Neon, arquitectura limpia y pruebas automatizadas',
+    badgeCls: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    descripcionIntroductoria: 'Se intervino el código fuente de los módulos afectados para eliminar deuda técnica, optimizar consultas de latencia en Neon y desacoplar componentes monolíticos:',
+    secciones: [
+      {
+        severidad: 'critico',
+        label: '🔴 Críticos',
+        colorBadge: '#C0392B',
+        items: [
+          { ref: 'CAL-01', hallazgo: 'Memory Leak y acumulación de clientes en Pool Postgres', accion: 'Implementado release explícito en bloques try/finally y configuración de client_idle_timeout = 10000ms en Neon.' },
+          { ref: 'CAL-02', hallazgo: 'Inyección de consultas por concatenación de cadenas', accion: 'Todas las consultas SQL migradas a Prepared Statements parametrizados ($1, $2) con validación estricta de tipos.' },
+          { ref: 'CAL-03', hallazgo: 'Promesas asíncronas no capturadas (Unhandled Rejections)', accion: 'Encapsulación de middleware asyncRoute con captura centralizada de excepciones para evitar caídas del proceso Node.js.' },
+        ],
+      },
+      {
+        severidad: 'alto',
+        label: '🟠 Altos',
+        colorBadge: '#E67E22',
+        items: [
+          { ref: 'CAL-04', hallazgo: 'Acoplamiento excesivo y controladores de más de 800 líneas', accion: 'Separación arquitectónica de responsabilidades en Servicios de Negocio puros y Controladores HTTP delgados.' },
+          { ref: 'CAL-05', hallazgo: 'Cero cobertura de pruebas automatizadas', accion: 'Configurado framework Jest + Supertest con 28 pruebas unitarias de endpoints de pagos, stock y autenticación.' },
+        ],
+      },
+      {
+        severidad: 'medio',
+        label: '🟡 Medios',
+        colorBadge: '#F1C40F',
+        items: [
+          { ref: 'CAL-06', hallazgo: 'Logs con console.log en producción sin nivel ni timestamp', accion: 'Implementado logger Winston en formato JSON estructurado con correlación por request-id.' },
+          { ref: 'CAL-07', hallazgo: 'Bundle frontend sin minificación ni lazy loading', accion: 'Implementada carga modular dinámica de scripts pesados, reduciendo el First Contentful Paint de 3.2s a 0.9s.' },
+          { ref: 'CAL-08', hallazgo: 'Falta de validación de payloads de entrada', accion: 'Integrado validador Zod en todas las rutas POST/PUT para asegurar esquemas y evitar entradas malformadas.' },
+        ],
+      },
+      {
+        severidad: 'bajo',
+        label: '⚪ Bajos',
+        colorBadge: '#27AE60',
+        items: [
+          { ref: 'CAL-09', hallazgo: 'Clases CSS redundantes y fuentes duplicadas', accion: 'Limpieza de reglas CSS obsoletas y normalización de variables de diseño corporativo.' },
+          { ref: 'CAL-10', hallazgo: 'Funciones públicas sin documentación técnica', accion: 'Añadidos bloques JSDoc exhaustivos con declaración de tipos, parámetros y tipos de retorno.' },
+        ],
+      },
+    ],
+    credenciales: null,
+  },
+  reglas: {
+    id: 'reglas',
+    nombre: 'Reglas de Negocio & Control Transaccional',
+    subtitulo: 'Consistencia contable, idempotencia en pasarelas de pago y auditoría inmutable',
+    badgeCls: 'bg-purple-100 text-purple-800 border-purple-200',
+    descripcionIntroductoria: 'Se blindaron las reglas comerciales y financieras contra condiciones de carrera, alteración de precios por clientes y desincronización de pedidos:',
+    secciones: [
+      {
+        severidad: 'critico',
+        label: '🔴 Críticos',
+        colorBadge: '#C0392B',
+        items: [
+          { ref: 'RN-01', hallazgo: 'Doble gasto / duplicidad de pagos ante reintentos de cliente', accion: 'Implementado header obligatorio Idempotency-Key con bloqueo Redis/Postgres y expiración a 24 horas.' },
+          { ref: 'RN-02', hallazgo: 'Sobreventa de inventario bajo concurrencia pico', accion: 'Bloqueo a nivel de fila SELECT ... FOR UPDATE en la tabla de productos durante la transacción de checkout.' },
+          { ref: 'RN-03', hallazgo: 'Alteración de total y descuentos manipulando el cliente', accion: 'El backend ignora cualquier precio o total enviado por el frontend y recalcula desde la base de datos de precios vigentes.' },
+        ],
+      },
+      {
+        severidad: 'alto',
+        label: '🟠 Altos',
+        colorBadge: '#E67E22',
+        items: [
+          { ref: 'RN-04', hallazgo: 'Anulación de transacciones sin registro de auditoría', accion: 'Trigger inmutable en tabla pedidos_historial que registra fecha, usuario, motivo y estado previo en cada anulación.' },
+          { ref: 'RN-05', hallazgo: 'Transiciones de estado ilegales en pedidos', accion: 'Máquina de estados finita validada: pedidos entregados o cancelados no pueden ser reabiertos ni modificados.' },
+        ],
+      },
+      {
+        severidad: 'medio',
+        label: '🟡 Medios',
+        colorBadge: '#F1C40F',
+        items: [
+          { ref: 'RN-06', hallazgo: 'Discrepancias centesimales en cálculo de IGV (18%)', accion: 'Estandarizado cálculo con Math.round a 2 decimales según normativa tributaria SUNAT.' },
+          { ref: 'RN-07', hallazgo: 'Cupones de descuento redimibles múltiples veces en paralelo', accion: 'Incremento atómico del contador de canjes dentro de la transacción de pago.' },
+          { ref: 'RN-08', hallazgo: 'Comisiones de repartidor sin tope ni trazabilidad', accion: 'Validada fórmula de comisiones por distancia con tarifa base fija y tope por zona.' },
+        ],
+      },
+      {
+        severidad: 'bajo',
+        label: '⚪ Bajos',
+        colorBadge: '#27AE60',
+        items: [
+          { ref: 'RN-09', hallazgo: 'Formateo inconsistente de símbolos de moneda', accion: 'Estandarizado a "S/ #,##0.00" en todos los comprobantes, reportes y vistas de clientes.' },
+          { ref: 'RN-10', hallazgo: 'Mensajes de rechazo de pago confusos para el comprador', accion: 'Mapeo amigable de códigos de error de pasarela (fondos insuficientes, tarjeta expirada, etc.).' },
+        ],
+      },
+    ],
+    credenciales: null,
+  },
+};
+
 // ─── Estado local del módulo ──────────────────────────────────────────────────
 let _actas = [];
 let _projects = [];
 let _filters = { tipo: '', estado: '', project_id: '', q: '' };
 let _currentActa = null;
 let _mode = 'list'; // 'list' | 'view' | 'edit'
+let _solucionariosAbiertos = new Set();
+let _actaRecienCreadaId = null;
 
 function esc(s) {
   if (s == null) return '';
@@ -265,6 +427,223 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function hoyHoraFormateada() {
+  const d = new Date();
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const anio = d.getFullYear();
+  const hora = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${anio} ${hora}:${min}`;
+}
+
+function obtenerSolucionarioActa(acta) {
+  if (acta.datos?.solucionario?.contenido) {
+    return acta.datos.solucionario;
+  }
+  const key = acta.tipo && PLANTILLAS_SOLUCIONARIO[acta.tipo] ? acta.tipo : 'seguridad';
+  const plantilla = PLANTILLAS_SOLUCIONARIO[key];
+  return {
+    plantilla_id: key,
+    fecha_publicacion: fmtDate(acta.fecha_emision),
+    contenido: JSON.parse(JSON.stringify(plantilla)),
+  };
+}
+
+function generarTextoPlanoSolucionario(sol, acta) {
+  const cont = sol.contenido || sol;
+  let txt = `Resumen de lo corregido — ${acta.codigo}\n`;
+  txt += `${cont.descripcionIntroductoria || ''}\n\n`;
+  (cont.secciones || []).forEach(sec => {
+    txt += `${sec.label}\n#\tHallazgo\tAcción\n`;
+    (sec.items || []).forEach(it => {
+      txt += `${it.ref}\t${it.hallazgo}\t${it.accion}\n`;
+    });
+    txt += `\n`;
+  });
+  if (cont.credenciales) {
+    txt += `${cont.credenciales.titulo}\nUsuario: ${cont.credenciales.usuario}\nContraseña: ${cont.credenciales.password}\n${cont.credenciales.nota}\n\n`;
+  }
+  txt += `Fecha de publicación: ${sol.fecha_publicacion || fmtDate(acta.fecha_emision)}`;
+  return txt;
+}
+
+function renderPanelSolucionario(a) {
+  const sol = obtenerSolucionarioActa(a);
+  const cont = sol.contenido || sol;
+  const fechaPub = sol.fecha_publicacion || fmtDate(a.fecha_emision);
+  const cfg = TIPOS_CONFIG[a.tipo] || TIPOS_CONFIG.seguridad;
+
+  return `
+    <div class="p-4 sm:p-6 bg-white rounded-2xl border border-gray-200/90 shadow-lg space-y-4 my-2 mx-2">
+      <!-- Encabezado del Solucionario -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 shadow-sm">
+            ${icon('task_alt', 22)}
+          </span>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 class="font-bold text-gray-900 text-base">Resumen de lo Corregido</h4>
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.badgeCls}">${cfg.label}</span>
+              <span class="font-mono text-xs text-gray-500 font-semibold">#${esc(a.codigo)}</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-0.5">Solucionario de auditoría técnica verificado directamente sobre el código fuente</p>
+          </div>
+        </div>
+
+        <!-- Al costado de la visualización: Selector de plantillas y Fecha de Publicación -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <!-- Selector de Plantillas -->
+          <div class="flex items-center gap-1 bg-gray-100/90 p-1 rounded-xl text-xs font-medium border border-gray-200/60">
+            <span class="text-gray-500 px-2 flex items-center gap-1 font-semibold text-[11px]">
+              ${icon('style', 14)} Plantilla:
+            </span>
+            <button
+              type="button"
+              data-action="cambiar-plantilla-sol"
+              data-id="${a.id}"
+              data-plantilla="seguridad"
+              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'seguridad' || (!sol.plantilla_id && a.tipo === 'seguridad') ? 'bg-white text-indigo-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              title="Cargar plantilla de Seguridad Web + API"
+            >
+              Seguridad
+            </button>
+            <button
+              type="button"
+              data-action="cambiar-plantilla-sol"
+              data-id="${a.id}"
+              data-plantilla="calidad"
+              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'calidad' || (!sol.plantilla_id && a.tipo === 'calidad') ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              title="Cargar plantilla de Calidad & Refactorización"
+            >
+              Calidad
+            </button>
+            <button
+              type="button"
+              data-action="cambiar-plantilla-sol"
+              data-id="${a.id}"
+              data-plantilla="reglas"
+              class="px-2.5 py-1 rounded-lg transition-all ${sol.plantilla_id === 'reglas' || (!sol.plantilla_id && a.tipo === 'reglas') ? 'bg-white text-purple-700 shadow-sm font-bold' : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'}"
+              title="Cargar plantilla de Reglas de Negocio"
+            >
+              Reglas
+            </button>
+          </div>
+
+          <!-- FECHA DE PUBLICACIÓN AL COSTADO DE LA VISUALIZACIÓN -->
+          <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-900 text-xs font-semibold shadow-sm">
+            <span class="material-icons text-blue-600 text-sm">event</span>
+            <span>Publicado: <span class="font-bold font-mono">${esc(fechaPub)}</span></span>
+          </div>
+
+          <!-- Botón de Copiar -->
+          <button
+            type="button"
+            data-action="copiar-solucionario"
+            data-id="${a.id}"
+            class="btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5 text-gray-700 hover:text-gray-900 shadow-sm"
+            title="Copiar resumen estructurado al portapapeles"
+          >
+            ${icon('content_copy', 14)} Copiar
+          </button>
+        </div>
+      </div>
+
+      <!-- Texto introductorio -->
+      <div class="p-3 bg-gray-50/90 rounded-xl border border-gray-100 text-xs sm:text-sm text-gray-700 leading-relaxed font-normal flex items-start gap-2.5">
+        <span class="material-icons text-emerald-600 text-lg mt-0.5 shrink-0">check_circle</span>
+        <div>
+          <p class="font-bold text-gray-900 mb-0.5">${esc(cont.nombre || 'Resumen de lo corregido')}</p>
+          <p class="text-gray-600">${esc(cont.descripcionIntroductoria || '')}</p>
+        </div>
+      </div>
+
+      <!-- Tarjetas por severidad -->
+      <div class="grid grid-cols-1 gap-3.5">
+        ${(cont.secciones || []).map(sec => `
+          <div class="rounded-xl border p-3.5 transition-all shadow-sm ${
+            sec.severidad === 'critico' ? 'bg-red-50/20 border-red-200' :
+            sec.severidad === 'alto' ? 'bg-amber-50/20 border-amber-200' :
+            sec.severidad === 'medio' ? 'bg-yellow-50/20 border-yellow-200' :
+            'bg-slate-50/40 border-slate-200'
+          }">
+            <div class="flex items-center justify-between mb-2.5 border-b pb-1.5 ${
+              sec.severidad === 'critico' ? 'border-red-200/60' :
+              sec.severidad === 'alto' ? 'border-amber-200/60' :
+              sec.severidad === 'medio' ? 'border-yellow-200/60' :
+              'border-slate-200/60'
+            }">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold ${
+                  sec.severidad === 'critico' ? 'text-red-800' :
+                  sec.severidad === 'alto' ? 'text-amber-800' :
+                  sec.severidad === 'medio' ? 'text-yellow-900' :
+                  'text-slate-700'
+                }">${sec.label}</span>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white border ${
+                  sec.severidad === 'critico' ? 'text-red-700 border-red-200' :
+                  sec.severidad === 'alto' ? 'text-amber-700 border-amber-200' :
+                  sec.severidad === 'medio' ? 'text-yellow-800 border-yellow-300' :
+                  'text-slate-600 border-slate-200'
+                }">${sec.items?.length || 0} acciones</span>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left">
+                <thead>
+                  <tr class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200/40">
+                    <th class="py-1.5 px-2 w-24">#</th>
+                    <th class="py-1.5 px-2 w-1/4">Hallazgo</th>
+                    <th class="py-1.5 px-2">Acción / Solución Aplicada</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  ${(sec.items || []).map(it => `
+                    <tr class="hover:bg-white/80 transition-colors">
+                      <td class="py-2 px-2 font-mono font-bold text-gray-900 whitespace-nowrap align-top">${esc(it.ref)}</td>
+                      <td class="py-2 px-2 font-semibold text-gray-800 align-top">${esc(it.hallazgo)}</td>
+                      <td class="py-2 px-2 text-gray-600 leading-relaxed align-top">${esc(it.accion)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Bloque de Credenciales Seguras (si aplica) -->
+      ${cont.credenciales ? `
+        <div class="rounded-xl p-4 bg-slate-900 text-white border border-slate-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2 font-bold text-sm text-amber-400">
+              <span class="material-icons text-amber-400 text-base">key</span>
+              ${esc(cont.credenciales.titulo)}
+            </div>
+            <div class="flex flex-wrap items-center gap-3 text-xs pt-1 font-mono">
+              <span class="text-slate-300">Usuario: <strong class="text-white">${esc(cont.credenciales.usuario)}</strong></span>
+              <span class="text-slate-500">•</span>
+              <span class="text-slate-300">Contraseña: <strong class="text-emerald-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${esc(cont.credenciales.password)}</strong></span>
+            </div>
+            <p class="text-[11px] text-slate-400 italic pt-0.5">${esc(cont.credenciales.nota)}</p>
+          </div>
+          <button
+            type="button"
+            data-action="copiar-pwd"
+            data-pwd="${esc(cont.credenciales.password)}"
+            class="btn-secondary text-xs py-2 px-3.5 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 shrink-0 inline-flex items-center gap-1.5 transition-colors"
+            title="Copiar contraseña al portapapeles"
+          >
+            ${icon('content_copy', 14)} Copiar Credencial
+          </button>
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 function hoyISO() {
@@ -540,11 +919,90 @@ function renderBandeja() {
   c.querySelectorAll('[data-action="word"]').forEach(btn => {
     btn.addEventListener('click', () => descargarWordPorId(btn.dataset.id));
   });
+  c.querySelectorAll('[data-action="txt"]').forEach(btn => {
+    btn.addEventListener('click', () => descargarTxtPorId(btn.dataset.id));
+  });
   c.querySelectorAll('[data-action="pdf"]').forEach(btn => {
     btn.addEventListener('click', () => imprimirPorId(btn.dataset.id));
   });
   c.querySelectorAll('[data-action="eliminar"]').forEach(btn => {
     btn.addEventListener('click', () => eliminarActa(btn.dataset.id, btn.dataset.codigo));
+  });
+
+  // Listeners del Solucionario desplegable
+  c.querySelectorAll('[data-action="toggle-solucionario"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const row = document.getElementById(`fila-solucionario-${id}`);
+      if (!row) return;
+      if (row.classList.contains('hidden')) {
+        row.classList.remove('hidden');
+        _solucionariosAbiertos.add(id);
+      } else {
+        row.classList.add('hidden');
+        _solucionariosAbiertos.delete(id);
+      }
+    });
+  });
+
+  c.querySelectorAll('[data-action="cambiar-plantilla-sol"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const plantillaKey = btn.dataset.plantilla;
+      const acta = _actas.find(x => x.id === id);
+      if (!acta) return;
+
+      const nuevaPlantilla = PLANTILLAS_SOLUCIONARIO[plantillaKey];
+      if (!nuevaPlantilla) return;
+
+      const datosActualizados = JSON.parse(JSON.stringify(acta.datos || {}));
+      datosActualizados.solucionario = {
+        plantilla_id: plantillaKey,
+        fecha_publicacion: hoyHoraFormateada(),
+        contenido: JSON.parse(JSON.stringify(nuevaPlantilla)),
+      };
+
+      try {
+        await api.put(`/calidad/actas/${id}`, {
+          datos: datosActualizados,
+        });
+        toast(`Plantilla de solucionario cambiada a ${nuevaPlantilla.nombre}`);
+        await recargarActas();
+        _solucionariosAbiertos.add(id);
+        renderBandeja();
+      } catch (e) {
+        toast(e.message || 'Error al cambiar plantilla', 'error');
+      }
+    });
+  });
+
+  c.querySelectorAll('[data-action="copiar-solucionario"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const acta = _actas.find(x => x.id === id);
+      if (!acta) return;
+      const sol = obtenerSolucionarioActa(acta);
+      const texto = generarTextoPlanoSolucionario(sol, acta);
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(texto).then(() => {
+          toast('Resumen de lo corregido copiado al portapapeles');
+        }).catch(() => {
+          toast('No se pudo copiar automáticamente', 'error');
+        });
+      }
+    });
+  });
+
+  c.querySelectorAll('[data-action="copiar-pwd"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pwd = btn.dataset.pwd;
+      if (!pwd) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(pwd).then(() => {
+          toast('Contraseña copiada al portapapeles');
+        });
+      }
+    });
   });
 }
 
@@ -553,9 +1011,10 @@ function renderFilaActa(a) {
   const est = ESTADOS_CONFIG[a.estado] || ESTADOS_CONFIG.borrador;
   const res = a.resumen || { severidad: { critico: 0, alto: 0, medio: 0, bajo: 0 } };
   const s = res.severidad || {};
+  const estaAbierto = _solucionariosAbiertos.has(a.id) || a.id === _actaRecienCreadaId;
 
   return `
-    <tr class="hover:bg-blue-50/40 transition-colors">
+    <tr class="hover:bg-blue-50/40 transition-colors ${estaAbierto ? 'bg-emerald-50/20' : ''}">
       <td class="px-4 py-3.5 font-mono font-semibold text-primary-700">
         <a href="javascript:void(0)" data-action="ver" data-id="${a.id}" class="hover:underline flex items-center gap-1.5">
           ${icon('description', 16)} ${esc(a.codigo)}
@@ -567,8 +1026,21 @@ function renderFilaActa(a) {
         </span>
       </td>
       <td class="px-4 py-3.5">
-        <div class="font-medium text-gray-900">${esc(a.project_name || 'Sin proyecto vinculado')}</div>
-        <div class="text-xs text-gray-500">${esc(a.project_client || a.project_code || 'QUBIRA interno')}</div>
+        ${Array.isArray(a.datos?.proyectos) && a.datos.proyectos.length > 1 ? `
+          <div class="space-y-1">
+            <div class="flex flex-wrap gap-1 items-center">
+              ${a.datos.proyectos.map(p => `
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-xs font-semibold" title="${esc(p.name)} (${esc(p.code || 'S/C')})">
+                  ${esc(p.name)} <span class="font-mono text-[10px] text-blue-500 font-normal">(${esc(p.code || 'S/C')})</span>
+                </span>
+              `).join('')}
+            </div>
+            <div class="text-xs text-gray-500">${esc(a.project_client || a.datos?.proyectos[0]?.client || 'QUBIRA interno')}</div>
+          </div>
+        ` : `
+          <div class="font-medium text-gray-900">${esc(a.project_name || 'Sin proyecto vinculado')}</div>
+          <div class="text-xs text-gray-500">${esc(a.project_client || a.project_code || 'QUBIRA interno')}</div>
+        `}
       </td>
       <td class="px-4 py-3.5 text-center font-mono text-xs text-gray-600">v${esc(a.version || '1.0')}</td>
       <td class="px-4 py-3.5 text-xs text-gray-700 whitespace-nowrap">${fmtDate(a.fecha_emision)}</td>
@@ -588,6 +1060,9 @@ function renderFilaActa(a) {
       </td>
       <td class="px-4 py-3.5 text-right whitespace-nowrap">
         <div class="flex items-center justify-end gap-1">
+          <button data-action="toggle-solucionario" data-id="${a.id}" class="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors" title="Ver / Ocultar Resumen de lo Corregido (Solucionario)">
+            ${icon('task_alt', 18)}
+          </button>
           <button data-action="ver" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-gray-100" title="Ver documento fiel">
             ${icon('visibility', 18)}
           </button>
@@ -597,6 +1072,9 @@ function renderFilaActa(a) {
           <button data-action="word" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-gray-100" title="Descargar Word (.doc)">
             ${icon('article', 18)}
           </button>
+          <button data-action="txt" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100" title="Descargar Bloc de notas (.txt)">
+            ${icon('description', 18)}
+          </button>
           <button data-action="pdf" data-id="${a.id}" class="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-gray-100" title="Imprimir / Exportar PDF">
             ${icon('picture_as_pdf', 18)}
           </button>
@@ -604,6 +1082,12 @@ function renderFilaActa(a) {
             ${icon('delete', 18)}
           </button>
         </div>
+      </td>
+    </tr>
+    <!-- Fila desplegable del Resumen de lo Corregido (Solucionario) -->
+    <tr id="fila-solucionario-${a.id}" class="fila-solucionario ${estaAbierto ? '' : 'hidden'} bg-gradient-to-b from-gray-50/70 to-white border-b-2 border-emerald-200">
+      <td colspan="9" class="p-0">
+        ${renderPanelSolucionario(a)}
       </td>
     </tr>
   `;
@@ -641,9 +1125,15 @@ function abrirModalNuevaActa() {
 
       <div>
         <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center justify-between">
-          <span>Proyecto a Auditar</span>
-          <span id="label-proyecto-seleccionado" class="text-[11px] font-medium text-primary-700 font-mono"></span>
+          <span>Proyectos a Auditar (Permite 1 o más proyectos)</span>
+          <span id="label-proyectos-seleccionados-count" class="text-[11px] font-semibold text-primary-700 font-mono">0 seleccionados</span>
         </label>
+
+        <!-- Contenedor interactivo de Chips / Etiquetas de proyectos -->
+        <div id="contenedor-chips-proyectos" class="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-xl min-h-[44px] mb-2 items-center transition-all">
+          <span id="chips-placeholder" class="text-xs text-gray-400 italic">Escribe abajo para buscar y seleccionar proyectos (ej. WEB + API)...</span>
+        </div>
+
         <div class="relative" id="contenedor-filtro-proyecto">
           <input type="hidden" id="new-project_id" value="">
           <div class="relative flex items-center">
@@ -654,7 +1144,7 @@ function abrirModalNuevaActa() {
               type="text"
               id="new-project-search"
               class="input w-full pl-9 pr-9 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              placeholder="Escribe para buscar proyecto por nombre, código o cliente..."
+              placeholder="Escribe para buscar proyecto por nombre, código o cliente para agregar..."
               autocomplete="off"
               spellcheck="false"
             >
@@ -662,7 +1152,7 @@ function abrirModalNuevaActa() {
               type="button"
               id="btn-limpiar-proyecto-search"
               class="absolute right-2.5 text-gray-400 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 hidden transition-colors"
-              title="Limpiar selección"
+              title="Borrar texto"
             >
               ${icon('close', 16)}
             </button>
@@ -675,7 +1165,7 @@ function abrirModalNuevaActa() {
             style="scrollbar-width: thin;"
           ></div>
         </div>
-        <p class="text-xs text-gray-400 mt-1">Escribe para filtrar proyectos. Se extraerán repositorios, cliente y entorno automáticamente.</p>
+        <p class="text-xs text-gray-400 mt-1">Permite seleccionar 2 o más partes si el sistema está modularizado (ej. WEB y API). Se extraerán repositorios y entornos combinados.</p>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -737,12 +1227,53 @@ function abrirModalNuevaActa() {
     });
   });
 
-  // Buscador y filtro en tiempo real para el proyecto
+  // Buscador y selección múltiple de proyectos
   const inputSearch = document.getElementById('new-project-search');
   const hiddenId = document.getElementById('new-project_id');
   const dropdown = document.getElementById('new-project-dropdown');
   const btnLimpiar = document.getElementById('btn-limpiar-proyecto-search');
-  const labelSeleccion = document.getElementById('label-proyecto-seleccionado');
+
+  let proyectosSeleccionados = [];
+
+  function actualizarChipsProyectos() {
+    const cont = document.getElementById('contenedor-chips-proyectos');
+    const countLabel = document.getElementById('label-proyectos-seleccionados-count');
+    if (!cont) return;
+
+    if (proyectosSeleccionados.length === 0) {
+      cont.innerHTML = `<span id="chips-placeholder" class="text-xs text-gray-400 italic">Escribe abajo para buscar y seleccionar proyectos (ej. WEB + API)...</span>`;
+      if (countLabel) countLabel.textContent = '0 seleccionados';
+      if (hiddenId) hiddenId.value = '';
+      return;
+    }
+
+    if (countLabel) {
+      countLabel.textContent = `${proyectosSeleccionados.length} seleccionado${proyectosSeleccionados.length > 1 ? 's' : ''}`;
+    }
+    if (hiddenId) {
+      hiddenId.value = proyectosSeleccionados[0].id;
+    }
+
+    cont.innerHTML = proyectosSeleccionados.map((p, idx) => `
+      <span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-primary-100/90 text-primary-900 border border-primary-200 text-xs font-medium shadow-xs">
+        <span class="font-bold">${esc(p.name)}</span>
+        <span class="font-mono text-[10px] text-primary-600 font-semibold bg-white/80 px-1 py-0.5 rounded">(${esc(p.code || 'S/C')})</span>
+        <button type="button" data-remove-idx="${idx}" class="btn-quitar-chip text-primary-400 hover:text-red-600 hover:bg-red-50 rounded p-0.5 ml-0.5 transition-colors" title="Quitar proyecto">
+          ${icon('close', 14)}
+        </button>
+      </span>
+    `).join('');
+
+    cont.querySelectorAll('.btn-quitar-chip').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.removeIdx, 10);
+        proyectosSeleccionados.splice(idx, 1);
+        actualizarChipsProyectos();
+        renderOpcionesProyecto(inputSearch.value);
+      });
+    });
+  }
 
   function renderOpcionesProyecto(filtro = '') {
     if (!dropdown) return;
@@ -766,23 +1297,26 @@ function abrirModalNuevaActa() {
     }
 
     dropdown.innerHTML = filtrados.map(p => {
-      const isSelected = p.id === hiddenId.value;
+      const isSelected = proyectosSeleccionados.some(x => x.id === p.id);
       return `
         <div
-          class="p-2.5 hover:bg-primary-50 cursor-pointer flex items-center justify-between transition-colors option-proj-item ${isSelected ? 'bg-primary-50/70 font-semibold' : ''}"
+          class="p-2.5 hover:bg-primary-50 cursor-pointer flex items-center justify-between transition-colors option-proj-item ${isSelected ? 'bg-primary-50/90 border-l-4 border-primary-600' : ''}"
           data-id="${p.id}"
-          data-name="${esc(p.name)}"
-          data-code="${esc(p.code || 'S/C')}"
-          data-client="${esc(p.client || 'Interno')}"
         >
           <div class="min-w-0 pr-2">
-            <div class="text-sm font-medium text-gray-900 truncate">${esc(p.name)}</div>
+            <div class="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
+              ${isSelected ? `<span class="text-primary-600 font-bold text-xs">✓</span>` : ''}
+              <span>${esc(p.name)}</span>
+            </div>
             <div class="text-xs text-gray-500 truncate flex items-center gap-1.5 mt-0.5">
               <span class="font-medium text-gray-700">${esc(p.client || 'Interno')}</span>
               ${p.code ? `<span class="text-gray-300">•</span><span class="font-mono text-gray-400">Código: ${esc(p.code)}</span>` : ''}
             </div>
           </div>
-          ${p.code ? `<span class="shrink-0 px-2 py-0.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 font-semibold">${esc(p.code)}</span>` : ''}
+          <div class="shrink-0 flex items-center gap-1.5">
+            ${p.code ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700 font-semibold">${esc(p.code)}</span>` : ''}
+            <span class="text-xs ${isSelected ? 'text-primary-700 font-semibold' : 'text-gray-400'}">${isSelected ? 'Agregado' : '+ Agregar'}</span>
+          </div>
         </div>
       `;
     }).join('');
@@ -790,15 +1324,21 @@ function abrirModalNuevaActa() {
     dropdown.querySelectorAll('.option-proj-item').forEach(el => {
       el.addEventListener('click', () => {
         const id = el.dataset.id;
-        const name = el.dataset.name;
-        const code = el.dataset.code;
-        const client = el.dataset.client;
+        const targetProj = _projects.find(x => x.id === id);
+        if (!targetProj) return;
 
-        hiddenId.value = id;
-        inputSearch.value = `${name} (${code}) — ${client}`;
-        if (labelSeleccion) labelSeleccion.textContent = `[Seleccionado: ${code}]`;
-        btnLimpiar?.classList.remove('hidden');
-        dropdown.classList.add('hidden');
+        const yaEsta = proyectosSeleccionados.some(x => x.id === id);
+        if (yaEsta) {
+          proyectosSeleccionados = proyectosSeleccionados.filter(x => x.id !== id);
+        } else {
+          proyectosSeleccionados.push(targetProj);
+        }
+
+        actualizarChipsProyectos();
+        inputSearch.value = '';
+        btnLimpiar?.classList.add('hidden');
+        inputSearch.focus();
+        renderOpcionesProyecto('');
       });
     });
 
@@ -820,15 +1360,13 @@ function abrirModalNuevaActa() {
 
   inputSearch?.addEventListener('focus', () => {
     activeIndex = -1;
-    renderOpcionesProyecto(hiddenId.value ? '' : inputSearch.value);
+    renderOpcionesProyecto(inputSearch.value);
   });
 
   inputSearch?.addEventListener('input', (e) => {
     activeIndex = -1;
     const val = e.target.value;
     if (!val) {
-      hiddenId.value = '';
-      if (labelSeleccion) labelSeleccion.textContent = '';
       btnLimpiar?.classList.add('hidden');
     } else {
       btnLimpiar?.classList.remove('hidden');
@@ -868,9 +1406,7 @@ function abrirModalNuevaActa() {
   btnLimpiar?.addEventListener('click', (e) => {
     e.stopPropagation();
     activeIndex = -1;
-    hiddenId.value = '';
     inputSearch.value = '';
-    if (labelSeleccion) labelSeleccion.textContent = '';
     btnLimpiar.classList.add('hidden');
     inputSearch.focus();
     renderOpcionesProyecto('');
@@ -889,14 +1425,31 @@ function abrirModalNuevaActa() {
     const form = document.getElementById('form-nueva-acta');
     if (!form) return;
     const tipo = form.querySelector('input[name="tipo"]:checked')?.value || 'seguridad';
-    const projectId = document.getElementById('new-project_id').value || null;
-    const auditor = document.getElementById('new-auditor').value.trim() || user?.name || 'Auditor QUBIRA';
+    const projectId = proyectosSeleccionados.length > 0 ? proyectosSeleccionados[0].id : null;
+    const auditor = document.getElementById('new-auditor').value.trim() || user?.name || 'Abraham Aranda Cerna';
     const fechaEmision = document.getElementById('new-fecha_emision').value || hoyISO();
 
-    const proj = _projects.find(p => p.id === projectId);
     const cfg = TIPOS_CONFIG[tipo];
 
-    // Estructura inicial del acta con campos en blanco (los no llenados quedan vacíos)
+    // Combinar repositorios y entornos de todos los proyectos seleccionados
+    const reposList = proyectosSeleccionados
+      .map(p => p.github_url ? `${p.name}: ${p.github_url}` : null)
+      .filter(Boolean)
+      .join(' · ');
+
+    const entornosList = proyectosSeleccionados
+      .map(p => p.website_url ? `${p.name}: ${p.website_url}` : (p.name ? `${p.name}: Producción` : null))
+      .filter(Boolean)
+      .join(' · ');
+
+    const respNombres = proyectosSeleccionados
+      .map(p => p.responsible_name)
+      .filter(Boolean)
+      .join(' / ');
+
+    const plantillaSel = PLANTILLAS_SOLUCIONARIO[tipo] || PLANTILLAS_SOLUCIONARIO.seguridad;
+
+    // Estructura inicial del acta con campos en blanco y plantilla de solucionario desplegada
     const datosIniciales = {
       tipo,
       fecha_emision: fechaEmision,
@@ -905,11 +1458,11 @@ function abrirModalNuevaActa() {
       auditor,
       auditor_dni: '',
       auditor_cargo: '',
-      responsable_proyecto: proj?.responsible_name || '',
+      responsable_proyecto: respNombres || (proyectosSeleccionados[0]?.responsible_name || ''),
       responsable_dni: '',
       responsable_cargo: '',
-      entorno: '',
-      repositorios: '',
+      entorno: entornosList || '',
+      repositorios: reposList || '',
       alcance: '',
       metodologia: '',
       periodo_desde: '',
@@ -920,6 +1473,21 @@ function abrirModalNuevaActa() {
       controles: [],
       herramientas: [],
       plan_remediacion: [],
+      proyectos_ids: proyectosSeleccionados.map(p => p.id),
+      proyectos: proyectosSeleccionados.map(p => ({
+        id: p.id,
+        name: p.name,
+        code: p.code || 'S/C',
+        client: p.client || 'Interno',
+        github_url: p.github_url || '',
+        website_url: p.website_url || '',
+        responsible_name: p.responsible_name || '',
+      })),
+      solucionario: {
+        plantilla_id: tipo,
+        fecha_publicacion: hoyHoraFormateada(),
+        contenido: JSON.parse(JSON.stringify(plantillaSel)),
+      },
     };
 
     try {
@@ -929,9 +1497,12 @@ function abrirModalNuevaActa() {
         datos: datosIniciales,
       });
       closeModal();
+      _solucionariosAbiertos.add(resp.id);
+      _actaRecienCreadaId = resp.id;
+      _mode = 'list';
       await recargarActas();
-      toast(`Acta ${resp.codigo} creada en blanco exitosamente`);
-      await editarActa(resp.id);
+      renderBandeja();
+      toast(`Acta ${resp.codigo} creada con solucionario desplegado exitosamente`);
     } catch (e) {
       toast(e.message || 'Error al crear acta', 'error');
     }
@@ -1002,6 +1573,10 @@ async function verActa(id) {
               ${icon('file_download', 18)} Descargar Word (.doc)
             </button>
 
+            <button id="btn-descargar-txt" class="btn-secondary inline-flex items-center gap-1.5 text-sm py-2 px-3 text-gray-700 border-gray-300 hover:bg-gray-50" title="Descargar como texto plano para el Bloc de notas">
+              ${icon('description', 18)} Bloc de notas (.txt)
+            </button>
+
             <button id="btn-imprimir-pdf" class="btn-primary inline-flex items-center gap-1.5 text-sm py-2 px-3">
               ${icon('print', 18)} Imprimir / PDF
             </button>
@@ -1035,6 +1610,7 @@ async function verActa(id) {
     });
     document.getElementById('btn-editar-doc')?.addEventListener('click', () => editarActa(acta.id));
     document.getElementById('btn-descargar-word')?.addEventListener('click', () => descargarWord(acta));
+    document.getElementById('btn-descargar-txt')?.addEventListener('click', () => descargarTxt(acta));
     document.getElementById('btn-imprimir-pdf')?.addEventListener('click', () => window.print());
 
     document.getElementById('cambiar-estado-select')?.addEventListener('change', async e => {
@@ -1084,6 +1660,7 @@ function generarHtmlDocumentoWord(acta) {
   const controles = Array.isArray(d.controles) ? d.controles : [];
   const herramientas = Array.isArray(d.herramientas) ? d.herramientas : [];
   const plan = Array.isArray(d.plan_remediacion) ? d.plan_remediacion : [];
+  const conformes = Array.isArray(d.conformes) ? d.conformes : [];
 
   return `
     <!-- ENCABEZADO SUPERIOR DEL DOCUMENTO -->
@@ -1149,13 +1726,13 @@ function generarHtmlDocumentoWord(acta) {
             <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Proyecto</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
-            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(acta.project_name || 'Proyecto QUBIRA')}</span></p>
+            <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(d.proyecto_nombre || acta.project_name || 'Proyecto QUBIRA')}</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;background:#EAF1F8;padding:3.5pt 5.5pt;vertical-align:middle;">
             <p style="margin:1pt;line-height:1.15;"><span style="font-weight:bold;color:#1F3A5F;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Cliente</span></p>
           </td>
           <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;vertical-align:middle;">
-            <p style="margin:1pt;line-height:1.15;"><span style="color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(acta.project_client || 'QUBIRA interno')}</span></p>
+            <p style="margin:1pt;line-height:1.15;"><span style="color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">${esc(d.cliente || acta.project_client || 'QUBIRA interno')}</span></p>
           </td>
         </tr>
       </tbody>
@@ -1430,7 +2007,7 @@ function generarHtmlDocumentoWord(acta) {
         ` : medios.map(h => `
           <tr>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-weight:bold;color:#1F3A5F;font-size:9pt;">${esc(h.id)}</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;color:#1F2937;">${esc(h.titulo)}</td>
+            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;color:#1F2937;">${esc(h.detalle || h.titulo)}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#4B5563;">${esc(h.ubicacion || '—')}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#1F2937;">${esc(h.correccion || '—')}</td>
           </tr>
@@ -1442,35 +2019,38 @@ function generarHtmlDocumentoWord(acta) {
     <p style="margin-top:12pt;margin-bottom:4pt;">
       <span style="font-weight:bold;color:#1F3A5F;font-size:11pt;font-family:'Calibri', Arial, sans-serif;">5.4 &nbsp;Bajos y controles conformes</span>
     </p>
+    ${bajos.length ? `
+    <p style="margin:2pt 0 3pt;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:'Calibri', Arial, sans-serif;">Bajos:</span></p>
+    <table style="border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 8pt 0;">
+      <colgroup><col style="width:12%"><col style="width:38%"><col style="width:25%"><col style="width:25%"></colgroup>
+      <thead><tr>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">N.º</span></th>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Hallazgo</span></th>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Ubicación</span></th>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Corrección</span></th>
+      </tr></thead>
+      <tbody>${bajos.map(h => `<tr>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-weight:bold;color:#1F3A5F;font-size:9pt;">${esc(h.id)}</td>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;color:#1F2937;">${esc(h.detalle || h.titulo)}</td>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#4B5563;">${esc(h.ubicacion || '—')}</td>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#1F2937;">${esc(h.correccion || '—')}</td>
+      </tr>`).join('')}</tbody>
+    </table>` : ''}
+    ${conformes.length || !bajos.length ? `
+    ${bajos.length ? '<p style="margin:2pt 0 3pt;"><span style="font-weight:bold;color:#1F2937;font-size:9.5pt;font-family:\'Calibri\', Arial, sans-serif;">Controles conformes:</span></p>' : ''}
     <table style="border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 12pt 0;">
-      <colgroup>
-        <col style="width:25%">
-        <col style="width:25%">
-        <col style="width:50%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Área / Dominio</span></th>
-          <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Resultado</span></th>
-          <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Observación</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${bajos.length === 0 ? `
-          <tr>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;font-weight:bold;color:#1F3A5F;">Arquitectura y Código</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;color:#27AE60;font-weight:bold;">Conforme</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#4B5563;">Cumple con la estructura base de seguridad y calidad del proyecto.</td>
-          </tr>
-        ` : bajos.map(h => `
-          <tr>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;font-weight:bold;color:#1F3A5F;">${esc(h.ubicacion || 'General')}</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;color:#27AE60;font-weight:bold;">Riesgo bajo</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#4B5563;">${esc(h.titulo)} — ${esc(h.correccion || 'Buena práctica')}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
+      <colgroup><col style="width:25%"><col style="width:20%"><col style="width:55%"></colgroup>
+      <thead><tr>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Área / Dominio</span></th>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Resultado</span></th>
+        <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;padding:3.5pt 5.5pt;text-align:left;"><span style="font-weight:bold;color:#FFFFFF;font-size:9pt;">Observación</span></th>
+      </tr></thead>
+      <tbody>${(conformes.length ? conformes : [{ area: 'Arquitectura y Código', resultado: 'Conforme', observacion: 'Cumple con la estructura base de seguridad y calidad del proyecto.' }]).map(c => `<tr>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;font-weight:bold;color:#1F3A5F;">${esc(c.area)}</td>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:9pt;font-weight:bold;color:${/no conforme/i.test(c.resultado) ? '#C0392B' : /riesgo/i.test(c.resultado) ? '#E67E22' : '#27AE60'};">${esc(c.resultado || 'Conforme')}</td>
+        <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#4B5563;">${esc(c.observacion || '')}</td>
+      </tr>`).join('')}</tbody>
+    </table>` : ''}
 
     <!-- SECCIÓN 6: CONTROLES REVISADOS (CHECKLIST AGRUPADO) -->
     <p style="margin-top:14pt;margin-bottom:6pt;">
@@ -1507,7 +2087,7 @@ function generarHtmlDocumentoWord(acta) {
                   </td>
                 ` : ''}
                 <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#1F2937;vertical-align:middle;">
-                  ${esc(it.control)}
+                  ${it.codigo ? `<span style="font-weight:bold;color:#2E6DA4;">${esc(it.codigo)}</span> &nbsp;` : ''}${esc(it.control)}
                 </td>
                 <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-weight:bold;color:${cumpleColor};font-size:9pt;vertical-align:middle;">
                   ${cumpleText}
@@ -1582,7 +2162,7 @@ function generarHtmlDocumentoWord(acta) {
           <tr>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#1F2937;">${esc(p.accion)}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-weight:bold;font-size:8.5pt;color:#1F3A5F;">${esc(p.ref || '—')}</td>
-            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-size:8.5pt;font-weight:bold;color:${p.prioridad === 'Crítico' ? '#C0392B' : p.prioridad === 'Alto' ? '#E67E22' : '#1F3A5F'};">${esc(p.prioridad || 'Medio')}</td>
+            <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-size:8.5pt;font-weight:bold;color:${p.prioridad === 'Crítico' ? '#C0392B' : p.prioridad === 'Alto' ? '#E67E22' : p.prioridad === 'Medio' ? '#B7950B' : p.prioridad === 'Bajo' ? '#27AE60' : '#1F3A5F'};">${esc(p.prioridad || 'Medio')}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;font-size:8.5pt;color:#1F2937;">${esc(p.responsable || '—')}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-size:8.5pt;color:#1F2937;">${esc(p.fecha || '—')}</td>
             <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5.5pt;text-align:center;font-size:11pt;color:${p.hecho ? '#27AE60' : '#9CA3AF'}; font-family:Arial;">
@@ -1608,7 +2188,7 @@ function generarHtmlDocumentoWord(acta) {
             <div style="border-top:1pt solid #1F3A5F;padding-top:6pt;">
               <p style="margin:0;font-weight:bold;font-size:9.5pt;color:#1F3A5F;">${esc(d.auditor || acta.auditor || 'Auditor Responsable')}</p>
               <p style="margin:2pt 0;font-size:8.5pt;color:#4B5563;">${esc(d.auditor_cargo || 'Auditor responsable')}</p>
-              <p style="margin:0;font-size:8pt;color:#6B7280;">DNI: ${esc(d.auditor_dni || '_______________')} &nbsp;&nbsp; Fecha: ${esc(acta.fecha_emision || hoyISO())}</p>
+              <p style="margin:0;font-size:8pt;color:#6B7280;">DNI: ${esc(d.auditor_dni || '_______________')} &nbsp;&nbsp; Fecha: ${esc(d.auditor_fecha || acta.fecha_emision || hoyISO())}</p>
             </div>
           </td>
           <td style="width:4%;"></td>
@@ -1616,12 +2196,69 @@ function generarHtmlDocumentoWord(acta) {
             <div style="border-top:1pt solid #1F3A5F;padding-top:6pt;">
               <p style="margin:0;font-weight:bold;font-size:9.5pt;color:#1F3A5F;">${esc(d.responsable_proyecto || 'Responsable del proyecto')}</p>
               <p style="margin:2pt 0;font-size:8.5pt;color:#4B5563;">${esc(d.responsable_cargo || 'Líder de Proyecto / Cliente')}</p>
-              <p style="margin:0;font-size:8pt;color:#6B7280;">DNI: ${esc(d.responsable_dni || '_______________')} &nbsp;&nbsp; Fecha: ${esc(acta.fecha_emision || hoyISO())}</p>
+              <p style="margin:0;font-size:8pt;color:#6B7280;">DNI: ${esc(d.responsable_dni || '_______________')} &nbsp;&nbsp; Fecha: ${esc(d.responsable_fecha || acta.fecha_emision || hoyISO())}</p>
             </div>
           </td>
         </tr>
       </tbody>
     </table>
+
+    <!-- ANEXO: RESUMEN DE LO CORREGIDO (SOLUCIONARIO) -->
+    ${d.solucionario?.contenido ? `
+      <div style="page-break-before:always;margin-top:24pt;border-top:1.5pt solid #1F3A5F;padding-top:12pt;">
+        <table style="border-collapse:collapse;width:100%;margin-bottom:8pt;">
+          <tr>
+            <td style="vertical-align:middle;">
+              <span style="font-weight:bold;color:#1F3A5F;font-size:13pt;font-family:'Calibri', Arial, sans-serif;">
+                ANEXO: RESUMEN DE LO CORREGIDO (SOLUCIONARIO)
+              </span>
+            </td>
+            <td style="text-align:right;vertical-align:middle;">
+              <span style="background:#EAF1F8;border:0.5pt solid #2E6DA4;color:#1F3A5F;padding:2.5pt 6pt;border-radius:3pt;font-size:8pt;font-weight:bold;">
+                Publicado: ${esc(d.solucionario.fecha_publicacion || fmtDate(acta.fecha_emision))}
+              </span>
+            </td>
+          </tr>
+        </table>
+        <p style="font-size:9pt;color:#4B5563;margin-top:0;margin-bottom:12pt;line-height:1.35;">
+          ${esc(d.solucionario.contenido.descripcionIntroductoria || '')}
+        </p>
+
+        ${(d.solucionario.contenido.secciones || []).map(sec => `
+          <div style="margin-bottom:12pt;">
+            <p style="margin:2pt 0 4pt 0;font-weight:bold;font-size:10pt;color:${sec.colorBadge || '#1F3A5F'};">
+              ${sec.label} (${sec.items?.length || 0} acciones)
+            </p>
+            <table style="border-collapse:collapse;width:100%;margin:0 0 6pt 0;">
+              <thead>
+                <tr>
+                  <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;color:#FFFFFF;padding:3pt 5pt;width:14%;font-size:8.5pt;text-align:left;">#</th>
+                  <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;color:#FFFFFF;padding:3pt 5pt;width:28%;font-size:8.5pt;text-align:left;">Hallazgo</th>
+                  <th style="border:0.5pt solid #C9D3DF;background:#1F3A5F;color:#FFFFFF;padding:3pt 5pt;width:58%;font-size:8.5pt;text-align:left;">Acción / Solución Aplicada</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(sec.items || []).map(it => `
+                  <tr>
+                    <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5pt;font-size:8.5pt;font-weight:bold;color:#1F3A5F;vertical-align:top;">${esc(it.ref)}</td>
+                    <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5pt;font-size:8.5pt;font-weight:bold;color:#1F2937;vertical-align:top;">${esc(it.hallazgo)}</td>
+                    <td style="border:0.5pt solid #C9D3DF;padding:3.5pt 5pt;font-size:8.5pt;color:#374151;line-height:1.3;vertical-align:top;">${esc(it.accion)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `).join('')}
+
+        ${d.solucionario.contenido.credenciales ? `
+          <div style="background:#F3F4F6;border:1pt solid #D1D5DB;border-radius:4pt;padding:8pt;margin-top:10pt;">
+            <p style="margin:0 0 4pt 0;font-weight:bold;font-size:9.5pt;color:#111827;">${esc(d.solucionario.contenido.credenciales.titulo)}</p>
+            <p style="margin:2pt 0;font-size:8.5pt;color:#374151;"><b>Usuario:</b> ${esc(d.solucionario.contenido.credenciales.usuario)} &nbsp;·&nbsp; <b>Contraseña:</b> <span style="font-family:monospace;background:#E5E7EB;padding:1pt 4pt;">${esc(d.solucionario.contenido.credenciales.password)}</span></p>
+            <p style="margin:2pt 0 0 0;font-size:8pt;color:#6B7280;font-style:italic;">${esc(d.solucionario.contenido.credenciales.nota)}</p>
+          </div>
+        ` : ''}
+      </div>
+    ` : ''}
 
     <!-- PIE DE PÁGINA DEL DOCUMENTO -->
     <div style="border-top:0.5pt solid #C9D3DF;padding-top:5pt;margin-top:25pt;display:flex;justify-content:space-between;align-items:center;">
@@ -1734,9 +2371,11 @@ async function editarActa(id) {
     if (!Array.isArray(d.herramientas)) d.herramientas = [];
     if (!Array.isArray(d.plan_remediacion)) d.plan_remediacion = [];
 
-    const projVinc = _projects.find(p => p.id === acta.project_id);
-    const projLabel = projVinc
-      ? `${projVinc.name} (${projVinc.code || 'S/C'})`
+    const projsVinc = Array.isArray(d.proyectos) && d.proyectos.length > 0
+      ? d.proyectos
+      : (_projects.filter(p => p.id === acta.project_id));
+    const projLabel = projsVinc.length > 0
+      ? projsVinc.map(p => `${p.name} (${p.code || 'S/C'})`).join(' · ')
       : (acta.project_name ? `${acta.project_name} (${acta.project_code || 'S/C'})` : 'Sin proyecto vinculado');
 
     c.innerHTML = `
@@ -1919,6 +2558,27 @@ async function editarActa(id) {
           </div>
         </div>
 
+        <!-- SECCIÓN: CONTROLES CONFORMES (5.4) -->
+        <div class="card p-5 bg-white border border-gray-200 shadow-sm rounded-xl">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-2 mb-4">
+            <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">${icon('verified', 20)} Controles conformes (sección 5.4)</h3>
+            <button type="button" id="btn-agregar-conforme" class="btn-secondary text-xs inline-flex items-center gap-1.5 py-1.5 px-3">${icon('add', 16)} Agregar</button>
+          </div>
+          <div id="lista-conformes-editor" class="space-y-2"></div>
+        </div>
+
+        <!-- SECCIÓN: PLAN DE REMEDIACIÓN (8) -->
+        <div class="card p-5 bg-white border border-gray-200 shadow-sm rounded-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-3">
+            <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">${icon('task_alt', 20)} Plan de remediación (sección 8)</h3>
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-gray-600 inline-flex items-center gap-1.5"><input type="checkbox" id="edit-plan-auto" ${d.plan_manual ? '' : 'checked'}> Generar desde los hallazgos al guardar</label>
+              <button type="button" id="btn-agregar-accion" class="btn-secondary text-xs inline-flex items-center gap-1.5 py-1.5 px-3">${icon('add', 16)} Agregar acción</button>
+            </div>
+          </div>
+          <div id="lista-plan-editor" class="space-y-2"></div>
+        </div>
+
         <!-- SECCIÓN 6: CONFORMIDAD Y FIRMAS -->
         <div class="card p-5 bg-white border border-gray-200 shadow-sm rounded-xl">
           <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
@@ -1985,6 +2645,56 @@ async function editarActa(id) {
     let hallazgosLocales = JSON.parse(JSON.stringify(d.hallazgos || []));
     let controlesLocales = JSON.parse(JSON.stringify(d.controles || []));
     let herramientasLocales = JSON.parse(JSON.stringify(d.herramientas || []));
+    let conformesLocales = JSON.parse(JSON.stringify(Array.isArray(d.conformes) ? d.conformes : []));
+    let planLocal = JSON.parse(JSON.stringify(Array.isArray(d.plan_remediacion) ? d.plan_remediacion : []));
+
+    function renderConformesInputs() {
+      const cont = document.getElementById('lista-conformes-editor');
+      if (!cont) return;
+      cont.innerHTML = conformesLocales.length ? conformesLocales.map((c, idx) => `
+        <div class="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 conf-row" data-idx="${idx}">
+          <input type="text" class="input text-xs font-semibold py-1" style="flex:1;min-width:140px" value="${esc(c.area || '')}" placeholder="Área / dominio" data-f="area">
+          <select class="input text-xs py-1 w-32" data-f="resultado">
+            ${['Conforme', 'Riesgo bajo', 'No conforme'].map(r => `<option ${(c.resultado || 'Conforme') === r ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+          <input type="text" class="input text-xs py-1" style="flex:3;min-width:200px" value="${esc(c.observacion || '')}" placeholder="Qué se verificó" data-f="observacion">
+          <button type="button" class="btn-eliminar-conf p-1 text-gray-400 hover:text-red-600" data-idx="${idx}">${icon('delete', 16)}</button>
+        </div>`).join('')
+        : '<p class="text-xs text-gray-400 p-3 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">Sin controles conformes registrados.</p>';
+      cont.querySelectorAll('.conf-row').forEach(row => {
+        const i = Number(row.dataset.idx);
+        row.querySelectorAll('input, select').forEach(inp => inp.addEventListener('input', () => { conformesLocales[i][inp.dataset.f] = inp.value; }));
+      });
+      cont.querySelectorAll('.btn-eliminar-conf').forEach(b => b.addEventListener('click', () => { conformesLocales.splice(Number(b.dataset.idx), 1); renderConformesInputs(); }));
+    }
+
+    function renderPlanInputs() {
+      const cont = document.getElementById('lista-plan-editor');
+      if (!cont) return;
+      const auto = document.getElementById('edit-plan-auto')?.checked;
+      if (auto) {
+        cont.innerHTML = '<p class="text-xs text-gray-500 p-3 bg-blue-50 border border-blue-100 rounded-lg">El plan se arma solo con una acción por hallazgo al guardar. Desmarca la casilla para escribir tus propias acciones (por ejemplo, agrupar varios hallazgos en una sola acción).</p>';
+        return;
+      }
+      cont.innerHTML = planLocal.length ? planLocal.map((a, idx) => `
+        <div class="grid grid-cols-12 gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 plan-row items-center" data-idx="${idx}">
+          <input type="text" class="input text-xs py-1 col-span-12 sm:col-span-4" value="${esc(a.accion || '')}" placeholder="Acción correctiva" data-f="accion">
+          <input type="text" class="input text-xs py-1 col-span-3 sm:col-span-1 font-mono" value="${esc(a.ref || '')}" placeholder="Ref." data-f="ref">
+          <select class="input text-xs py-1 col-span-3 sm:col-span-2" data-f="prioridad">${['Crítico', 'Alto', 'Medio', 'Bajo'].map(pr => `<option ${a.prioridad === pr ? 'selected' : ''}>${pr}</option>`).join('')}</select>
+          <input type="text" class="input text-xs py-1 col-span-6 sm:col-span-2" value="${esc(a.responsable || '')}" placeholder="Responsable" data-f="responsable">
+          <input type="text" class="input text-xs py-1 col-span-5 sm:col-span-2" value="${esc(a.fecha || '')}" placeholder="AAAA-MM-DD / Backlog" data-f="fecha" list="cal-plazos">
+          <label class="col-span-5 sm:col-span-1 text-xs inline-flex items-center gap-1"><input type="checkbox" data-f="hecho" ${a.hecho ? 'checked' : ''}> Hecho</label>
+          <button type="button" class="btn-eliminar-acc col-span-2 sm:col-span-12 sm:justify-self-end p-1 text-gray-400 hover:text-red-600" data-idx="${idx}">${icon('delete', 16)}</button>
+        </div>`).join('')
+        : '<p class="text-xs text-gray-400 p-3 text-center bg-gray-50 rounded-lg border border-dashed border-gray-200">Sin acciones. Usa «Agregar acción».</p>';
+      cont.querySelectorAll('.plan-row').forEach(row => {
+        const i = Number(row.dataset.idx);
+        row.querySelectorAll('input, select').forEach(inp => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
+          planLocal[i][inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value;
+        }));
+      });
+      cont.querySelectorAll('.btn-eliminar-acc').forEach(b => b.addEventListener('click', () => { planLocal.splice(Number(b.dataset.idx), 1); renderPlanInputs(); }));
+    }
 
     function renderHallazgosInputs() {
       const cont = document.getElementById('lista-hallazgos');
@@ -2046,13 +2756,18 @@ async function editarActa(id) {
               <label class="block font-semibold text-gray-600 mb-0.5">Acción Correctiva Recomendada</label>
               <input type="text" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.correccion || '')}" data-f="correccion">
             </div>
+            <div class="sm:col-span-2">
+              <label class="block font-semibold text-gray-600 mb-0.5">Descripción para la tabla de medios / bajos (opcional)</label>
+              <input type="text" class="input w-full text-xs" value="${esc(h.detalle || '')}" data-f="detalle" placeholder="Si se deja vacío se usa el título">
+            </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Responsable de Remediación</label>
               <input type="text" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.responsable || '')}" data-f="responsable">
             </div>
             <div>
               <label class="block font-semibold text-gray-600 mb-0.5">Fecha Límite</label>
-              <input type="date" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.fecha_limite || '')}" data-f="fecha_limite">
+              <input type="text" class="input w-full text-xs ${h._dePlantilla ? 'campo-plantilla-luz-amarilla' : ''}" value="${esc(h.fecha_limite || '')}" data-f="fecha_limite" placeholder="AAAA-MM-DD o Backlog" list="cal-plazos">
+              <datalist id="cal-plazos"><option value="Backlog"><option value="Próximo sprint"></datalist>
             </div>
           </div>
         </div>
@@ -2103,7 +2818,7 @@ async function editarActa(id) {
             ${dom.items.map((it, iIdx) => `
               <div class="py-2.5 px-3 flex flex-wrap items-center justify-between gap-3 text-xs hover:bg-gray-50/60">
                 <div class="flex-1 min-w-[280px]">
-                  <span class="font-medium text-gray-800">${esc(it.control)}</span>
+                  ${it.codigo ? `<span class="font-mono font-bold text-primary-700 mr-1">${esc(it.codigo)}</span>` : ''}<span class="font-medium text-gray-800">${esc(it.control)}</span>
                   ${it.ref ? `<span class="ml-2 text-gray-400 font-mono text-[11px]">[${esc(it.ref)}]</span>` : ''}
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
@@ -2187,6 +2902,22 @@ async function editarActa(id) {
     renderHallazgosInputs();
     renderControlesInputs();
     renderHerramientasInputs();
+    renderConformesInputs();
+    renderPlanInputs();
+    document.getElementById('btn-agregar-conforme')?.addEventListener('click', () => { conformesLocales.push({ area: '', resultado: 'Conforme', observacion: '' }); renderConformesInputs(); });
+    document.getElementById('btn-agregar-accion')?.addEventListener('click', () => {
+      planLocal.push({ accion: '', ref: '', prioridad: 'Medio', responsable: d.responsable_proyecto || '', fecha: '', hecho: false });
+      renderPlanInputs();
+    });
+    document.getElementById('edit-plan-auto')?.addEventListener('change', e => {
+      // Al pasar a manual se parte del plan actual (o del generado por los hallazgos)
+      if (!e.target.checked && !planLocal.length) {
+        planLocal = hallazgosLocales.map(h => ({ accion: h.correccion || `Corregir ${h.id}: ${h.titulo}`, ref: h.id,
+          prioridad: { critico: 'Crítico', alto: 'Alto', medio: 'Medio', bajo: 'Bajo' }[h.severidad] || 'Medio',
+          responsable: h.responsable || '', fecha: h.fecha_limite || '', hecho: ['corregido', 'verificado'].includes(h.estado) }));
+      }
+      renderPlanInputs();
+    });
 
     // ─── LÓGICA DE BOTÓN «LLENAR DATOS DE PLANTILLA» (Solo campos vacíos con luz amarilla) ───
     document.getElementById('btn-rellenar-plantilla')?.addEventListener('click', () => {
@@ -2360,8 +3091,13 @@ async function editarActa(id) {
       }));
       d.herramientas = herramientasLocales.map(({ _dePlantilla, ...resto }) => resto);
 
-      // Sincronizar automáticamente el Plan de Remediación con los hallazgos (si existen)
-      if (d.hallazgos.length > 0) {
+      d.conformes = conformesLocales.filter(c => (c.area || '').trim() || (c.observacion || '').trim());
+      d.plan_manual = !document.getElementById('edit-plan-auto')?.checked;
+
+      // Plan propio: se guarda tal cual. Si no, se arma desde los hallazgos.
+      if (d.plan_manual) {
+        d.plan_remediacion = planLocal.filter(a => (a.accion || '').trim());
+      } else if (d.hallazgos.length > 0) {
         d.plan_remediacion = d.hallazgos.map(h => ({
           accion: `Corregir ${h.id}: ${h.titulo}`,
           ref: h.id,
@@ -2471,6 +3207,153 @@ function descargarWord(acta) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`Documento Word descargado: ${acta.codigo}.doc`);
+}
+
+// ─── DESCARGAR BLOC DE NOTAS (.txt) ───────────────────────────────────────────
+// Mismo contenido del acta en texto plano: secciones numeradas y tablas
+// dibujadas con caracteres (se ven alineadas con fuente de ancho fijo).
+const TXT_ANCHO = 100;
+function txtPartir(texto, ancho) {
+  const lineas = [];
+  String(texto ?? '').split(/\r?\n/).forEach(parrafo => {
+    let linea = '';
+    parrafo.split(/\s+/).filter(Boolean).forEach(palabra => {
+      while (palabra.length > ancho) { if (linea) { lineas.push(linea); linea = ''; } lineas.push(palabra.slice(0, ancho)); palabra = palabra.slice(ancho); }
+      if (!linea) linea = palabra;
+      else if ((linea + ' ' + palabra).length <= ancho) linea += ' ' + palabra;
+      else { lineas.push(linea); linea = palabra; }
+    });
+    lineas.push(linea);
+  });
+  return lineas.length ? lineas : [''];
+}
+// Tabla: columnas [{titulo, ancho}] y filas [[...]]
+function txtTabla(columnas, filas) {
+  const sep = (izq, medio, der) => izq + columnas.map(c => '─'.repeat(c.ancho + 2)).join(medio) + der;
+  const fila = celdas => {
+    const partes = celdas.map((v, i) => txtPartir(v, columnas[i].ancho));
+    const alto = Math.max(...partes.map(x => x.length));
+    const out = [];
+    for (let k = 0; k < alto; k++) out.push('│' + partes.map((x, i) => ' ' + (x[k] || '').padEnd(columnas[i].ancho) + ' ').join('│') + '│');
+    return out.join('\n');
+  };
+  const cuerpo = filas.length ? filas.map(fila).join('\n' + sep('├', '┼', '┤') + '\n') : fila(columnas.map((c, i) => i === 0 ? '(sin registros)' : ''));
+  return [sep('┌', '┬', '┐'), fila(columnas.map(c => c.titulo)), sep('╞', '╪', '╡').replace(/─/g, '═'), cuerpo, sep('└', '┴', '┘')].join('\n');
+}
+function txtTitulo(texto) { return '\n' + texto + '\n' + '─'.repeat(Math.min(TXT_ANCHO, texto.length)); }
+
+function generarTextoActa(acta) {
+  const cfg = TIPOS_CONFIG[acta.tipo] || TIPOS_CONFIG.seguridad;
+  const d = acta.datos || {};
+  const hs = Array.isArray(d.hallazgos) ? d.hallazgos : [];
+  const SEV = { critico: 'Crítico', alto: 'Alto', medio: 'Medio', bajo: 'Bajo' };
+  const EST = { pendiente: 'Pendiente', en_progreso: 'En progreso', corregido: 'Corregido', verificado: 'Verificado' };
+  const por = sev => hs.filter(h => h.severidad === sev);
+  const cnt = { critico: por('critico').length, alto: por('alto').length, medio: por('medio').length, bajo: por('bajo').length };
+  const L = [];
+  const linea = '═'.repeat(TXT_ANCHO);
+
+  L.push(linea);
+  L.push('QUBIRA S.A.C.');
+  L.push(cfg.titulo);
+  L.push(cfg.subtitulo);
+  L.push(linea);
+  L.push(txtTabla([{ titulo: 'Campo', ancho: 20 }, { titulo: 'Valor', ancho: 73 }], [
+    ['N.º de acta', acta.codigo], ['Fecha de emisión', acta.fecha_emision || d.fecha_emision || ''], ['Versión', acta.version || '1.0'],
+    ['Clasificación', d.clasificacion || 'Confidencial'], ['Proyecto', d.proyecto_nombre || acta.project_name || ''], ['Cliente', d.cliente || acta.project_client || ''],
+  ]));
+
+  L.push(txtTitulo('1. DATOS GENERALES DE LA AUDITORÍA'));
+  L.push(txtTabla([{ titulo: 'Campo', ancho: 22 }, { titulo: 'Detalle', ancho: 71 }], [
+    ['Entorno auditado', d.entorno || ''], ['Repositorios', d.repositorios || ''], ['Alcance', d.alcance || ''], ['Metodología', d.metodologia || ''],
+    ['Periodo de ejecución', `${d.periodo_desde || '—'} al ${d.periodo_hasta || '—'}`], ['Auditor responsable', d.auditor || acta.auditor || ''], ['Próxima revisión', d.proxima_revision || '—'],
+  ]));
+
+  L.push(txtTitulo('2. RESUMEN EJECUTIVO'));
+  L.push('Conclusión:');
+  txtPartir(d.conclusion || '—', TXT_ANCHO - 2).forEach(x => L.push('  ' + x));
+  L.push('');
+  L.push(txtTabla([{ titulo: 'CRÍTICO', ancho: 20 }, { titulo: 'ALTO', ancho: 20 }, { titulo: 'MEDIO', ancho: 20 }, { titulo: 'BAJO', ancho: 20 }],
+    [[`${cnt.critico} hallazgos`, `${cnt.alto} hallazgos`, `${cnt.medio} hallazgos`, `${cnt.bajo} hallazgos`]]));
+
+  L.push(txtTitulo('3. CRITERIOS DE SEVERIDAD'));
+  L.push(txtTabla([{ titulo: 'Severidad', ancho: 10 }, { titulo: 'Criterio', ancho: 62 }, { titulo: 'Plazo', ancho: 17 }],
+    ['critico', 'alto', 'medio', 'bajo'].map(k => [SEV[k], SEVERIDAD_CONFIG[k].criterio, SEVERIDAD_CONFIG[k].plazo])));
+
+  L.push(txtTitulo('4. RESUMEN DE HALLAZGOS'));
+  L.push(txtTabla([{ titulo: 'N.º', ancho: 5 }, { titulo: 'Hallazgo', ancho: 38 }, { titulo: 'Severidad', ancho: 9 }, { titulo: 'Estado', ancho: 11 }, { titulo: 'Responsable', ancho: 11 }, { titulo: 'Fecha límite', ancho: 12 }],
+    hs.map(h => [h.id, h.titulo, SEV[h.severidad] || h.severidad, EST[h.estado] || h.estado, h.responsable || '', h.fecha_limite || ''])));
+  L.push('Estados válidos: Pendiente · En progreso · Corregido · Verificado.');
+
+  L.push(txtTitulo('5. DETALLE DE HALLAZGOS'));
+  const ficha = h => txtTabla([{ titulo: `Hallazgo ${h.id}`, ancho: 20 }, { titulo: `${h.titulo}  [${(SEV[h.severidad] || '').toUpperCase()}]`, ancho: 73 }], [
+    ['Severidad', SEV[h.severidad] || ''], ['Evidencia', h.evidencia || '—'], ['Impacto', h.impacto || '—'], ['Ubicación', h.ubicacion || '—'],
+    ['Corrección', h.correccion || '—'], ['Responsable / Plazo', `${h.responsable || '—'} · ${h.fecha_limite || '—'}`], ['Estado', EST[h.estado] || h.estado || ''],
+  ]);
+  L.push('\n5.1  Críticos — acción inmediata');
+  L.push(por('critico').length ? por('critico').map(ficha).join('\n\n') : '  No se identificaron hallazgos de severidad crítica.');
+  L.push('\n5.2  Altos');
+  L.push(por('alto').length ? por('alto').map(ficha).join('\n\n') : '  No se identificaron hallazgos de severidad alta.');
+  const tablaCorta = lista => txtTabla([{ titulo: 'N.º', ancho: 5 }, { titulo: 'Hallazgo', ancho: 38 }, { titulo: 'Ubicación', ancho: 22 }, { titulo: 'Corrección', ancho: 22 }],
+    lista.map(h => [h.id, h.detalle || h.titulo, h.ubicacion || '—', h.correccion || '—']));
+  L.push('\n5.3  Medios');
+  L.push(tablaCorta(por('medio')));
+  L.push('\n5.4  Bajos y controles conformes');
+  if (por('bajo').length) { L.push('Bajos:'); L.push(tablaCorta(por('bajo'))); }
+  const conformes = Array.isArray(d.conformes) ? d.conformes : [];
+  if (conformes.length) {
+    L.push('Controles conformes:');
+    L.push(txtTabla([{ titulo: 'Área / Dominio', ancho: 22 }, { titulo: 'Resultado', ancho: 12 }, { titulo: 'Observación', ancho: 56 }], conformes.map(c => [c.area, c.resultado || 'Conforme', c.observacion || ''])));
+  }
+
+  L.push(txtTitulo('6. CONTROLES REVISADOS'));
+  const filasCtr = [];
+  (Array.isArray(d.controles) ? d.controles : []).forEach(dom => (dom.items || []).forEach((it, i) => filasCtr.push([
+    i === 0 ? dom.dominio : '', `${it.codigo ? it.codigo + '  ' : ''}${it.control}`, it.cumple === 'si' ? 'Sí' : it.cumple === 'no' ? 'No' : 'N.A.', it.ref || '—'])));
+  L.push(txtTabla([{ titulo: 'Dominio', ancho: 20 }, { titulo: 'Control', ancho: 50 }, { titulo: 'Cumple', ancho: 6 }, { titulo: 'Ref.', ancho: 12 }], filasCtr));
+
+  L.push(txtTitulo('7. HERRAMIENTAS RECOMENDADAS'));
+  L.push(txtTabla([{ titulo: 'Herramienta', ancho: 28 }, { titulo: 'Prioridad', ancho: 9 }, { titulo: 'Justificación', ancho: 53 }],
+    (Array.isArray(d.herramientas) ? d.herramientas : []).map(t => [t.herramienta, t.prioridad || '', t.justificacion || ''])));
+
+  L.push(txtTitulo('8. PLAN DE REMEDIACIÓN'));
+  L.push(txtTabla([{ titulo: 'Acción correctiva', ancho: 34 }, { titulo: 'Ref.', ancho: 11 }, { titulo: 'Prioridad', ancho: 9 }, { titulo: 'Responsable', ancho: 13 }, { titulo: 'Fecha', ancho: 10 }, { titulo: 'Hecho', ancho: 5 }],
+    (Array.isArray(d.plan_remediacion) ? d.plan_remediacion : []).map(a => [a.accion, a.ref || '', a.prioridad || '', a.responsable || '', a.fecha || '', a.hecho ? '[X]' : '[ ]'])));
+
+  L.push(txtTitulo('9. CONFORMIDAD'));
+  txtPartir('Las partes firmantes declaran conocer los hallazgos descritos en la presente acta y se comprometen a ejecutar el plan de remediación en los plazos establecidos.', TXT_ANCHO).forEach(x => L.push(x));
+  L.push('');
+  L.push('');
+  const firma = (nombre, cargo, dni, fecha) => [`______________________________________`, nombre, cargo, `DNI: ${dni || '__________'}   Fecha: ${fecha}`];
+  const f1 = firma(d.auditor || acta.auditor || 'Auditor responsable', d.auditor_cargo || 'Auditor responsable', d.auditor_dni, d.auditor_fecha || acta.fecha_emision || '');
+  const f2 = firma(d.responsable_proyecto || 'Responsable del proyecto', d.responsable_cargo || 'Responsable del proyecto', d.responsable_dni, d.responsable_fecha || acta.fecha_emision || '');
+  f1.forEach((x, i) => L.push(x.padEnd(50) + f2[i]));
+  L.push('');
+  L.push(linea);
+  L.push(`Documento confidencial — uso interno · QUBIRA S.A.C. · ${acta.codigo}`);
+  return L.join('\r\n').replace(/(?<!\r)\n/g, '\r\n');
+}
+
+function descargarTxt(acta) {
+  const cfg = TIPOS_CONFIG[acta.tipo] || TIPOS_CONFIG.seguridad;
+  const blob = new Blob(['\ufeff', generarTextoActa(acta)], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${acta.codigo} - ${cfg.titulo} - QUBIRA.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Bloc de notas descargado: ${acta.codigo}.txt`);
+}
+
+async function descargarTxtPorId(id) {
+  try {
+    descargarTxt(await api.get(`/calidad/actas/${id}`));
+  } catch (e) {
+    toast('Error al descargar el Bloc de notas', 'error');
+  }
 }
 
 async function descargarWordPorId(id) {
