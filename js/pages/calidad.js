@@ -1734,11 +1734,10 @@ async function editarActa(id) {
     if (!Array.isArray(d.herramientas)) d.herramientas = [];
     if (!Array.isArray(d.plan_remediacion)) d.plan_remediacion = [];
 
-    const projOpts = _projects.map(p => `
-      <option value="${p.id}" ${acta.project_id === p.id ? 'selected' : ''}>
-        ${esc(p.name)} (${esc(p.code || 'S/C')})
-      </option>
-    `).join('');
+    const projVinc = _projects.find(p => p.id === acta.project_id);
+    const projLabel = projVinc
+      ? `${projVinc.name} (${projVinc.code || 'S/C'})`
+      : (acta.project_name ? `${acta.project_name} (${acta.project_code || 'S/C'})` : 'Sin proyecto vinculado');
 
     c.innerHTML = `
       <!-- Toolbar superior de edición (Fijo / Sticky al hacer scroll) -->
@@ -1781,23 +1780,64 @@ async function editarActa(id) {
           </h3>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Proyecto</label>
-              <select id="edit-project_id" class="input w-full text-sm">
-                <option value="">-- Sin proyecto vinculado --</option>
-                ${projOpts}
-              </select>
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Proyecto</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+              </label>
+              <input type="hidden" id="edit-project_id" value="${esc(acta.project_id || '')}">
+              <input
+                type="text"
+                class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+                value="${esc(projLabel)}"
+                readonly
+                tabindex="-1"
+                title="El proyecto asignado al acta no se puede modificar"
+              >
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Versión del Acta</label>
-              <input type="text" id="edit-version" class="input w-full text-sm" value="${esc(acta.version || '1.0')}">
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Versión del Acta</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+              </label>
+              <input
+                type="text"
+                id="edit-version"
+                class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+                value="${esc(acta.version || '1.0')}"
+                readonly
+                tabindex="-1"
+                title="La versión no se puede modificar"
+              >
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Fecha de Emisión</label>
-              <input type="date" id="edit-fecha_emision" class="input w-full text-sm" value="${esc(acta.fecha_emision || hoyISO())}">
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Fecha de Emisión</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+              </label>
+              <input
+                type="date"
+                id="edit-fecha_emision"
+                class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium pointer-events-none"
+                value="${esc(acta.fecha_emision || hoyISO())}"
+                readonly
+                tabindex="-1"
+                title="La fecha de emisión no se puede modificar"
+              >
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Auditor Responsable</label>
-              <input type="text" id="edit-auditor" class="input w-full text-sm" value="${esc(d.auditor || acta.auditor || '')}" placeholder="Nombre del auditor">
+              <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>Auditor Responsable</span>
+                <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">${icon('lock', 12)} Bloqueado</span>
+              </label>
+              <input
+                type="text"
+                id="edit-auditor"
+                class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+                value="${esc(d.auditor || acta.auditor || 'Abraham Aranda Cerna')}"
+                readonly
+                tabindex="-1"
+                title="El auditor responsable no se puede modificar"
+              >
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Periodo Desde</label>
@@ -1892,8 +1932,18 @@ async function editarActa(id) {
               </p>
               <div class="space-y-3">
                 <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1">Nombre Completo</label>
-                  <input type="text" id="edit-firmante-aud-nombre" class="input w-full text-sm bg-white" value="${esc(d.auditor || acta.auditor || '')}" placeholder="Nombre del auditor">
+                  <label class="block text-xs font-semibold text-gray-600 mb-1 flex items-center justify-between">
+                    <span>Nombre Completo</span>
+                    <span class="text-[10px] text-gray-400 flex items-center gap-0.5">${icon('lock', 10)} Bloqueado</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-firmante-aud-nombre"
+                    class="input w-full text-sm bg-gray-100/90 text-gray-700 border-gray-200 cursor-not-allowed select-none font-medium"
+                    value="${esc(d.auditor || acta.auditor || 'Abraham Aranda Cerna')}"
+                    readonly
+                    tabindex="-1"
+                  >
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1">Cargo / Especialidad</label>
