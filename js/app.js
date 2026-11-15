@@ -147,6 +147,7 @@ function renderSidebar(currentHash) {
 // ─── Route handling ───────────────────────────────────────────────────────────
 function handleRoute() {
   const hash = location.hash.slice(1) || '/';
+  if (window.__seccionPrevia !== hash) { window.__seccionPrevia = hash; window.scrollTo(0, 0); document.querySelectorAll('main, .main, .content, .main-content').forEach(e => { if (e.scrollTop) e.scrollTop = 0; }); } // nueva sección → arriba
   const user = getUser();
 
   if (!user && hash !== '/login') { navigate('/login'); return; }
