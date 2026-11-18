@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { getUser, navigate } from '../state.js';
 import {
-  toast, showModal, closeModal, confirmModal, pageHeader,
+  toast, showModal, closeModal, confirmModal, pedirMotivo, pageHeader,
   spinner, icon, fmtDate
 } from '../utils.js';
 
@@ -48,6 +48,7 @@ export const TIPOS_CONFIG = {
 const ESTADOS_CONFIG = {
   borrador:    { label: 'Borrador',    cls: 'bg-gray-100 text-gray-700 border-gray-200' },
   en_revision: { label: 'En revisión', cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  anulada: { label: 'Anulada', cls: 'bg-red-100 text-red-800 border-red-200' },
   emitida:     { label: 'Emitida',     cls: 'bg-blue-100 text-blue-800 border-blue-200' },
   cerrada:     { label: 'Cerrada',     cls: 'bg-green-100 text-green-800 border-green-200' },
 };
@@ -4298,15 +4299,21 @@ async function verSubActa(id) {
 
 // ─── ELIMINAR ACTA DE AUDITORÍA ORIGINAL ─────────────────────────────────────
 async function eliminarActa(id, codigo) {
-  if (!(await confirmModal(`¿Estás seguro de eliminar el acta ${codigo}? Esta acción no se puede deshacer.`, {
-    title: 'Eliminar Acta de Auditoría',
-    confirmLabel: 'Eliminar definitivamente',
-    danger: true,
-  }))) return;
+  // Un borrador (sin código) se elimina; un acta con código se anula con motivo (su número no se reutiliza)
+  const borrador = /^BORRADOR-/.test(codigo || '');
+  let motivo = '';
+  if (borrador) {
+    if (!(await confirmModal('¿Eliminar este borrador de acta? Aún no tiene código, así que se puede borrar.', {
+      title: 'Eliminar borrador', confirmLabel: 'Eliminar borrador', danger: true,
+    }))) return;
+  } else {
+    motivo = await pedirMotivo(`El acta ${codigo} quedará ANULADA: no se borra y su número no se reutiliza.`, { title: 'Anular acta de auditoría' });
+    if (!motivo) return;
+  }
 
   try {
-    await api.delete(`/calidad/actas/${id}`);
-    toast(`Acta ${codigo} eliminada`);
+    await api.delete(`/calidad/actas/${id}${motivo ? '?motivo=' + encodeURIComponent(motivo) : ''}`);
+    toast(borrador ? 'Borrador eliminado' : `Acta ${codigo} anulada`);
     await recargarActas();
     renderBandeja();
   } catch (err) {

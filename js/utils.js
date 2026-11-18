@@ -240,6 +240,27 @@ export function confirmModal(message, { title = 'Confirmar acción', confirmLabe
   });
 }
 
+
+// ─── Pedir motivo (anular): lo emitido no se elimina, se anula con motivo ───────
+export function pedirMotivo(message, { title = 'Anular', confirmLabel = 'Anular' } = {}) {
+  return new Promise(resolve => {
+    showModal(title, `<p class="text-sm text-gray-600 mb-3">${message}</p>
+      <textarea id="motivo-modal-txt" class="input w-full" rows="3" placeholder="Motivo (obligatorio)"></textarea>`, 'sm', `
+      <div class="flex justify-end gap-3">
+        <button id="motivo-modal-cancel" class="btn-secondary">Cancelar</button>
+        <button id="motivo-modal-ok" class="btn-primary bg-red-600 hover:bg-red-700">${confirmLabel}</button>
+      </div>`);
+    const txt = document.getElementById('motivo-modal-txt'); setTimeout(() => txt.focus(), 50);
+    const fin = v => { closeModal(); resolve(v); };
+    document.getElementById('motivo-modal-cancel').addEventListener('click', () => fin(null));
+    document.getElementById('modal-close-btn').addEventListener('click', () => resolve(null));
+    document.getElementById('motivo-modal-ok').addEventListener('click', () => {
+      if (!txt.value.trim()) { txt.focus(); txt.classList.add('border-red-500'); return; }
+      fin(txt.value.trim());
+    });
+  });
+}
+
 // ─── Vista previa de archivos (sin descargar) ──────────────────────────────────
 export function previewFile(url, filename) {
   const safeName = (filename || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
