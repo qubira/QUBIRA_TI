@@ -36,6 +36,8 @@ function canViewAudit() {
   const u = getUser();
   if (!u) return false;
   if ((u.nivel_acceso || 0) >= 100) return true;
+  // Por nivel jerárquico: N1 a N5 (Supervisor o superior)
+  if (u.nivel_cargo) return u.nivel_cargo <= 5;
   return QUALIFYING_CARGOS.includes(String(u.cargo || '').toUpperCase());
 }
 

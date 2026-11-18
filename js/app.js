@@ -48,6 +48,8 @@ const QUALIFYING_AUDIT_CARGOS = ['SUPERVISOR', 'COORDINADOR', 'GERENTE'];
 function canViewAudit(user) {
   if (!user) return false;
   if ((user.nivel_acceso || 0) >= 100) return true;
+  // Por nivel jerárquico: N1 a N5 (Supervisor o superior)
+  if (user.nivel_cargo) return user.nivel_cargo <= 5;
   return QUALIFYING_AUDIT_CARGOS.includes(String(user.cargo || '').toUpperCase());
 }
 
