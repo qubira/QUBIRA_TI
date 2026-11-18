@@ -251,7 +251,7 @@ function pintar() {
     const verMes = vista.startsWith(`${st.anio}-${pad2(st.mes + 1)}`);
     if (!st.datos) filas = `<div class="agr-vacio">Consultando la agenda de ${esc(st.areaLabel)}…</div>`;
     else if (!verMes) filas = `<div class="agr-vacio">El día ${fmtCorta(vista)} está en otro mes. <button type="button" class="agr-link" data-ver="${vista}">Ir a ese mes</button></div>`;
-    else if (!miembros.length) filas = `<div class="agr-vacio">No hay integrantes activos del área ${esc(st.areaLabel)} registrados en RR. HH.; elige la hora igualmente.</div>`;
+    else if (!miembros.length) filas = `<div class="agr-vacio">No hay integrantes activos del área ${esc(st.areaLabel)} registrados en ORH; elige la hora igualmente.</div>`;
     for (let hr = hi; st.datos && verMes && miembros.length && hr < hf; hr++) {
       const ocu = ocupadosEn(vista, `${pad2(hr)}:00`, `${pad2(hr + 1)}:00`);
       const libres = miembros.length - ocu.size;

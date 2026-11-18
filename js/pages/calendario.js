@@ -4,7 +4,7 @@ import { toast, showModal, closeModal, confirmModal, pageHeader, spinner, icon }
 import { iniciarAgenda, montarAgenda, repintarAgenda, obtenerOcurrencias, formaActual, conflictosDeSerie } from '../components/agenda-reunion.js';
 
 const OWN_AREA = 'TI';
-const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','RR. HH.'],['SOPORTE','Soporte']];
+const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','ORH'],['SOPORTE','Soporte']];
 const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Auditoría','Seguimiento','Otro'];
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };
