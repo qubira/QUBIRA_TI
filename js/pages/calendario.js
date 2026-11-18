@@ -5,6 +5,8 @@ import { iniciarAgenda, montarAgenda, repintarAgenda, obtenerOcurrencias, formaA
 
 const OWN_AREA = 'TI';
 const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','ORH'],['SOPORTE','Soporte']];
+// Áreas desde el catálogo de ORH (fuente única); esta lista queda solo como respaldo
+(window.__qbListasAreas ||= []).push([AREAS, 'TI']);
 const MEETING_TYPES = ['Reunión técnica','Planificación','Revisión','Incidencia','Coordinación','Auditoría','Seguimiento','Otro'];
 const EXTERNAL_KINDS = [['cliente','Cliente'],['postulante','Postulante'],['proveedor','Proveedor'],['consultor','Consultor'],['otro','Otro']];
 const STATUS_LABEL = { scheduled:'Programada', confirmed:'Confirmada', in_progress:'En curso', completed:'Finalizada', cancelled:'Cancelada' };

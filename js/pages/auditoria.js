@@ -3,6 +3,8 @@ import { getUser }    from '../state.js';
 import { pageHeader, spinner } from '../utils.js';
 
 const AREAS = [['TI','OTI'],['ADG','ADG'],['RRHH','ORH'],['SOPORTE','Soporte']];
+// Áreas desde el catálogo de ORH (fuente única); esta lista queda solo como respaldo
+(window.__qbListasAreas ||= []).push([AREAS, 'TI']);
 const QUALIFYING_CARGOS = ['SUPERVISOR', 'COORDINADOR', 'GERENTE'];
 const ACTION_LABEL = { view: 'Consultó', create: 'Creó', update: 'Actualizó', delete: 'Eliminó', login: 'Inició sesión', logout: 'Cerró sesión' };
 const ACTION_COLOR = {
