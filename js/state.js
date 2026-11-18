@@ -14,6 +14,8 @@ export function normalizeUser(central) {
     rol: central.rol,
     nivel_acceso: central.nivel_acceso,
     cargo: central.cargo || null,
+    nivel_cargo: central.nivel_cargo || null,   // nivel jerárquico (N1–N9): permisos de auditoría
+    subcargo: central.subcargo || null,
   };
 }
 
