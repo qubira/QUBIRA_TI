@@ -587,7 +587,7 @@ function calcularProgresoSubsanacion(acta) {
 function obtenerSubActa(acta) {
   if (!acta) return null;
   const tipo = acta.tipo || 'seguridad';
-  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoBase = acta.codigo || 'BORRADOR';
   const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
 
   if (acta.datos?.sub_acta && acta.datos.sub_acta.codigo) {
@@ -622,7 +622,7 @@ function obtenerSolucionarioActa(acta) {
   if (sub) return sub;
 
   const tipo = acta.tipo || 'seguridad';
-  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoBase = acta.codigo || 'BORRADOR';
   const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
   const baseSub = {
     id: `cor-${acta.id}`,
@@ -4334,7 +4334,7 @@ async function abrirModalNuevaSubActa(actaId) {
   }
 
   const user = getUser();
-  const codigoBase = acta.codigo || 'AUD-SEC-2026-001';
+  const codigoBase = acta.codigo || 'BORRADOR';
   const codigoCor = codigoBase.startsWith('COR-') ? codigoBase : `COR-${codigoBase}`;
   const tipoDef = acta.tipo || 'seguridad';
   const projsNombres = nombreProyectosActa(acta) || acta.project_name || 'Proyecto principal';
