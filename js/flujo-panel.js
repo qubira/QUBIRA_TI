@@ -7,3 +7,10 @@ function cuandoListo(el, fn) {
 }
 export function montarLista(el) { cuandoListo(el, () => window.qbFlujo.lista(el, { token })); }
 export function montarDetalle(el, id) { cuandoListo(el, () => window.qbFlujo.detalle(el, { token, id })); }
+/* Tablero Scrum del proyecto */
+export function montarScrum(el, id) {
+  const dibujar = () => window.qbScrum.render(el, { token, id });
+  if (window.qbScrum) return dibujar();
+  el.textContent = 'Cargando el tablero Scrum…';
+  document.addEventListener('qb-scrum-listo', dibujar, { once: true });
+}

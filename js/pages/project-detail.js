@@ -1,5 +1,5 @@
 import { api }                                        from '../api.js';
-import { montarDetalle } from '../flujo-panel.js';
+import { montarDetalle, montarScrum } from '../flujo-panel.js';
 import { navigate, getUser }                          from '../state.js';
 import { toast, showModal, closeModal,
          projectStatusBadge, priorityBadge,
@@ -88,6 +88,14 @@ function montarFlujoProyecto() {
     if (cont.firstElementChild) cont.firstElementChild.after(el); else cont.prepend(el);
   }
   montarDetalle(el, _id);
+  let sc = document.getElementById('qb-scrum-pd');
+  if (!sc) {
+    sc = document.createElement('section');
+    sc.id = 'qb-scrum-pd';
+    sc.className = 'mb-6 rounded-xl border border-gray-200 p-5';
+    el.after(sc);
+  }
+  montarScrum(sc, _id);
 }
 
 function renderPage() {
