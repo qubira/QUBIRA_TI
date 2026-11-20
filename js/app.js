@@ -56,19 +56,30 @@ function canViewAudit(user) {
 }
 
 const NAV = [
-  { path: '/',           iconName: 'dashboard',     label: 'Dashboard',            exact: true },
-  { path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
-  { path: '/flujo',      iconName: 'alt_route',     label: 'Flujo de proyectos' },
-  { path: '/casos',      iconName: 'support_agent', label: 'Casos de soporte' },
-  { path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
-  { path: '/documents',  iconName: 'article',       label: 'Documentos' },
-  { path: '/calidad',    iconName: 'verified',      label: 'Calidad' },
-  { path: '/herramientas', iconName: 'build',       label: 'Herramientas' },
-  { path: '/info-tecnico', iconName: 'memory',      label: 'Info Técnico' },
-  { path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
-  { path: '/emails',     iconName: 'email',         label: 'Correos' },
-  { path: '/auditoria',  iconName: 'fact_check',    label: 'Auditoría',  visible: canViewAudit },
+  { grupo: 'General', path: '/',           iconName: 'dashboard',     label: 'Dashboard',            exact: true },
+  { grupo: 'General', path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
+  { grupo: 'Proyectos', path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
+  { grupo: 'Proyectos', path: '/flujo',      iconName: 'alt_route',     label: 'Flujo de proyectos' },
+  { grupo: 'Proyectos', path: '/calidad',    iconName: 'verified',      label: 'Calidad' },
+  { grupo: 'Proyectos', path: '/herramientas', iconName: 'build',       label: 'Herramientas' },
+  { grupo: 'Proyectos', path: '/info-tecnico', iconName: 'memory',      label: 'Info Técnico' },
+  { grupo: 'Soporte', path: '/casos',      iconName: 'support_agent', label: 'Casos de soporte' },
+  { grupo: 'Comunicación', path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
+  { grupo: 'Comunicación', path: '/emails',     iconName: 'email',         label: 'Correos' },
+  { grupo: 'Gestión', path: '/documents',  iconName: 'article',       label: 'Documentos' },
+  { grupo: 'Gestión', path: '/auditoria',  iconName: 'fact_check',    label: 'Auditoría',  visible: canViewAudit },
 ];
+
+/* Menú por secciones: un título por grupo (solo los grupos con opciones visibles) */
+function navAgrupado(user, currentHash, collapsed) {
+  const visibles = NAV.filter(n => !n.visible || n.visible(user));
+  return [...new Set(visibles.map(n => n.grupo))].map((g, i) => {
+    const cab = collapsed
+      ? (i ? '<div class="border-t border-gray-800 mx-2 my-2"></div>' : '')
+      : `<p class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-3 ${i ? 'pt-4' : ''} pb-1">${g}</p>`;
+    return cab + visibles.filter(n => n.grupo === g).map(n => navLink(n, currentHash)).join('');
+  }).join('');
+}
 
 function isActive(path, currentHash, exact) {
   if (exact) return currentHash === path;
@@ -108,8 +119,7 @@ function renderSidebar(currentHash) {
 
     <!-- Nav -->
     <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-      ${!collapsed ? '<p class="text-xs font-semibold text-gray-600 uppercase tracking-wider px-3 mb-2">Principal</p>' : ''}
-      ${NAV.filter(n => !n.visible || n.visible(user)).map(n => navLink(n, currentHash)).join('')}
+      ${navAgrupado(user, currentHash, collapsed)}
     </nav>
 
     <!-- User -->
