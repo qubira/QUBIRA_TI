@@ -1,4 +1,5 @@
 import { api }                                        from '../api.js';
+import { montarDetalle } from '../flujo-panel.js';
 import { navigate, getUser }                          from '../state.js';
 import { toast, showModal, closeModal,
          projectStatusBadge, priorityBadge,
@@ -75,7 +76,26 @@ function loadAll() {
   });
 }
 
+/* Panel del flujo (etapas y puertas) debajo del encabezado del proyecto */
+function montarFlujoProyecto() {
+  const cont = document.getElementById('pd-page');
+  if (!cont || !_id) return;
+  let el = document.getElementById('qb-flujo-pd');
+  if (!el) {
+    el = document.createElement('section');
+    el.id = 'qb-flujo-pd';
+    el.className = 'mb-6 rounded-xl border border-gray-200 p-5';
+    if (cont.firstElementChild) cont.firstElementChild.after(el); else cont.prepend(el);
+  }
+  montarDetalle(el, _id);
+}
+
 function renderPage() {
+  renderPageBase();
+  montarFlujoProyecto();
+}
+
+function renderPageBase() {
   const container = document.getElementById('pd-page');
   if (!container) return;
   const p = _project;
