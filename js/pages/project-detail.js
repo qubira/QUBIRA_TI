@@ -76,31 +76,8 @@ function loadAll() {
   });
 }
 
-/* Panel del flujo (etapas y puertas) debajo del encabezado del proyecto */
-function montarFlujoProyecto() {
-  const cont = document.getElementById('pd-page');
-  if (!cont || !_id) return;
-  let el = document.getElementById('qb-flujo-pd');
-  if (!el) {
-    el = document.createElement('section');
-    el.id = 'qb-flujo-pd';
-    el.className = 'mb-6 rounded-xl border border-gray-200 p-5';
-    if (cont.firstElementChild) cont.firstElementChild.after(el); else cont.prepend(el);
-  }
-  montarDetalle(el, _id);
-  let sc = document.getElementById('qb-scrum-pd');
-  if (!sc) {
-    sc = document.createElement('section');
-    sc.id = 'qb-scrum-pd';
-    sc.className = 'mb-6 rounded-xl border border-gray-200 p-5';
-    el.after(sc);
-  }
-  montarScrum(sc, _id);
-}
-
 function renderPage() {
   renderPageBase();
-  montarFlujoProyecto();
 }
 
 function renderPageBase() {
@@ -154,8 +131,8 @@ function renderPageBase() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','github','scrum','schedule','technologies','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
-        const labels = ['Resumen','GitHub','Scrum','Cronograma','Tecnologías',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
+      ${['overview','flujo','github','scrum','schedule','technologies','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+        const labels = ['Resumen','Flujo y puertas','GitHub','Scrum','Cronograma','Tecnologías',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -302,8 +279,14 @@ function renderTabContent() {
     }
   }
 
+  if (_tab === 'flujo') {
+    c.innerHTML = '<div id="qb-flujo-pd" class="card p-5"></div>';
+    montarDetalle(document.getElementById('qb-flujo-pd'), _id);
+  }
+
   if (_tab === 'scrum') {
-    c.innerHTML = `<div id="scrum-container">${spinner()}</div>`;
+    c.innerHTML = `<section id="qb-scrum-pd" class="card p-5 mb-6"></section><h3 class="text-sm font-semibold text-gray-700 mb-3">Roles Scrum del proyecto</h3><div id="scrum-container">${spinner()}</div>`;
+    montarScrum(document.getElementById('qb-scrum-pd'), _id);
     loadScrum();
   }
 
