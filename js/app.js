@@ -6,6 +6,7 @@ import { render as renderDashboard }   from './pages/dashboard.js';
 import { render as renderProjects }    from './pages/projects.js';
 import { render as renderProjectDetail } from './pages/project-detail.js';
 import { render as renderFlujo } from './pages/flujo.js';
+import { render as renderCasos } from './pages/casos.js';
 import { render as renderDocuments }   from './pages/documents.js';
 import { render as renderWhatsApp }    from './pages/whatsapp.js';
 import { render as renderEmails }      from './pages/emails.js';
@@ -58,6 +59,7 @@ const NAV = [
   { path: '/',           iconName: 'dashboard',     label: 'Dashboard',            exact: true },
   { path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
   { path: '/flujo',      iconName: 'alt_route',     label: 'Flujo de proyectos' },
+  { path: '/casos',      iconName: 'support_agent', label: 'Casos de soporte' },
   { path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
   { path: '/documents',  iconName: 'article',       label: 'Documentos' },
   { path: '/calidad',    iconName: 'verified',      label: 'Calidad' },
@@ -183,6 +185,7 @@ addRoute('/login',           () => renderLogin());
 addRoute('/projects',        () => renderProjects());
 addRoute('/projects/:id',    p  => renderProjectDetail(p));
 addRoute('/flujo',           () => renderFlujo());
+addRoute('/casos',           () => renderCasos());
 addRoute('/calendario',      () => renderCalendario());
 addRoute('/auditoria',       () => renderAuditoria());
 addRoute('/documents',       () => renderDocuments());
