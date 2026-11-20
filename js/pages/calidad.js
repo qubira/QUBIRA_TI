@@ -10,6 +10,7 @@ export const TIPOS_CONFIG = {
   seguridad: {
     tipo: 'seguridad',
     sigla: 'SEC',
+    area: 'DST', codigo: 'DST-ACT-[AAAA]-[NNN]', aprueba: 'aprueba el Jefe de DST (CISO)',
     titulo: 'ACTA DE AUDITORÍA DE SEGURIDAD',
     subtitulo: 'Seguridad de aplicaciones · Revisión de código y pruebas sobre entorno',
     badgeCls: 'bg-indigo-100 text-indigo-800 border border-indigo-200',
@@ -22,6 +23,7 @@ export const TIPOS_CONFIG = {
   calidad: {
     tipo: 'calidad',
     sigla: 'CAL',
+    area: 'GG', codigo: 'GG-ACT-[AAAA]-[NNN]', aprueba: 'aprueba el Gerente General (o el CTO si el proyecto lo pidió el Gerente General)',
     titulo: 'ACTA DE AUDITORÍA DE CALIDAD DE SOFTWARE',
     subtitulo: 'Calidad de software · Arquitectura, código limpio, rendimiento y pruebas',
     badgeCls: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
@@ -34,6 +36,7 @@ export const TIPOS_CONFIG = {
   reglas: {
     tipo: 'reglas',
     sigla: 'RN',
+    area: 'ODACL', codigo: 'ODACL-ACT-[AAAA]-[NNN]', aprueba: 'aprueba el Jefe Legal',
     titulo: 'ACTA DE AUDITORÍA DE REGLAS DE NEGOCIO',
     subtitulo: 'Lógica de negocio · Flujos transaccionales, coherencia de datos y políticas operativas',
     badgeCls: 'bg-purple-100 text-purple-800 border border-purple-200',
@@ -42,6 +45,19 @@ export const TIPOS_CONFIG = {
     descripcion: 'Lógica transaccional, cálculos de precios/impuestos, stock y segregación de funciones SoD',
     metodologiaDef: 'Verificación de flujos transaccionales · Pruebas de casos borde y concurrencia · Validación de políticas comerciales · Inspección de trazabilidad contable',
     alcanceDef: 'Cálculo de tarifas e impuestos, políticas de cupones, reserva y control de stock, matriz de aprobación y no borrado físico de transacciones',
+  },
+  comision: {
+    tipo: 'comision',
+    sigla: 'COM',
+    area: 'OTI', codigo: 'OTI-INF-[AAAA]-[NNN]', aprueba: 'revisa el Líder de QA y aprueba el Jefe de OTI',
+    titulo: 'INFORME DE LA COMISIÓN DE PRUEBA',
+    subtitulo: 'Prueba de aceptación de la versión completa con representantes de las áreas',
+    badgeCls: 'bg-amber-100 text-amber-800 border border-amber-200',
+    iconName: 'groups',
+    label: 'Comisión de Prueba',
+    descripcion: 'Representantes de OCOS, ODN, OPP, ODACL y DST prueban la versión completa con datos anonimizados',
+    metodologiaDef: 'Pruebas de aceptación guiadas por el guion del Redactor Técnico · Un representante por área · Datos de prueba anonimizados (ISO/IEC 27002, 8.33)',
+    alcanceDef: 'Flujos principales del producto, pantallas, mensajes, permisos por rol y casos de uso de cada área representada',
   },
 };
 
@@ -218,6 +234,33 @@ const DEFAULT_TOOLS = {
     { herramienta: 'Workflow Engine / Temporal / Camunda', prioridad: 'Baja', justificacion: 'Orquestación de procesos de negocio de larga duración y compensación ante errores.' },
   ],
 };
+
+// Informe de la comisión de prueba (OTI-INF): lista de verificación y herramientas
+DEFAULT_CONTROLES.comision = [
+  {
+    dominio: 'Preparación de la prueba',
+    items: [
+      { control: 'Guion de prueba entregado por el Redactor Técnico a cada representante', cumple: 'si', ref: 'COM-01' },
+      { control: 'Ambiente de pruebas separado de producción (ISO/IEC 27002, 8.31)', cumple: 'si', ref: 'COM-02' },
+      { control: 'Datos de prueba anonimizados: ningún dato real de clientes (ISO/IEC 27002, 8.33)', cumple: 'si', ref: 'COM-03' },
+      { control: 'Representantes presentes de OCOS, ODN, OPP, ODACL y DST (y el área usuaria si es de uso interno)', cumple: 'si', ref: 'COM-04' },
+    ],
+  },
+  {
+    dominio: 'Resultado de la prueba',
+    items: [
+      { control: 'Los flujos principales se completan de punta a punta sin errores', cumple: 'si', ref: 'COM-05' },
+      { control: 'Los permisos por rol muestran a cada área solo lo que le corresponde', cumple: 'si', ref: 'COM-06' },
+      { control: 'Mensajes y pantallas comprensibles para el usuario final', cumple: 'si', ref: 'COM-07' },
+      { control: 'Sin fallas graves abiertas; las demás quedaron registradas en el backlog', cumple: 'si', ref: 'COM-08' },
+    ],
+  },
+];
+DEFAULT_TOOLS.comision = [
+  { herramienta: 'Guion de pruebas de aceptación (UAT)', prioridad: 'Alta', justificacion: 'Que cada representante pruebe los mismos casos y los resultados sean comparables.' },
+  { herramienta: 'Generador de datos de prueba anonimizados', prioridad: 'Alta', justificacion: 'Probar con datos realistas sin exponer datos personales de clientes (Ley 29733).' },
+  { herramienta: 'Tablero del backlog (historias de usuario)', prioridad: 'Media', justificacion: 'Registrar cada falla encontrada como historia para el siguiente sprint.' },
+];
 
 // ─── Estilos dinámicos para resaltado de plantilla en modo edición ───────────
 const ESTILOS_LUZ_AMARILLA = `
@@ -1099,6 +1142,7 @@ function renderBandeja() {
         <option value="seguridad" ${_filters.tipo === 'seguridad' ? 'selected' : ''}>🛡️ Seguridad (SEC)</option>
         <option value="calidad" ${_filters.tipo === 'calidad' ? 'selected' : ''}>✅ Calidad de Software (CAL)</option>
         <option value="reglas" ${_filters.tipo === 'reglas' ? 'selected' : ''}>⚖️ Reglas de Negocio (RN)</option>
+        <option value="comision" ${_filters.tipo === 'comision' ? 'selected' : ''}>👥 Comisión de Prueba (COM)</option>
       </select>
 
       <select id="f-project" class="input w-auto text-sm max-w-[240px]">
@@ -1528,7 +1572,7 @@ function abrirModalNuevaActa() {
     <form id="form-nueva-acta" class="space-y-4">
       <div>
         <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Tipo de Auditoría</label>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           ${Object.values(TIPOS_CONFIG).map((tc, idx) => `
             <label class="relative flex flex-col p-3 border-2 rounded-xl cursor-pointer hover:border-primary-500 transition-all ${idx === 0 ? 'border-primary-600 bg-primary-50/30' : 'border-gray-200'} tipo-radio-card">
               <input type="radio" name="tipo" value="${tc.tipo}" class="sr-only" ${idx === 0 ? 'checked' : ''}>
@@ -1539,7 +1583,8 @@ function abrirModalNuevaActa() {
                 <span class="font-bold text-sm text-gray-900">${tc.label}</span>
               </div>
               <p class="text-xs text-gray-500 leading-relaxed">${tc.descripcion}</p>
-              <span class="mt-2 text-[11px] font-mono font-semibold text-primary-700">AUD-${tc.sigla}-[AAAA]-[NNN]</span>
+              <span class="mt-2 text-[11px] font-mono font-semibold text-primary-700">${tc.codigo}</span>
+              <span class="text-[11px] text-gray-500 leading-snug">Emite ${tc.area} · ${tc.aprueba}</span>
             </label>
           `).join('')}
         </div>
@@ -3444,7 +3489,7 @@ async function editarActa(id) {
       if (hallazgosLocales.length === 0) {
         hallazgosLocales.push({
           id: 'H-01',
-          titulo: acta.tipo === 'seguridad' ? 'Autenticación en endpoints administrativos' : acta.tipo === 'calidad' ? 'Optimización de consultas en base de datos' : 'Validación de idempotencia en pasarela',
+          titulo: acta.tipo === 'seguridad' ? 'Autenticación en endpoints administrativos' : acta.tipo === 'calidad' ? 'Optimización de consultas en base de datos' : acta.tipo === 'comision' ? 'Falla encontrada en la prueba de aceptación' : 'Validación de idempotencia en pasarela',
           severidad: 'medio',
           estado: 'pendiente',
           evidencia: 'Se ejecutaron pruebas controladas y se verificó la respuesta del sistema.',
@@ -4359,7 +4404,7 @@ async function abrirModalNuevaSubActa(actaId) {
       <div>
         <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Plantilla de Solucionario Técnico</label>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          ${Object.values(TIPOS_CONFIG).map(tc => `
+          ${Object.values(TIPOS_CONFIG).filter(tc => PLANTILLAS_SOLUCIONARIO[tc.tipo]).map(tc => `
             <label class="relative flex flex-col p-3 border-2 rounded-xl cursor-pointer hover:border-emerald-500 transition-all ${tc.tipo === tipoDef ? 'border-emerald-600 bg-emerald-50/30' : 'border-gray-200'} tipo-radio-card-sub">
               <input type="radio" name="sub_tipo" value="${tc.tipo}" class="sr-only" ${tc.tipo === tipoDef ? 'checked' : ''}>
               <div class="flex items-center gap-2 mb-1">
