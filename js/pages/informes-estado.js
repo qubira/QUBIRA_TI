@@ -388,35 +388,35 @@ function mountDetalle(inf, dat) {
   const app = document.querySelector('#main > .informes-page');
 
   app.innerHTML = `
-    <!-- Header -->
-    <div class="card p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
-      <div class="flex items-start gap-3">
-        <button id="btn-back" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 mt-0.5" title="Volver">
+    <div class="sticky top-0 z-20 -mt-2 space-y-2 bg-gray-50 pt-2 pb-3">
+    <header class="card flex flex-col justify-between gap-3 border-l-4 border-l-primary-500 px-3 py-3 sm:px-4 lg:flex-row lg:items-center">
+      <div class="flex min-w-0 items-start gap-3">
+        <button id="btn-back" class="shrink-0 rounded-lg bg-gray-100 p-2 text-gray-600 hover:bg-gray-200" aria-label="Volver a informes" title="Volver a informes">
           ${icon('arrow_back', 20)}
         </button>
-        <div>
+        <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="font-mono text-sm font-bold text-gray-700 bg-gray-100 px-2.5 py-0.5 rounded">${esc(inf.codigo)}</span>
             ${stateBadge(inf.estado)}
             <span class="text-xs text-gray-400">${fmtDate(inf.created_at)}</span>
           </div>
-          <h1 id="informe-title" class="text-2xl font-bold text-gray-900 mt-1 break-words">${esc(inf.titulo)}</h1>
+          <h1 id="informe-title" class="mt-1 line-clamp-2 break-words text-base font-bold leading-snug text-gray-900 sm:text-xl" title="${esc(inf.titulo)}">${esc(inf.titulo)}</h1>
           ${inf.project_name ? `<p class="text-sm text-gray-500">${icon('folder_open',14)} ${esc(inf.project_name)}</p>` : ''}
         </div>
       </div>
-      <div class="flex flex-wrap gap-2 items-center">
-        <span id="save-status" role="status" class="text-xs text-gray-400 italic hidden">Guardando\u2026</span>
-        <button id="btn-estado" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('swap_horiz',16)} Cambiar estado</button>
-        <button id="btn-preview" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('print',16)} Vista previa</button>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <button id="btn-estado" class="btn-secondary whitespace-nowrap">${icon('swap_horiz',16)} Cambiar estado</button>
+        <button id="btn-preview" class="btn-primary whitespace-nowrap">${icon('print',16)} Vista previa</button>
+        <span id="save-status" role="status" class="min-h-4 basis-full text-xs text-gray-500 lg:text-right"></span>
       </div>
-    </div>
+    </header>
 
-    <!-- Tabs -->
-    <div class="card flex gap-1 overflow-x-auto p-2 mb-4" aria-label="Secciones del informe">
+    <nav class="card flex gap-1 overflow-x-auto p-1.5" aria-label="Secciones del informe">
       ${TABS.map(t => `
-        <button data-tab="${t.id}" aria-pressed="${_tab === t.id}" class="tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${_tab === t.id ? 'bg-primary-50 text-primary-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}">
+        <button data-tab="${t.id}" aria-pressed="${_tab === t.id}" class="tab-btn shrink-0 rounded-md px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 aria-pressed:bg-primary-50 aria-pressed:text-primary-700">
           ${t.label}
         </button>`).join('')}
+    </nav>
     </div>
 
     <!-- Panel de tab -->
@@ -438,10 +438,10 @@ function mountDetalle(inf, dat) {
       document.querySelectorAll('.tab-btn').forEach(b => {
         const active = b.dataset.tab === _tab;
         b.setAttribute('aria-pressed', String(active));
-        b.className = `tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${active ? 'bg-primary-50 text-primary-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`;
       });
       document.getElementById('tab-panel').innerHTML = renderTab(_tab, _currentInforme, _currentInforme.datos || {});
       wireTab(_tab);
+      document.getElementById('main').scrollTop = 0;
     });
   });
 
@@ -548,12 +548,13 @@ function renderTabPortada(inf, dat) {
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">2. Resumen Ejecutivo</h3>
     <textarea id="f-resumen" class="input w-full" rows="5" data-field="resumen_ejecutivo">${esc(dat.resumen_ejecutivo || '')}</textarea>
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">3. Antecedentes y Alcance</h3>
-    <textarea id="f-antecedentes" class="input w-full" rows="5" aria-label="Antecedentes y alcance" aria-describedby="antecedentes-tablas-ayuda" data-field="antecedentes">${esc(dat.antecedentes || '')}</textarea>
-    <div class="mt-2 flex flex-wrap items-center gap-3">
-      <button type="button" id="antecedentes-insertar-tabla" class="btn-secondary">${icon('table_chart', 18)} Insertar tabla</button>
-      <p id="antecedentes-tablas-ayuda" class="text-sm text-gray-500">Tambi\u00e9n puedes pegar una tabla copiada de Excel, Sheets o Word en el campo de texto.</p>
+    <div class="overflow-hidden rounded-xl border border-gray-300 bg-white focus-within:border-primary-500">
+      <div class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2">
+        <button type="button" id="antecedentes-insertar-tabla" class="btn-secondary">${icon('table_chart', 18)} Insertar tabla</button>
+        <p id="antecedentes-tablas-ayuda" class="text-sm text-gray-500">Pega o inserta una tabla donde est\u00e9 el cursor.</p>
+      </div>
+      <div id="antecedentes-editor" class="space-y-2 p-3">${renderContenidoAntecedentes(dat, true)}</div>
     </div>
-    <div id="antecedentes-tablas" class="mt-3 space-y-3">${renderTablasAntecedentes(dat.antecedentes_tablas || [], true)}</div>
 
     <section class="mt-8 space-y-4" aria-labelledby="firmas-titulo">
       <h3 id="firmas-titulo" class="font-semibold text-gray-900">Firmas del documento</h3>
@@ -596,8 +597,22 @@ function renderFirmasAreas(inf, dat) {
   </div>`;
 }
 
-function renderTablasAntecedentes(tablas, editar = false) {
-  return tablas.map((filas, indice) => `
+function segmentosAntecedentes(dat) {
+  return dat.antecedentes_segmentos || [dat.antecedentes || '', ...(dat.antecedentes_tablas || []).map(() => '')];
+}
+
+function renderContenidoAntecedentes(dat, editar = false) {
+  const tablas = dat.antecedentes_tablas || [];
+  return segmentosAntecedentes(dat).map((texto, indice) => {
+    const bloque = editar
+      ? `<textarea data-segmento="${indice}" rows="${tablas.length ? 2 : 5}" class="block w-full resize-y rounded-md border-0 px-2 py-1 text-sm text-gray-900 [field-sizing:content] min-h-10 focus:ring-2 focus:ring-primary-200" aria-label="Texto de antecedentes ${indice + 1}" aria-describedby="antecedentes-tablas-ayuda" placeholder="Escribe o pega contenido\u2026">${esc(texto)}</textarea>`
+      : texto ? `<p class="text-sm leading-relaxed whitespace-pre-wrap">${esc(texto)}</p>` : '';
+    return bloque + (tablas[indice] ? renderTablaAntecedentes(tablas[indice], indice, editar) : '');
+  }).join('');
+}
+
+function renderTablaAntecedentes(filas, indice, editar) {
+  return `
     <div class="rounded-lg border border-gray-200">
       ${editar ? `<div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
         <span class="text-sm font-medium text-gray-700">Tabla ${indice + 1}</span>
@@ -617,7 +632,7 @@ function renderTablasAntecedentes(tablas, editar = false) {
           </tbody>
         </table>
       </div>
-    </div>`).join('');
+    </div>`;
 }
 
 // -- Tab: Componentes --------------------------------------------------------
@@ -966,7 +981,7 @@ function wireTab(tab) {
 function wirePortada() {
   const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion',
                   'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
-                  'f-resumen', 'f-antecedentes', 'f-envio-firma'];
+                  'f-resumen', 'f-envio-firma'];
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1010,36 +1025,51 @@ function leerTablaPortapapeles(portapapeles) {
 }
 
 function wireTablasAntecedentes() {
-  const contenedor = document.getElementById('antecedentes-tablas');
-  const texto = document.getElementById('f-antecedentes');
+  const contenedor = document.getElementById('antecedentes-editor');
   const datos = _currentInforme.datos;
   const tablas = datos.antecedentes_tablas || [];
+  const segmentos = segmentosAntecedentes(datos);
+  let ultimoTexto = null;
 
-  const actualizar = () => {
+  const guardar = () => {
     datos.antecedentes_tablas = tablas;
-    contenedor.innerHTML = renderTablasAntecedentes(tablas, true);
+    datos.antecedentes_segmentos = segmentos;
+    datos.antecedentes = segmentos.join('');
     scheduleAutosave();
   };
-  const agregar = filas => {
+  const actualizar = indice => {
+    guardar();
+    contenedor.innerHTML = renderContenidoAntecedentes(datos, true);
+    ultimoTexto = contenedor.querySelector(`[data-segmento="${indice}"]`);
+  };
+  const agregar = (filas, texto) => {
+    const indice = Number(texto.dataset.segmento);
     const ancho = filas.reduce((max, fila) => Math.max(max, fila.length), 0);
-    tablas.push(filas.map(fila => Array.from({ length: ancho }, (_, c) => fila[c] ?? '')));
-    actualizar();
-    contenedor.querySelector(`[data-celda="${tablas.length - 1}:0:0"]`)?.focus();
+    segmentos.splice(indice, 1, texto.value.slice(0, texto.selectionStart), texto.value.slice(texto.selectionEnd));
+    tablas.splice(indice, 0, filas.map(fila => Array.from({ length: ancho }, (_, c) => fila[c] ?? '')));
+    actualizar(indice + 1);
+    contenedor.querySelector(`[data-celda="${indice}:0:0"]`)?.focus();
   };
 
-  texto.addEventListener('paste', event => {
-    if (!event.clipboardData) return;
+  contenedor.addEventListener('focusin', event => {
+    if (event.target.dataset.segmento !== undefined) ultimoTexto = event.target;
+  });
+  contenedor.addEventListener('paste', event => {
+    if (event.target.dataset.segmento === undefined || !event.clipboardData) return;
     const filas = leerTablaPortapapeles(event.clipboardData);
     if (!filas) return;
     event.preventDefault();
-    agregar(filas);
+    agregar(filas, event.target);
   });
   contenedor.addEventListener('input', event => {
-    const celda = event.target.dataset.celda;
-    if (!celda) return;
-    const [t, f, c] = celda.split(':').map(Number);
-    tablas[t][f][c] = event.target.value;
-    scheduleAutosave();
+    const { segmento, celda } = event.target.dataset;
+    if (segmento !== undefined) {
+      segmentos[Number(segmento)] = event.target.value;
+    } else if (celda) {
+      const [t, f, c] = celda.split(':').map(Number);
+      tablas[t][f][c] = event.target.value;
+    } else return;
+    guardar();
   });
   contenedor.addEventListener('click', async event => {
     const boton = event.target.closest('[data-quitar-tabla]');
@@ -1048,8 +1078,11 @@ function wireTablasAntecedentes() {
       title: 'Quitar tabla', confirmLabel: 'Quitar tabla', danger: true,
     });
     if (!ok || !boton.isConnected) return;
-    tablas.splice(Number(boton.dataset.quitarTabla), 1);
-    actualizar();
+    const indice = Number(boton.dataset.quitarTabla);
+    tablas.splice(indice, 1);
+    segmentos.splice(indice, 2, segmentos[indice] + segmentos[indice + 1]);
+    actualizar(indice);
+    ultimoTexto?.focus();
   });
   document.getElementById('antecedentes-insertar-tabla').addEventListener('click', () => {
     showModal('Insertar tabla', `
@@ -1068,7 +1101,9 @@ function wireTablasAntecedentes() {
       const filas = formulario.elements.namedItem('filas').valueAsNumber;
       const columnas = formulario.elements.namedItem('columnas').valueAsNumber;
       closeModal();
-      agregar(Array.from({ length: filas }, () => Array(columnas).fill('')));
+      const texto = ultimoTexto || contenedor.querySelector('[data-segmento]:last-child');
+      if (!ultimoTexto) texto.setSelectionRange(texto.value.length, texto.value.length);
+      agregar(Array.from({ length: filas }, () => Array(columnas).fill('')), texto);
     });
   });
 }
@@ -1581,7 +1616,6 @@ function collectPortadaFields() {
   const lineas = document.getElementById('f-lineas');
   if (lineas) dat.lineas_codigo = lineas.value && lineas.validity.valid ? lineas.valueAsNumber : null;
   if (get('f-resumen') !== null) dat.resumen_ejecutivo = get('f-resumen');
-  if (get('f-antecedentes') !== null) dat.antecedentes = get('f-antecedentes');
 
   _currentInforme.datos = dat;
 }
@@ -1712,8 +1746,7 @@ function buildPreviewHTML(inf, dat) {
       ${dat.antecedentes || dat.antecedentes_tablas?.length ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">2. Antecedentes y Alcance</h2>
-          ${dat.antecedentes ? `<p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.antecedentes)}</p>` : ''}
-          <div class="mt-3 space-y-3">${renderTablasAntecedentes(dat.antecedentes_tablas || [])}</div>
+          <div class="space-y-3">${renderContenidoAntecedentes(dat)}</div>
         </div>` : ''}
 
       <!-- Componentes -->
