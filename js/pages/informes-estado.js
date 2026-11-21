@@ -2340,6 +2340,17 @@ function renderTablaPortada(inf, dat) {
   </table>`;
 }
 
+function renderLineaFirma(inf, dat, area) {
+  const rol = area === 'OTI' ? 'Elaborado por' : area === 'ADG' ? 'Aprobado por' : 'Revisado por';
+  const nombre = responsableFirma(inf, dat, area) || (area === 'OTI' ? inf.elaborado_nombre : '');
+  return `<div class="informe-portada-firma">
+    <p class="informe-portada-rol">${rol}</p>
+    <div class="informe-portada-linea"></div>
+    <p class="informe-portada-area">${esc(area)}</p>
+    ${nombre ? `<p class="informe-portada-nombre">${esc(nombre)}</p>` : ''}
+  </div>`;
+}
+
 function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
   const numeros = new Set(figuras.map(figura => Number(figura.numero)));
   const citar = texto => esc(texto).replace(/\[\[figura:(\d+)\]\]/gi, (_, n) => numeros.has(Number(n))
@@ -2360,6 +2371,7 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
   const rfSimulado  = reqs.filter(r => r.estado_rf === 'simulado').length;
   const rfPendiente = reqs.filter(r => r.estado_rf === 'pendiente').length;
   const { titulo, areas, version, fecha } = datosMembrete(inf, dat);
+  const firmantes = areasParticipantes(dat);
 
   return `
     <div class="max-w-3xl mx-auto font-sans text-sm text-gray-800 space-y-6" id="preview-content">
@@ -2403,14 +2415,10 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
           <p><strong>Elaborado por</strong><br>${esc(inf.elaborado_nombre || '\u2014')}</p>
           <p><strong>Responsable de enviar el informe final a firma</strong><br>${esc(dat.responsable_envio_firma || '\u2014')}</p>
         </div>
-        <div class="informe-portada-firmantes grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          ${areasParticipantes(dat).map(area => `
-            <div class="text-center border border-gray-300 rounded p-3 break-inside-avoid">
-              <div class="informe-portada-linea h-10 border-b border-gray-400 mb-2"></div>
-              <p class="text-xs font-semibold">Revisa y firma \u00b7 ${esc(area)}</p>
-              <p class="text-xs mt-1">${esc(responsableFirma(inf, dat, area) || '\u2014')}</p>
-            </div>`).join('')}
+        <div class="informe-portada-firmantes">
+          ${firmantes.filter(area => area !== 'ADG').map(area => renderLineaFirma(inf, dat, area)).join('')}
         </div>
+        ${firmantes.includes('ADG') ? `<div class="informe-portada-aprobacion">${renderLineaFirma(inf, dat, 'ADG')}</div>` : ''}
       </div>
       <div class="informe-portada-lugar text-center text-xs font-semibold">
         <div>${esc(dat.ubicacion || 'Lima, Per\u00fa')}</div>

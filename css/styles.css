@@ -246,6 +246,33 @@
   flex-direction: column;
   gap: 16px;
 }
+.informe-portada-firmantes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.informe-portada-firma {
+  text-align: center;
+  break-inside: avoid;
+}
+.informe-portada-rol {
+  color: #008696;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.informe-portada-linea {
+  height: 42px;
+  border-bottom: 1px solid #172334;
+  margin-bottom: 4px;
+}
+.informe-portada-area,
+.informe-portada-nombre { font-size: 11px; }
+.informe-portada-area { font-weight: 700; }
+.informe-portada-aprobacion {
+  width: calc((100% - 24px) / 3);
+  margin: 18px auto 0;
+}
 .informe-pie-vista {
   display: flex;
   flex-wrap: wrap;
@@ -370,9 +397,11 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 2mm;
   }
-  body.imprimir-informe .informe-portada-firmantes > div { padding: 2mm; }
-  body.imprimir-informe .informe-portada-firmantes > :nth-child(4):last-child { grid-column: 2; }
   body.imprimir-informe .informe-portada-linea { height: 7mm; }
+  body.imprimir-informe .informe-portada-aprobacion {
+    width: calc((100% - 4mm) / 3);
+    margin-top: 3mm;
+  }
   body.imprimir-informe .informe-portada-lugar { margin-top: auto; }
   body.imprimir-informe #preview-content table { break-inside: auto; overflow: visible; }
   body.imprimir-informe #preview-content h1,
