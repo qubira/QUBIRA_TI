@@ -2386,31 +2386,37 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
         </div>
       </header>
 
+      <section class="informe-portada" aria-label="Portada del informe">
       <div class="informe-aviso-uso">
         <strong>Documento de uso restringido</strong>
         <p>Informe para las \u00e1reas participantes y los destinatarios autorizados.</p>
       </div>
-      <h1 class="text-center text-xl font-bold uppercase text-slate-800">${esc(inf.titulo || 'Informe de estado del proyecto')}</h1>
+      <h1 class="informe-portada-titulo text-center text-xl font-bold uppercase text-slate-800">${esc(inf.titulo || 'Informe de estado del proyecto')}</h1>
 
       ${dat.proyecto_origen ? `<div class="print:hidden">${renderProyectoOrigen(dat.proyecto_origen)}</div>` : ''}
 
       ${renderTablaPortada(inf, dat)}
 
-      <div class="border-t-2 border-gray-800 pt-4">
+      <div class="informe-portada-firmas border-t-2 border-gray-800 pt-4">
         <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
+        <div class="informe-portada-responsables grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
           <p><strong>Elaborado por</strong><br>${esc(inf.elaborado_nombre || '\u2014')}</p>
           <p><strong>Responsable de enviar el informe final a firma</strong><br>${esc(dat.responsable_envio_firma || '\u2014')}</p>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <div class="informe-portada-firmantes grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           ${areasParticipantes(dat).map(area => `
             <div class="text-center border border-gray-300 rounded p-3 break-inside-avoid">
-              <div class="h-10 border-b border-gray-400 mb-2"></div>
+              <div class="informe-portada-linea h-10 border-b border-gray-400 mb-2"></div>
               <p class="text-xs font-semibold">Revisa y firma \u00b7 ${esc(area)}</p>
               <p class="text-xs mt-1">${esc(responsableFirma(inf, dat, area) || '\u2014')}</p>
             </div>`).join('')}
         </div>
       </div>
+      <div class="informe-portada-lugar text-center text-xs font-semibold">
+        <div>${esc(dat.ubicacion || 'Lima, Per\u00fa')}</div>
+        <div>${esc(/\d{4}$/.exec(fecha)?.[0] || '')}</div>
+      </div>
+      </section>
 
       <!-- Resumen Ejecutivo -->
       ${dat.resumen_ejecutivo ? `
