@@ -1,4 +1,5 @@
-﻿import { api } from '../api.js';
+import { api } from '../api.js';
+import { navigate } from '../state.js';
 import { toast, showModal, closeModal, confirmModal, spinner, icon, pageHeader, fmtDate } from '../utils.js';
 
 // --- Constantes -----------------------------------------------------------
@@ -87,11 +88,14 @@ let _informes  = [];
 let _projects  = [];
 let _currentInforme = null;
 let _tab       = 'portada';
-let _saving    = false;
+let _saveQueue = Promise.resolve();
 let _saveTimer = null;
 
 // --- Punto de entrada p\u00fablico -----------------------------------------------
 export function render(params = {}) {
+  flushAutosave();
+  _currentInforme = null;
+  _tab = 'portada';
   if (params.id) {
     renderDetalle(params.id);
   } else {
@@ -102,17 +106,31 @@ export function render(params = {}) {
 // ==========================================================================
 // LISTA
 // ==========================================================================
+function mountPage() {
+  const main = document.getElementById('main');
+  main.innerHTML = '<div class="informes-page p-4 sm:p-6 max-w-7xl mx-auto"></div>';
+  const page = main.firstElementChild;
+  page.innerHTML = spinner();
+  return page;
+}
+
 async function renderLista() {
-  const app = document.getElementById('main');
-  app.innerHTML = spinner();
+  const app = mountPage();
 
   try {
-    [_informes, _projects] = await Promise.all([
+    const [informes, projects] = await Promise.all([
       api.get('/informes-estado'),
       api.get('/projects'),
     ]);
+    if (!app.isConnected) return;
+    _informes = informes;
+    _projects = projects;
   } catch (e) {
-    app.innerHTML = `<p class="text-red-600 p-6">Error al cargar informes: ${esc(e.message)}</p>`;
+    app.innerHTML = `<div class="card p-6 text-center">
+      <p class="text-red-700 mb-4" role="alert">Error al cargar informes: ${esc(e.message)}</p>
+      <button class="btn-secondary">Reintentar</button>
+    </div>`;
+    app.querySelector('button').addEventListener('click', renderLista);
     return;
   }
 
@@ -122,36 +140,46 @@ async function renderLista() {
   const emitidos    = _informes.filter(i => i.estado === 'emitido').length;
 
   app.innerHTML = `
-    ${pageHeader(
-      'Informes de Estado del Proyecto',
-      'IT-IE \u00b7 \u00c1rea emisora: OTI \u00b7 Revisores: ODN, OPP \u00b7 Aprueba: ADG',
-      `<button id="btn-nuevo" class="btn-primary inline-flex items-center gap-1.5">${icon('add', 18)} Nuevo Informe</button>`
-    )}
+    <div class="[&>div]:flex-wrap [&>div]:gap-3">
+      ${pageHeader(
+        'Informes de Estado del Proyecto',
+        'IT-IE \u00b7 \u00c1rea emisora: OTI \u00b7 Revisores: ODN y OPP \u00b7 Aprueba: ADG',
+        `<button data-action="nuevo" class="btn-primary whitespace-nowrap">${icon('add', 18)} Nuevo informe</button>`
+      )}
+    </div>
 
     <!-- KPIs -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      ${kpiCard('Total', total, 'assignment', 'text-gray-600', 'bg-gray-100', 'border-gray-400')}
-      ${kpiCard('Borradores', borradores, 'edit_note', 'text-gray-500', 'bg-gray-100', 'border-gray-300')}
-      ${kpiCard('En revisi\u00f3n', enRevision, 'rate_review', 'text-amber-600', 'bg-amber-50', 'border-amber-400')}
-      ${kpiCard('Emitidos', emitidos, 'check_circle', 'text-blue-600', 'bg-blue-50', 'border-blue-400')}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      ${kpiCard('Total de informes', total, 'summarize', 'bg-primary-50 text-primary-700')}
+      ${kpiCard('Borradores', borradores, 'edit_note', 'bg-gray-100 text-gray-500')}
+      ${kpiCard('En revisi\u00f3n', enRevision, 'rate_review', 'bg-amber-50 text-amber-600')}
+      ${kpiCard('Emitidos', emitidos, 'check_circle', 'bg-blue-50 text-blue-600')}
     </div>
 
-    <!-- Filtros -->
-    <div class="flex flex-wrap gap-3 mb-4">
-      <select id="filter-estado" class="input text-sm w-auto">
-        <option value="">Todos los estados</option>
-        ${Object.entries(ESTADOS_INFORME).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
-      </select>
-      <select id="filter-project" class="input text-sm w-auto">
-        <option value="">Todos los proyectos</option>
-        ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-      </select>
-    </div>
+    <section class="card overflow-hidden" aria-labelledby="informes-list-title">
+      <div class="flex flex-wrap items-end justify-between gap-4 px-4 sm:px-5 py-4 border-b border-gray-200">
+        <div>
+          <h2 id="informes-list-title" class="font-semibold text-gray-900">Registro de informes</h2>
+          <p id="informes-count" class="text-sm text-gray-500 mt-1" aria-live="polite"></p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full sm:w-auto">
+          <label class="label mb-0">Estado
+            <select id="filter-estado" class="input mt-1">
+              <option value="">Todos los estados</option>
+              ${Object.entries(ESTADOS_INFORME).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="label mb-0 min-w-0">Proyecto
+            <select id="filter-project" class="input mt-1 sm:max-w-64">
+              <option value="">Todos los proyectos</option>
+              ${_projects.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+      </div>
 
-    <!-- Tabla -->
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+      <div id="informes-table" class="overflow-x-auto">
+        <table class="w-full text-sm" aria-labelledby="informes-list-title">
           <thead>
             <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
               <th class="px-4 py-3 text-left">C\u00f3digo</th>
@@ -162,48 +190,52 @@ async function renderLista() {
               <th class="px-4 py-3 text-right">Acciones</th>
             </tr>
           </thead>
-          <tbody id="tabla-informes">
-            ${renderFilasInformes(_informes)}
-          </tbody>
+          <tbody id="tabla-informes"></tbody>
         </table>
       </div>
-      ${_informes.length === 0 ? emptyState() : ''}
-    </div>
+      <div id="informes-empty" hidden></div>
+    </section>
   `;
 
   // Eventos
-  document.getElementById('btn-nuevo').addEventListener('click', openNuevoModal);
-
   document.getElementById('filter-estado').addEventListener('change', aplicarFiltros);
   document.getElementById('filter-project').addEventListener('change', aplicarFiltros);
 
-  document.getElementById('tabla-informes').addEventListener('click', async e => {
+  app.addEventListener('click', async e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { action, id } = btn.dataset;
-    if (action === 'ver')    navigate(`/informes-estado/${id}`);
-    if (action === 'editar') navigate(`/informes-estado/${id}`);
+    if (action === 'nuevo') openNuevoModal();
+    if (action === 'limpiar') {
+      document.getElementById('filter-estado').value = '';
+      document.getElementById('filter-project').value = '';
+      aplicarFiltros();
+      document.getElementById('filter-estado').focus();
+    }
     if (action === 'eliminar') await eliminarInforme(id);
   });
+  aplicarFiltros();
 }
 
-function kpiCard(label, value, iconName, textCls, bgCls, borderCls) {
+function kpiCard(label, value, iconName, colors) {
   return `
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-3 border-l-4 ${borderCls}">
-      <div class="w-10 h-10 rounded-xl ${bgCls} flex items-center justify-center shrink-0">
-        <span class="material-icons ${textCls}" style="font-size:20px">${iconName}</span>
-      </div>
-      <div>
-        <p class="text-2xl font-bold text-gray-900">${value}</p>
-        <p class="text-xs text-gray-500">${label}</p>
-      </div>
+    <div class="card p-4 sm:p-5">
+      <div class="w-9 h-9 rounded-lg ${colors} flex items-center justify-center" aria-hidden="true">${icon(iconName, 20)}</div>
+      <p class="mt-3 text-sm font-medium text-gray-500">${label}</p>
+      <p class="mt-1 text-2xl font-bold text-gray-900 tabular-nums">${value}</p>
     </div>`;
 }
 
-function emptyState() {
-  return `<div class="py-16 text-center text-gray-400">
-    <span class="material-icons" style="font-size:48px">description</span>
-    <p class="mt-2 text-sm">No hay informes a\u00fan. Crea el primero.</p>
+function emptyState(hasFilters) {
+  return `<div class="px-5 py-12 text-center">
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary-50 text-primary-700" aria-hidden="true">
+      ${icon(hasFilters ? 'search_off' : 'description', 24)}
+    </div>
+    <p class="mt-4 font-semibold text-gray-900">${hasFilters ? 'No hay informes con estos filtros' : 'A\u00fan no hay informes de estado'}</p>
+    <p class="mt-1 text-sm text-gray-500">${hasFilters ? 'Prueba con otro estado o proyecto.' : 'Crea un informe para documentar el avance de un proyecto.'}</p>
+    <button class="mt-4 ${hasFilters ? 'btn-secondary' : 'btn-primary'}" data-action="${hasFilters ? 'limpiar' : 'nuevo'}">
+      ${icon(hasFilters ? 'filter_alt_off' : 'add', 18)} ${hasFilters ? 'Limpiar filtros' : 'Nuevo informe'}
+    </button>
   </div>`;
 }
 
@@ -214,21 +246,18 @@ function renderFilasInformes(list) {
       <td class="px-4 py-3">
         <span class="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">${esc(inf.codigo)}</span>
       </td>
-      <td class="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">${esc(inf.titulo)}</td>
+      <td class="px-4 py-3 font-medium text-gray-900"><a class="text-primary-700 hover:underline break-words" href="#/informes-estado/${encodeURIComponent(inf.id)}">${esc(inf.titulo)}</a></td>
       <td class="px-4 py-3 text-gray-600 text-sm">${esc(inf.project_name || '\u2014')}</td>
       <td class="px-4 py-3">${stateBadge(inf.estado)}</td>
       <td class="px-4 py-3 text-gray-500 text-sm">${fmtDate(inf.fecha_emision || inf.created_at)}</td>
       <td class="px-4 py-3 text-right">
         <div class="flex items-center justify-end gap-1">
-          <button data-action="ver" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700" title="Ver">
-            ${icon('visibility', 16)}
-          </button>
-          <button data-action="editar" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 hover:text-blue-700" title="Editar">
+          <a href="#/informes-estado/${encodeURIComponent(inf.id)}" class="p-2 rounded-lg hover:bg-primary-50 text-primary-700" title="Editar informe" aria-label="Editar informe">
             ${icon('edit', 16)}
-          </button>
-          <button data-action="eliminar" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600" title="Eliminar">
+          </a>
+          ${inf.estado === 'borrador' ? `<button data-action="eliminar" data-id="${esc(inf.id)}" class="p-2 rounded-lg hover:bg-red-50 text-red-600" title="Eliminar borrador" aria-label="Eliminar borrador">
             ${icon('delete', 16)}
-          </button>
+          </button>` : ''}
         </div>
       </td>
     </tr>`).join('');
@@ -239,12 +268,17 @@ function aplicarFiltros() {
   const projectId = document.getElementById('filter-project').value;
   let lista = _informes;
   if (estado)    lista = lista.filter(i => i.estado === estado);
-  if (projectId) lista = lista.filter(i => i.project_id === projectId);
+  if (projectId) lista = lista.filter(i => String(i.project_id) === projectId);
   document.getElementById('tabla-informes').innerHTML = renderFilasInformes(lista);
+  document.getElementById('informes-count').textContent = `${lista.length} ${lista.length === 1 ? 'informe' : 'informes'}`;
+  document.getElementById('informes-table').hidden = !lista.length;
+  const empty = document.getElementById('informes-empty');
+  empty.hidden = !!lista.length;
+  empty.innerHTML = lista.length ? '' : emptyState(!!(estado || projectId));
 }
 
 async function eliminarInforme(id) {
-  const inf = _informes.find(i => i.id === id);
+  const inf = _informes.find(i => String(i.id) === id);
   if (!inf) return;
   const ok = await confirmModal(
     `\u00bfEliminar el informe <strong>${esc(inf.codigo)}</strong>? Esta acci\u00f3n no se puede deshacer.`,
@@ -254,47 +288,32 @@ async function eliminarInforme(id) {
   try {
     await api.delete(`/informes-estado/${id}`);
     toast('Informe eliminado');
-    renderLista();
+    if (location.hash === '#/informes-estado') renderLista();
   } catch (e) {
     toast('Error al eliminar: ' + e.message, 'error');
   }
 }
 
-// --- Helper de navegaci\u00f3n --------------------------------------------------
-function navigate(path) {
-  if (window.navigateTo) { window.navigateTo(path); return; }
-  history.pushState({}, '', path);
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
-
 // ==========================================================================
 // MODAL NUEVO INFORME
 // ==========================================================================
-async function openNuevoModal() {
-  if (!_projects.length) {
-    try { _projects = await api.get('/projects'); } catch { _projects = []; }
-  }
-
+function openNuevoModal() {
   showModal('Nuevo Informe de Estado', `
     <div class="space-y-4">
       <div>
-        <label class="label">T\u00edtulo del informe *</label>
+        <label class="label" for="ni-titulo">T\u00edtulo del informe *</label>
         <input id="ni-titulo" class="input w-full" placeholder="Ej: Informe de Estado \u2013 Sistema de Gesti\u00f3n Qubira" />
       </div>
       <div>
-        <label class="label">Proyecto vinculado</label>
+        <label class="label" for="ni-project">Proyecto vinculado</label>
         <select id="ni-project" class="input w-full">
           <option value="">\u2014 Sin proyecto \u2014</option>
           ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label class="label">Fecha l\u00edmite de respuesta</label>
+        <label class="label" for="ni-fecha">Fecha l\u00edmite de respuesta</label>
         <input id="ni-fecha" type="date" class="input w-full" />
-      </div>
-      <div>
-        <label class="label">Versi\u00f3n</label>
-        <input id="ni-version" class="input w-full" value="1.0" />
       </div>
     </div>
   `, 'md', `
@@ -305,11 +324,11 @@ async function openNuevoModal() {
   `);
 
   document.getElementById('ni-cancel').addEventListener('click', closeModal);
-  document.getElementById('ni-crear').addEventListener('click', async () => {
+  const create = document.getElementById('ni-crear');
+  create.addEventListener('click', async () => {
     const titulo  = document.getElementById('ni-titulo').value.trim();
     const projId  = document.getElementById('ni-project').value;
     const fecha   = document.getElementById('ni-fecha').value;
-    const version = document.getElementById('ni-version').value.trim() || '1.0';
 
     if (!titulo) {
       document.getElementById('ni-titulo').classList.add('border-red-500');
@@ -317,15 +336,20 @@ async function openNuevoModal() {
       return;
     }
 
+    create.disabled = true;
     try {
       const nuevo = await api.post('/informes-estado', {
-        titulo, project_id: projId || null, fecha_limite: fecha || null, version,
+        titulo, project_id: projId || null, fecha_limite: fecha || null,
       });
-      closeModal();
       toast('Informe creado');
-      navigate(`/informes-estado/${nuevo.id}`);
+      if (create.isConnected) {
+        closeModal();
+        navigate(`/informes-estado/${nuevo.id}`);
+      }
     } catch (e) {
       toast('Error al crear: ' + e.message, 'error');
+    } finally {
+      create.disabled = false;
     }
   });
 }
@@ -334,14 +358,18 @@ async function openNuevoModal() {
 // DETALLE / EDICI\u00d3N
 // ==========================================================================
 async function renderDetalle(id) {
-  const app = document.getElementById('main');
-  app.innerHTML = spinner();
+  const app = mountPage();
 
   try {
-    [_currentInforme, _projects] = await Promise.all([
+    await _saveQueue;
+    if (!app.isConnected) return;
+    const [informe, projects] = await Promise.all([
       api.get(`/informes-estado/${id}`),
       api.get('/projects'),
     ]);
+    if (!app.isConnected) return;
+    _currentInforme = { ...informe, datos: informe.datos || {} };
+    _projects = projects;
   } catch (e) {
     app.innerHTML = `<p class="text-red-600 p-6">Error al cargar informe: ${esc(e.message)}</p>`;
     return;
@@ -354,11 +382,11 @@ async function renderDetalle(id) {
 }
 
 function mountDetalle(inf, dat) {
-  const app = document.getElementById('main');
+  const app = document.querySelector('#main > .informes-page');
 
   app.innerHTML = `
     <!-- Header -->
-    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5">
+    <div class="card p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
       <div class="flex items-start gap-3">
         <button id="btn-back" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 mt-0.5" title="Volver">
           ${icon('arrow_back', 20)}
@@ -369,33 +397,36 @@ function mountDetalle(inf, dat) {
             ${stateBadge(inf.estado)}
             <span class="text-xs text-gray-400">${fmtDate(inf.created_at)}</span>
           </div>
-          <h1 class="text-xl font-bold text-gray-900 mt-0.5">${esc(inf.titulo)}</h1>
+          <h1 id="informe-title" class="text-2xl font-bold text-gray-900 mt-1 break-words">${esc(inf.titulo)}</h1>
           ${inf.project_name ? `<p class="text-sm text-gray-500">${icon('folder_open',14)} ${esc(inf.project_name)}</p>` : ''}
         </div>
       </div>
       <div class="flex flex-wrap gap-2 items-center">
-        <span id="save-status" class="text-xs text-gray-400 italic hidden">Guardando\u2026</span>
+        <span id="save-status" role="status" class="text-xs text-gray-400 italic hidden">Guardando\u2026</span>
         <button id="btn-estado" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('swap_horiz',16)} Cambiar estado</button>
         <button id="btn-preview" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('print',16)} Vista previa</button>
       </div>
     </div>
 
     <!-- Tabs -->
-    <div class="flex gap-1 overflow-x-auto pb-1 mb-5 border-b border-gray-200">
+    <div class="card flex gap-1 overflow-x-auto p-2 mb-4" aria-label="Secciones del informe">
       ${TABS.map(t => `
-        <button data-tab="${t.id}" class="tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${_tab === t.id ? 'bg-white border border-b-white border-gray-200 text-primary-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}">
+        <button data-tab="${t.id}" aria-pressed="${_tab === t.id}" class="tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${_tab === t.id ? 'bg-primary-50 text-primary-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}">
           ${t.label}
         </button>`).join('')}
     </div>
 
     <!-- Panel de tab -->
-    <div id="tab-panel" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+    <div id="tab-panel" class="card p-4 sm:p-6 overflow-x-auto">
       ${renderTab(_tab, inf, dat)}
     </div>
   `;
 
   // Volver
-  document.getElementById('btn-back').addEventListener('click', () => navigate('/informes-estado'));
+  document.getElementById('btn-back').addEventListener('click', () => {
+    flushAutosave();
+    navigate('/informes-estado');
+  });
 
   // Cambiar tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -403,7 +434,8 @@ function mountDetalle(inf, dat) {
       _tab = btn.dataset.tab;
       document.querySelectorAll('.tab-btn').forEach(b => {
         const active = b.dataset.tab === _tab;
-        b.className = `tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${active ? 'bg-white border border-b-white border-gray-200 text-primary-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`;
+        b.setAttribute('aria-pressed', String(active));
+        b.className = `tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${active ? 'bg-primary-50 text-primary-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`;
       });
       document.getElementById('tab-panel').innerHTML = renderTab(_tab, _currentInforme, _currentInforme.datos || {});
       wireTab(_tab);
@@ -1162,29 +1194,34 @@ function wireConclusiones() {
 // ==========================================================================
 function scheduleAutosave() {
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(doAutosave, 1000);
+  collectPortadaFields();
+  _saveTimer = setTimeout(flushAutosave, 1000);
   const st = document.getElementById('save-status');
   if (st) { st.textContent = 'Guardando\u2026'; st.classList.remove('hidden'); }
 }
 
-async function doAutosave() {
-  if (_saving || !_currentInforme) return;
-  _saving = true;
+function flushAutosave() {
+  if (!_saveTimer) return _saveQueue;
+  clearTimeout(_saveTimer);
+  _saveTimer = null;
+  const informe = _currentInforme;
+  const payload = structuredClone(buildPayload());
+  const status = document.getElementById('save-status');
 
-  // Recolectar campos de ra\u00edz del tab activo (portada)
-  collectPortadaFields();
-
-  const payload = buildPayload();
-  try {
-    const updated = await api.put(`/informes-estado/${_currentInforme.id}`, payload);
-    _currentInforme = { ..._currentInforme, ...updated, datos: _currentInforme.datos };
-    const st = document.getElementById('save-status');
-    if (st) { st.textContent = 'Guardado \u2713'; setTimeout(() => st.classList.add('hidden'), 2000); }
-  } catch (e) {
-    toast('Error al guardar: ' + e.message, 'error');
-  } finally {
-    _saving = false;
-  }
+  _saveQueue = _saveQueue.then(async () => {
+    try {
+      await api.put(`/informes-estado/${informe.id}`, payload);
+      if (_currentInforme === informe && !_saveTimer && status?.isConnected) {
+        status.textContent = 'Guardado';
+        const title = document.getElementById('informe-title');
+        if (title) title.textContent = informe.titulo;
+      }
+    } catch (e) {
+      if (status?.isConnected) status.textContent = 'Error al guardar';
+      toast('Error al guardar: ' + e.message, 'error');
+    }
+  });
+  return _saveQueue;
 }
 
 function collectPortadaFields() {
@@ -1226,7 +1263,8 @@ function buildPayload() {
 // ==========================================================================
 function openCambiarEstadoModal() {
   const orden = ['borrador', 'en_revision', 'emitido', 'cerrado'];
-  const actual = _currentInforme.estado;
+  const informe = _currentInforme;
+  const actual = informe.estado;
   const idx = orden.indexOf(actual);
 
   showModal('Cambiar estado del informe', `
@@ -1248,19 +1286,25 @@ function openCambiarEstadoModal() {
     </div>
   `, 'sm');
 
-  document.querySelectorAll('[data-new-estado]').forEach(btn => {
+  const buttons = [...document.querySelectorAll('[data-new-estado]')];
+  buttons.forEach(btn => {
     const e = btn.dataset.newEstado;
     const i = orden.indexOf(e);
-    if (e === actual || i < idx) return;
+    btn.disabled = i <= idx;
+    if (btn.disabled) return;
     btn.addEventListener('click', async () => {
+      buttons.forEach(button => { button.disabled = true; });
       try {
-        await api.put(`/informes-estado/${_currentInforme.id}`, { estado: e });
-        _currentInforme.estado = e;
-        closeModal();
+        await flushAutosave();
+        await api.patch(`/informes-estado/${informe.id}/estado`, { estado: e });
+        informe.estado = e;
         toast(`Estado cambiado a: ${ESTADOS_INFORME[e].label}`);
-        // Re-montar header
-        mountDetalle(_currentInforme, _currentInforme.datos || {});
+        if (btn.isConnected) closeModal();
+        if (_currentInforme === informe && location.hash === `#/informes-estado/${informe.id}`) {
+          mountDetalle(informe, informe.datos);
+        }
       } catch (err) {
+        buttons.slice(idx + 1).forEach(button => { button.disabled = false; });
         toast('Error: ' + err.message, 'error');
       }
     });
