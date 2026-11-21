@@ -1978,6 +1978,9 @@ function renderTabAnexos() {
         </label>
         <p class="mt-2 text-xs text-gray-500">PNG, JPEG o WebP. Hasta 5 MB por imagen.</p>
       </div>
+      <label class="label">Sección del anexo
+        <input name="seccion" maxlength="120" class="input mt-1" placeholder="Ej. DARMED – Clínica estética" />
+      </label>
       <div id="figuras-borradores" class="grid gap-3 sm:grid-cols-2"></div>
       <div class="flex flex-wrap items-center gap-3">
         <button class="btn-primary" type="submit" disabled>${icon('add_photo_alternate', 18)} Guardar im\u00e1genes</button>
@@ -2080,13 +2083,18 @@ function wireAnexos() {
           </div>
           <div>
           <h3 class="mb-2 font-semibold text-gray-900">Figura ${f.numero}</h3>
-          <label class="label">Leyenda
-            <input name="leyenda" maxlength="300" required class="input mt-1" value="${esc(f.leyenda)}" />
-          </label>
+          <div class="grid gap-2">
+            <label class="label">Sección del anexo
+              <input name="seccion" maxlength="120" class="input mt-1" placeholder="Evidencia visual" value="${esc(f.seccion)}" />
+            </label>
+            <label class="label">Leyenda
+              <input name="leyenda" maxlength="300" required class="input mt-1" value="${esc(f.leyenda)}" />
+            </label>
+          </div>
           <div class="mt-3 flex flex-wrap gap-2">
             <input class="input max-w-36 font-mono text-xs" name="cita" aria-label="Cita de figura" readonly value="[[figura:${f.numero}]]" />
             <button type="button" class="btn-secondary" data-copiar-figura>Copiar cita</button>
-            <button type="submit" class="btn-secondary">Guardar leyenda</button>
+            <button type="submit" class="btn-secondary">Guardar datos</button>
             <button type="button" class="btn-secondary text-red-700" data-quitar-figura>Quitar</button>
           </div>
           </div>
@@ -2106,6 +2114,7 @@ function wireAnexos() {
     archivos.disabled = true;
     subir.disabled = true;
     const total = pendientes.length;
+    const seccion = form.elements.namedItem('seccion').value.trim();
     let cargadas = 0;
     try {
       while (pendientes.length) {
@@ -2114,6 +2123,7 @@ function wireAnexos() {
         const contenido = new FormData();
         contenido.append('imagen', archivo);
         contenido.append('leyenda', card.querySelector('input').value.trim() || `Imagen ${cargadas + 1}`);
+        contenido.append('seccion', seccion);
         await api.post(ruta, contenido);
         pendientes.shift();
         card.remove();
@@ -2133,8 +2143,9 @@ function wireAnexos() {
     event.preventDefault();
     const tarjeta = event.target;
     try {
-      await api.patch(`${ruta}/${tarjeta.dataset.figura}`, { leyenda: tarjeta.elements.namedItem('leyenda').value });
-      toast('Leyenda guardada');
+      const { leyenda, seccion } = tarjeta.elements;
+      await api.patch(`${ruta}/${tarjeta.dataset.figura}`, { leyenda: leyenda.value, seccion: seccion.value });
+      toast('Datos de la figura guardados');
     } catch (e) { toast(e.message, 'error'); }
   });
   lista.addEventListener('click', async event => {
@@ -2207,6 +2218,31 @@ function mostrarImagenFigura(imagen, blob) {
   imagen.addEventListener('load', limpiar, { once: true });
   imagen.addEventListener('error', limpiar, { once: true });
   imagen.src = url;
+}
+
+function renderAnexoFiguras(figuras) {
+  if (!figuras.length) return '';
+  const secciones = new Map();
+  for (const figura of figuras) {
+    const seccion = figura.seccion?.trim() || 'Evidencia visual';
+    if (!secciones.has(seccion)) secciones.set(seccion, []);
+    secciones.get(seccion).push(figura);
+  }
+  return `<section class="space-y-6 border-t border-gray-300 pt-4" aria-label="Anexo de imágenes">
+    ${Array.from(secciones, ([seccion, imagenes], indice) => `
+      <section aria-labelledby="anexo-seccion-${indice}" class="space-y-4">
+        <h2 id="anexo-seccion-${indice}" class="break-after-avoid text-base font-bold text-gray-900">A.${indice + 1} ${esc(seccion)}</h2>
+        ${imagenes.map(f => `
+          <figure id="figura-${f.numero}" class="break-inside-avoid">
+            <div class="mx-auto w-full sm:w-11/12">
+              <img data-imagen-figura="${f.numero}" alt="${esc(f.leyenda)}" class="block h-auto w-full object-contain" />
+            </div>
+            <figcaption class="mt-1 px-2 text-center text-xs text-slate-600">
+              <strong class="font-bold text-teal-700">Figura ${f.numero}.</strong> <em>${esc(f.leyenda)}</em>
+            </figcaption>
+          </figure>`).join('')}
+      </section>`).join('')}
+  </section>`;
 }
 
 function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
@@ -2385,13 +2421,6 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
           <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.hoja_respuesta)}</p>
         </div>` : ''}
       ${errorAnexos ? '<p class="text-sm text-red-700">No se pudieron cargar los anexos.</p>' : ''}
-      ${figuras.length ? `<section class="border-t-2 border-gray-800 pt-4">
-        <h2 class="mb-4 text-base font-bold">Anexo de im\u00e1genes</h2>
-        <div class="space-y-5">${figuras.map(f => `
-          <figure id="figura-${f.numero}" class="break-inside-avoid rounded-lg border border-gray-200 p-3">
-            <img data-imagen-figura="${f.numero}" alt="${esc(f.leyenda)}" class="mx-auto max-h-[65vh] max-w-full object-contain" />
-            <figcaption class="mt-2 text-center text-sm"><strong>Figura ${f.numero}.</strong> ${esc(f.leyenda)}</figcaption>
-          </figure>`).join('')}</div>
-      </section>` : ''}
+      ${renderAnexoFiguras(figuras)}
     </div>`;
 }
