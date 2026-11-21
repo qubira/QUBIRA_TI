@@ -489,6 +489,13 @@ function mountDetalle(inf, dat) {
           ${t.label}
         </button>`).join('')}
     </nav>
+    <div id="acciones-brechas" class="card items-center justify-between gap-3 px-3 py-2 ${_tab === 'brechas' ? 'flex' : 'hidden'}">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-900">Brechas identificadas</h2>
+        <p id="conteo-brechas" class="text-xs text-gray-500" aria-live="polite"></p>
+      </div>
+      <button type="button" id="btn-add-brecha" class="btn-primary whitespace-nowrap">${icon('add', 16)} Agregar brecha</button>
+    </div>
     </div>
 
     <!-- Panel de tab -->
@@ -507,6 +514,9 @@ function mountDetalle(inf, dat) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       _tab = btn.dataset.tab;
+      const accionesBrechas = document.getElementById('acciones-brechas');
+      accionesBrechas.classList.toggle('hidden', _tab !== 'brechas');
+      accionesBrechas.classList.toggle('flex', _tab === 'brechas');
       document.querySelectorAll('.tab-btn').forEach(b => {
         const active = b.dataset.tab === _tab;
         b.setAttribute('aria-pressed', String(active));
@@ -522,6 +532,7 @@ function mountDetalle(inf, dat) {
 
   // Preview
   document.getElementById('btn-preview').addEventListener('click', openPreview);
+  document.getElementById('btn-add-brecha').addEventListener('click', agregarBrecha);
   const importar = document.getElementById('btn-importar-proyecto');
   importar?.addEventListener('click', async () => {
     importar.disabled = true;
@@ -951,41 +962,48 @@ function renderTabObservaciones(dat) {
 function renderTabBrechas(dat) {
   const brechas = dat.brechas || [];
   return `
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-base font-bold text-gray-800">Brechas Identificadas</h2>
-      <button id="btn-add-brecha" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar brecha</button>
+    <div class="grid gap-3" id="list-brechas">
+      ${renderListaBrechas(brechas)}
     </div>
-    <div class="space-y-4" id="list-brechas">
-      ${brechas.map((b, i) => cardBrecha(b, i)).join('')}
-      ${brechas.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin brechas registradas.</p>` : ''}
+    <div class="mt-4 flex justify-end">
+      <button type="button" id="btn-add-brecha-final" class="btn-secondary">${icon('add', 16)} Agregar brecha</button>
     </div>`;
+}
+
+function renderListaBrechas(brechas) {
+  return brechas.length ? brechas.map(cardBrecha).join('') : `
+    <p id="brechas-vacio" class="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">Sin brechas registradas.</p>`;
 }
 
 function cardBrecha(b, i) {
   return `
-    <div data-bi="${i}" class="border border-gray-200 rounded-xl p-4 bg-gray-50/40 space-y-3">
-      <div class="flex items-center justify-between">
-        <span class="text-xs font-bold text-gray-500">BRECHA ${i + 1}</span>
+    <article data-bi="${i}" class="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2">
+        <h3 class="font-semibold text-gray-900">Brecha ${i + 1}</h3>
         <div class="flex items-center gap-2">
-          <select class="input text-xs brecha-prioridad w-28">
+          <label class="flex items-center gap-2 text-xs font-medium text-gray-600">Prioridad
+          <select class="input text-xs brecha-prioridad w-24">
             ${PRIORIDADES_BRECHA.map(p => `<option value="${p}" ${b.prioridad === p ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
-          <button data-rm-brecha="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+          </label>
+          <button type="button" data-rm-brecha="${i}" class="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="Eliminar brecha ${i + 1}">${icon('delete', 16)}</button>
         </div>
       </div>
-      <div>
-        <label class="label text-xs">Necesidad</label>
-        <input class="input w-full text-sm brecha-necesidad" value="${esc(b.necesidad || '')}" placeholder="Qu\u00e9 se necesita" />
+      <div class="grid gap-3 p-4 lg:grid-cols-2">
+      <div class="lg:col-span-2">
+        <label class="label text-xs" for="brecha-necesidad-${i}">Necesidad</label>
+        <input id="brecha-necesidad-${i}" class="input w-full text-sm brecha-necesidad" value="${esc(b.necesidad || '')}" placeholder="Qu\u00e9 se necesita" />
       </div>
       <div>
-        <label class="label text-xs">Qu\u00e9 implica</label>
-        <input class="input w-full text-sm brecha-implica" value="${esc(b.que_implica || '')}" placeholder="Implicaciones t\u00e9cnicas u organizacionales" />
+        <label class="label text-xs" for="brecha-implica-${i}">Qu\u00e9 implica</label>
+        <textarea id="brecha-implica-${i}" rows="2" class="input w-full resize-y text-sm brecha-implica" placeholder="Implicaciones t\u00e9cnicas u organizacionales">${esc(b.que_implica || '')}</textarea>
       </div>
       <div>
-        <label class="label text-xs">Criterio de aceptaci\u00f3n</label>
-        <input class="input w-full text-sm brecha-criterio" value="${esc(b.criterio_aceptacion || '')}" placeholder="Condici\u00f3n para cerrar esta brecha" />
+        <label class="label text-xs" for="brecha-criterio-${i}">Criterio de aceptaci\u00f3n</label>
+        <textarea id="brecha-criterio-${i}" rows="2" class="input w-full resize-y text-sm brecha-criterio" placeholder="Condici\u00f3n para cerrar esta brecha">${esc(b.criterio_aceptacion || '')}</textarea>
       </div>
-    </div>`;
+      </div>
+    </article>`;
 }
 
 // -- Tab: Escenarios de Decisi\u00f3n -------------------------------------------
@@ -1566,27 +1584,42 @@ function wireObservaciones() {
 }
 
 // -- Wire: Brechas -----------------------------------------------------------
-function wireBrechas() {
-  document.getElementById('btn-add-brecha')?.addEventListener('click', () => {
-    const dat = _currentInforme.datos;
-    if (!dat.brechas) dat.brechas = [];
-    dat.brechas.push({ necesidad: '', que_implica: '', prioridad: 'Media', criterio_aceptacion: '' });
-    document.getElementById('tab-panel').innerHTML = renderTab('brechas', _currentInforme, dat);
-    wireTab('brechas');
-    scheduleAutosave();
-  });
+function actualizarConteoBrechas(total) {
+  document.getElementById('conteo-brechas').textContent = `${total} ${total === 1 ? 'brecha registrada' : 'brechas registradas'}`;
+}
 
-  document.getElementById('tab-panel').addEventListener('click', e => {
+function agregarBrecha() {
+  const lista = document.getElementById('list-brechas');
+  if (!lista) return;
+  const dat = _currentInforme.datos;
+  const brechas = dat.brechas ??= [];
+  const nueva = { necesidad: '', que_implica: '', prioridad: 'Media', criterio_aceptacion: '' };
+  const indice = brechas.push(nueva) - 1;
+  document.getElementById('brechas-vacio')?.remove();
+  lista.insertAdjacentHTML('beforeend', cardBrecha(nueva, indice));
+  actualizarConteoBrechas(brechas.length);
+  scheduleAutosave();
+  const campo = document.getElementById(`brecha-necesidad-${indice}`);
+  campo.closest('article').scrollIntoView({ block: 'center' });
+  campo.focus({ preventScroll: true });
+}
+
+function wireBrechas() {
+  const lista = document.getElementById('list-brechas');
+  const dat = _currentInforme.datos;
+  actualizarConteoBrechas(dat.brechas?.length ?? 0);
+  document.getElementById('btn-add-brecha-final').addEventListener('click', agregarBrecha);
+  lista.addEventListener('click', e => {
     const btn = e.target.closest('[data-rm-brecha]');
     if (!btn) return;
     const i = parseInt(btn.dataset.rmBrecha);
-    _currentInforme.datos.brechas.splice(i, 1);
-    document.getElementById('tab-panel').innerHTML = renderTab('brechas', _currentInforme, _currentInforme.datos);
-    wireTab('brechas');
+    dat.brechas.splice(i, 1);
+    lista.innerHTML = renderListaBrechas(dat.brechas);
+    actualizarConteoBrechas(dat.brechas.length);
     scheduleAutosave();
   });
 
-  document.getElementById('tab-panel').addEventListener('input', e => {
+  lista.addEventListener('input', e => {
     if (!e.target.matches('.brecha-necesidad,.brecha-implica,.brecha-criterio')) return;
     const card = e.target.closest('[data-bi]');
     if (!card) return;
@@ -1598,7 +1631,7 @@ function wireBrechas() {
     scheduleAutosave();
   });
 
-  document.getElementById('tab-panel').addEventListener('change', e => {
+  lista.addEventListener('change', e => {
     if (!e.target.classList.contains('brecha-prioridad')) return;
     const card = e.target.closest('[data-bi]');
     if (!card) return;
