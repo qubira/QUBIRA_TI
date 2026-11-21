@@ -848,6 +848,8 @@ function renderTabEstado(dat) {
       <select id="f-estado-general" class="input w-full md:w-64" data-field="estado_general">
         ${ESTADO_GENERAL_OPTS.map(o => `<option value="${o}" ${dat.estado_general === o ? 'selected' : ''}>${o}</option>`).join('')}
       </select>
+      <label for="f-detalle-estado-general" class="label mt-3">Detalle del estado para la portada</label>
+      <input id="f-detalle-estado-general" class="input w-full" value="${esc(dat.detalle_estado_general)}" placeholder="Ej. Maqueta funcional publicada. Falta implementar servidor y base de datos." />
     </div>
 
     <div class="flex items-center justify-between mb-3">
@@ -1559,6 +1561,10 @@ function wireComponentes() {
 function wireEstado() {
   document.getElementById('f-estado-general')?.addEventListener('change', e => {
     _currentInforme.datos.estado_general = e.target.value;
+    scheduleAutosave();
+  });
+  document.getElementById('f-detalle-estado-general')?.addEventListener('input', e => {
+    _currentInforme.datos.detalle_estado_general = e.target.value;
     scheduleAutosave();
   });
 
@@ -2300,6 +2306,40 @@ function renderAnexoFiguras(figuras) {
   </section>`;
 }
 
+function renderTablaPortada(inf, dat) {
+  const origen = dat.proyecto_origen || {};
+  const nombre = origen.nombre || inf.project_name;
+  const codigo = origen.codigo || inf.project_code;
+  const proyecto = nombre && codigo ? `${nombre} (${codigo})` : nombre || codigo;
+  const fechaCorta = datosMembrete(inf, dat).fecha;
+  const partesFecha = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fechaCorta);
+  const fecha = partesFecha
+    ? new Intl.DateTimeFormat('es-PE', { dateStyle: 'long', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(Number(partesFecha[3]), Number(partesFecha[2]) - 1, Number(partesFecha[1]))))
+    : fechaCorta;
+  const estado = [dat.estado_general, dat.detalle_estado_general?.trim()].filter(Boolean).join(' \u2013 ');
+  const filas = [
+    ['Dirigido a', dat.dirigido_a || 'Alta Direcci\u00f3n Gerencial (ADG)'],
+    ['\u00c1reas participantes', areasParticipantes(dat).map(nombreAreaObservaciones).join('\n')],
+    ['Cliente / marca', origen.cliente || inf.project_client],
+    ['Proyecto', proyecto],
+    ['Estado del proyecto', estado],
+    ['Sitio publicado', dat.url_sitio_publicado || inf.project_url],
+    ['Ubicaci\u00f3n', dat.ubicacion || 'Lima, Per\u00fa'],
+    ['Fecha', fecha],
+    ['C\u00f3digo', inf.codigo],
+    ['Versi\u00f3n', inf.version || '1.0'],
+    ['Tecnolog\u00edas', dat.tecnologias_usadas],
+    ['L\u00edneas de c\u00f3digo', dat.lineas_codigo],
+  ];
+  return `<table class="w-full table-fixed border-collapse border border-slate-300 text-xs" aria-label="Datos de portada">
+    <tbody>${filas.map(([etiqueta, valor], indice) => `<tr>
+      <th scope="row" class="w-[25%] border border-slate-300 bg-slate-200 px-3 py-2 text-left font-semibold text-slate-800">${esc(etiqueta)}</th>
+      <td class="whitespace-pre-line break-words border border-slate-300 px-3 py-2 ${indice === 4 ? 'font-semibold text-amber-800' : ''}">${esc(valor === '' || valor == null ? '\u2014' : valor)}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
 function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
   const numeros = new Set(figuras.map(figura => Number(figura.numero)));
   const citar = texto => esc(texto).replace(/\[\[figura:(\d+)\]\]/gi, (_, n) => numeros.has(Number(n))
@@ -2354,18 +2394,7 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
 
       ${dat.proyecto_origen ? `<div class="print:hidden">${renderProyectoOrigen(dat.proyecto_origen)}</div>` : ''}
 
-      <!-- Portada info -->
-      <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
-        <tbody>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold w-40">T\u00edtulo</td><td class="px-3 py-2">${esc(inf.titulo)}</td></tr>
-          <tr><td class="px-3 py-2 font-semibold">Dirigido a</td><td class="px-3 py-2">${esc(dat.dirigido_a || 'ADG')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">\u00c1reas</td><td class="px-3 py-2">${esc(areasParticipantes(dat).join(', '))}</td></tr>
-          <tr><td class="px-3 py-2 font-semibold">Ubicaci\u00f3n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || '\u2014')}</td></tr>
-          <tr><td class="px-3 py-2 font-semibold">Tecnolog\u00edas</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || '\u2014')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">L\u00edneas de c\u00f3digo</td><td class="px-3 py-2">${esc(dat.lineas_codigo ?? '\u2014')}</td></tr>
-        </tbody>
-      </table>
+      ${renderTablaPortada(inf, dat)}
 
       <div class="border-t-2 border-gray-800 pt-4">
         <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
