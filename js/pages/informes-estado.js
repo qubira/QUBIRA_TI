@@ -539,7 +539,6 @@ function renderTabPortada(inf, dat) {
           <div class="flex flex-wrap items-center gap-2">
             <input id="f-lineas" type="number" min="0" step="1" class="input sm:w-40" value="${esc(dat.lineas_codigo ?? '')}" placeholder="Sin calcular" aria-describedby="f-lineas-ayuda" data-field="lineas_codigo" />
             <button type="button" id="f-calcular-lineas" class="btn-secondary">${icon('calculate', 18)} Analizar repositorio</button>
-            <input id="f-repo-folder" type="file" webkitdirectory multiple hidden />
           </div>
           <p id="f-lineas-ayuda" class="text-xs text-gray-500 mt-2">Selecciona la carpeta local para detectar tecnolog\u00edas y calcular el tama\u00f1o del c\u00f3digo. Se cuentan las l\u00edneas no vac\u00edas, incluidos los comentarios, y se omiten las dependencias y los directorios de compilaci\u00f3n habituales.</p>
           <p id="f-lineas-estado" class="text-sm text-gray-600 mt-2 empty:hidden" role="status"></p>
@@ -959,9 +958,8 @@ function wirePortada() {
     scheduleAutosave();
     firmas.innerHTML = renderFirmasAreas(_currentInforme, _currentInforme.datos);
   });
-  const folder = document.getElementById('f-repo-folder');
-  document.getElementById('f-calcular-lineas').addEventListener('click', () => folder.click());
-  folder.addEventListener('change', () => analizarRepositorio(folder));
+  const boton = document.getElementById('f-calcular-lineas');
+  boton.addEventListener('click', () => abrirSelectorRepositorio(boton));
 }
 
 const CARPETAS_OMITIDAS = new Set(['node_modules', 'vendor', 'dist', 'build', 'out', 'coverage', 'target', 'bin', 'obj', 'venv', '__pycache__']);
@@ -982,9 +980,72 @@ const TECNOLOGIAS_POR_PAQUETE = {
   tailwindcss: 'Tailwind CSS', bootstrap: 'Bootstrap', vite: 'Vite', typescript: 'TypeScript',
 };
 
-function perteneceAlProyecto(file) {
-  const directorios = file.webkitRelativePath.split('/').slice(1, -1);
-  return !directorios.some(name => name.startsWith('.') || CARPETAS_OMITIDAS.has(name.toLowerCase()));
+function omitirCarpeta(name) {
+  return name.startsWith('.') || CARPETAS_OMITIDAS.has(name.toLowerCase());
+}
+
+async function* recorrerRepositorio(carpeta, boton) {
+  for await (const entrada of carpeta.values()) {
+    if (!boton.isConnected) return;
+    if (entrada.kind === 'directory') {
+      if (!omitirCarpeta(entrada.name)) yield* recorrerRepositorio(entrada, boton);
+    } else if (entrada.name === 'package.json' || esArchivoFuente(entrada)) {
+      yield await entrada.getFile();
+    }
+  }
+}
+
+function abrirSelectorRepositorio(boton) {
+  showModal('Analizar repositorio', `
+    <div class="flex items-start gap-3">
+      <div class="rounded-xl bg-primary-50 p-2 text-primary-700" aria-hidden="true">${icon('folder_open', 24)}</div>
+      <div>
+        <p class="text-sm font-medium text-gray-900">Selecciona la carpeta del proyecto</p>
+        <p class="mt-1 text-sm text-gray-600">Elige la carpeta espec\u00edfica del repositorio. Qubira lee los archivos en tu navegador y guarda las l\u00edneas y tecnolog\u00edas detectadas en el informe.</p>
+      </div>
+    </div>
+    <p id="repo-picker-status" class="mt-3 text-sm text-gray-600 empty:hidden" role="status"></p>
+    <input id="f-repo-folder" type="file" webkitdirectory multiple hidden />
+  `, 'md', `
+    <div class="flex flex-wrap justify-end gap-2">
+      <button id="repo-cancel" class="btn-secondary">Cancelar</button>
+      <button id="repo-choose" class="btn-primary">${icon('folder_open', 18)} Elegir carpeta</button>
+    </div>
+  `);
+  const elegir = document.getElementById('repo-choose');
+  const folder = document.getElementById('f-repo-folder');
+  const mensaje = document.getElementById('repo-picker-status');
+  let usarSelector = typeof window.showDirectoryPicker === 'function';
+  document.getElementById('repo-cancel').addEventListener('click', closeModal);
+  folder.addEventListener('change', () => {
+    const archivos = Array.from(folder.files).filter(file =>
+      !file.webkitRelativePath.split('/').slice(1, -1).some(omitirCarpeta));
+    closeModal();
+    if (boton.isConnected) analizarRepositorio(archivos, boton);
+  });
+  elegir.addEventListener('click', async () => {
+    if (!usarSelector) {
+      folder.click();
+      return;
+    }
+    elegir.disabled = true;
+    try {
+      const carpeta = await window.showDirectoryPicker({ mode: 'read', id: 'qubira-repositorio' });
+      if (!elegir.isConnected || !boton.isConnected) return;
+      closeModal();
+      analizarRepositorio(recorrerRepositorio(carpeta, boton), boton);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        mensaje.textContent = 'Puedes elegir otra carpeta del proyecto.';
+      } else {
+        usarSelector = false;
+        mensaje.textContent = 'Vuelve a pulsar Elegir carpeta para usar el selector compatible.';
+      }
+    } finally {
+      elegir.disabled = false;
+    }
+  });
+  elegir.focus();
 }
 
 function tecnologiaArchivo(file) {
@@ -997,20 +1058,10 @@ function esArchivoFuente(file) {
     && !/\.(?:min\.|bundle\.|generated\.|designer\.)[^.]+$|\.d\.[cm]?ts$/i.test(file.name);
 }
 
-async function analizarRepositorio(folder) {
-  const archivosProyecto = Array.from(folder.files).filter(perteneceAlProyecto);
-  const archivos = archivosProyecto.filter(esArchivoFuente);
-  const manifiestos = archivosProyecto.filter(file => file.name === 'package.json');
-  folder.value = '';
+async function analizarRepositorio(archivosProyecto, boton) {
   const input = document.getElementById('f-lineas');
   const tecnologias = document.getElementById('f-tecnologias');
-  const boton = document.getElementById('f-calcular-lineas');
   const estado = document.getElementById('f-lineas-estado');
-
-  if (!archivos.length && !manifiestos.length) {
-    estado.textContent = 'No se encontraron archivos de c\u00f3digo ni manifiestos compatibles.';
-    return;
-  }
 
   boton.disabled = true;
   input.readOnly = true;
@@ -1018,17 +1069,22 @@ async function analizarRepositorio(folder) {
   try {
     let total = 0;
     const detectadas = new Set();
-    for (const archivo of archivos) {
-      if (!folder.isConnected) return;
-      const contenido = await archivo.text();
-      total += contenido.split(/\r\n|\n|\r/).filter(linea => linea.trim()).length;
-      detectadas.add(tecnologiaArchivo(archivo));
-    }
+    let archivos = 0;
+    let manifiestos = 0;
     let manifiestosOmitidos = 0;
-    for (const manifiesto of manifiestos) {
-      if (!folder.isConnected) return;
+    for await (const archivo of archivosProyecto) {
+      if (!boton.isConnected) return;
+      if (esArchivoFuente(archivo)) {
+        const contenido = await archivo.text();
+        total += contenido.split(/\r\n|\n|\r/).filter(linea => linea.trim()).length;
+        detectadas.add(tecnologiaArchivo(archivo));
+        archivos++;
+        continue;
+      }
+      if (archivo.name !== 'package.json') continue;
+      manifiestos++;
       try {
-        const contenido = JSON.parse((await manifiesto.text()).replace(/^\uFEFF/, ''));
+        const contenido = JSON.parse((await archivo.text()).replace(/^\uFEFF/, ''));
         const paquetes = { ...contenido.dependencies, ...contenido.devDependencies, ...contenido.optionalDependencies, ...contenido.peerDependencies };
         for (const [paquete, tecnologia] of Object.entries(TECNOLOGIAS_POR_PAQUETE)) {
           if (Object.hasOwn(paquetes, paquete)) detectadas.add(tecnologia);
@@ -1037,14 +1093,18 @@ async function analizarRepositorio(folder) {
         manifiestosOmitidos++;
       }
     }
-    if (!folder.isConnected) return;
-    if (archivos.length) input.value = total;
+    if (!boton.isConnected) return;
+    if (!archivos && !manifiestos) {
+      estado.textContent = 'No se encontraron archivos de c\u00f3digo ni manifiestos compatibles.';
+      return;
+    }
+    if (archivos) input.value = total;
     const sugerencias = [...detectadas].sort((a, b) => a.localeCompare(b, 'es')).join(', ');
     const tieneTecnologias = Boolean(tecnologias.value.trim());
     if (sugerencias && !tieneTecnologias) tecnologias.value = sugerencias;
     scheduleAutosave();
     const resumen = [
-      archivos.length ? `${total.toLocaleString('es-PE')} l\u00edneas no vac\u00edas en ${archivos.length.toLocaleString('es-PE')} archivos.` : '',
+      archivos ? `${total.toLocaleString('es-PE')} l\u00edneas no vac\u00edas en ${archivos.toLocaleString('es-PE')} archivos.` : '',
       sugerencias ? `Tecnolog\u00edas detectadas: ${sugerencias}.` : 'No se detectaron tecnolog\u00edas compatibles.',
       sugerencias && tieneTecnologias ? 'Se conserv\u00f3 el contenido del campo.' : '',
       manifiestosOmitidos ? 'Algunos manifiestos no se pudieron leer.' : '',
