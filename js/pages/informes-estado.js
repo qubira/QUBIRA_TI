@@ -2382,11 +2382,11 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
           <img src="/css/qubira-membrete.png" alt="Qubira" />
         </div>
         <div class="informe-membrete-centro">
-          <div>
+          <div class="informe-membrete-titulo">
             <strong>QUBIRA S.A.C.</strong>
             <div>${esc(titulo)}</div>
           </div>
-          <p>${esc(areas)}</p>
+          <p class="informe-membrete-areas">${esc(areas)}</p>
         </div>
         <div class="informe-membrete-registro">
           <dl>
@@ -2394,7 +2394,7 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
             <div><dt>Versi\u00f3n:</dt><dd>${esc(version)}</dd></div>
             <div><dt>Fecha:</dt><dd>${esc(fecha)}</dd></div>
           </dl>
-          <p>Uso restringido</p>
+          <p class="informe-membrete-restriccion">Uso restringido</p>
         </div>
       </header>
 

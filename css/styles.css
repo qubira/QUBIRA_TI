@@ -198,32 +198,40 @@
   border: 1px solid #c7d0d5;
   background: white;
   color: #172334;
-  font: 11px/1.25 Arial, sans-serif;
+  font: 12px/1.25 Arial, sans-serif;
 }
 .informe-membrete-logo {
   display: grid;
   place-items: center;
-  padding: 5px;
+  padding: 8px;
 }
-.informe-membrete-logo img { width: 64px; height: 49px; object-fit: contain; }
+.informe-membrete-logo img { width: 72px; height: 58px; object-fit: contain; }
 .informe-membrete-centro,
 .informe-membrete-registro {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   min-width: 0;
   border-left: 1px solid #c7d0d5;
   overflow-wrap: anywhere;
 }
 .informe-membrete-centro {
-  border-left: 0;
-  padding: 4px 6px;
   text-align: center;
-  color: #154555;
   font-weight: 700;
 }
-.informe-membrete-registro { padding: 4px 7px; font-size: 10px; }
+.informe-membrete-titulo { padding: 8px 6px; }
+.informe-membrete-titulo strong { color: #008696; }
+.informe-membrete-areas,
+.informe-membrete-restriccion {
+  margin: 0;
+  border-top: 1px solid #c7d0d5;
+  padding: 5px 7px;
+}
+.informe-membrete-areas { background: #e5f2f3; color: #475569; font-weight: 400; }
+.informe-membrete-restriccion { background: #fff5d6; color: #a24500; font-weight: 700; }
+.informe-membrete-registro dl { padding: 5px 7px; }
 .informe-membrete-registro dl div { display: flex; gap: 3px; }
+.informe-membrete-registro dt { font-weight: 700; }
 .informe-aviso-uso {
   border-left: 3px solid #008696;
   padding: 8px 10px;
@@ -285,35 +293,34 @@
       vertical-align: middle;
       margin: 5mm 0 4mm;
       border: 1px solid #c7d0d5;
-      border-right: 0;
       background: white;
       print-color-adjust: exact;
     }
     @top-center {
       width: 49%;
       margin: 5mm 0 4mm;
-      padding: 1mm 2mm;
+      padding: 1mm 2mm 1.4mm;
       border-block: 1px solid #c7d0d5;
-      background: white;
+      background: linear-gradient(to top, #e5f2f3 0 5mm, #c7d0d5 5mm calc(5mm + 1px), white calc(5mm + 1px));
       text-align: center;
       color: #154555;
       font: bold 8.5pt/1.25 Arial, sans-serif;
       white-space: pre-wrap;
-      vertical-align: middle;
+      vertical-align: bottom;
       overflow-wrap: anywhere;
       print-color-adjust: exact;
     }
     @top-right {
       width: 24%;
       margin: 5mm 0 4mm;
-      padding: 1mm 2mm;
+      padding: 1mm 2mm 1.4mm;
       border: 1px solid #c7d0d5;
-      background: white;
+      background: linear-gradient(to top, #fff5d6 0 5mm, #c7d0d5 5mm calc(5mm + 1px), white calc(5mm + 1px));
       color: #172334;
       font: 7.5pt/1.25 Arial, sans-serif;
       white-space: pre-wrap;
       text-align: left;
-      vertical-align: middle;
+      vertical-align: bottom;
       overflow-wrap: anywhere;
       print-color-adjust: exact;
     }
