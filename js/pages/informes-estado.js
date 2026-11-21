@@ -299,6 +299,64 @@ async function eliminarInforme(id) {
 // ==========================================================================
 // MODAL NUEVO INFORME
 // ==========================================================================
+async function leerProyectoParaInforme(id) {
+  const [proyecto, requisitos, tecnologias] = await Promise.all([
+    api.get(`/projects/${encodeURIComponent(id)}`),
+    api.get('/requirements', { project_id: id }),
+    api.get('/technologies', { project_id: id }),
+  ]);
+  const plantilla = document.createElement('template');
+  const convertir = (req, indice, funcional) => {
+    plantilla.innerHTML = req.description || '';
+    plantilla.content.querySelectorAll('script, style').forEach(node => node.remove());
+    plantilla.content.querySelectorAll('br').forEach(node => node.replaceWith(' '));
+    let descripcion = plantilla.content.textContent.trim().replace(/^\[(?:RF|RNF)-\d+\]\s*/i, '');
+    const separador = descripcion.lastIndexOf(' \u2014 ');
+    const etiqueta = separador >= 0 ? descripcion.slice(separador + 3).trim().replace(/\.$/, '') : '';
+    const estado = funcional ? Object.keys(ESTADOS_RF).find(key => ESTADOS_RF[key] === etiqueta) : EVAL_RNF.find(value => value === etiqueta);
+    if (estado) descripcion = descripcion.slice(0, separador).trim();
+    const codigo = `${funcional ? 'RF' : 'RNF'}-${String(indice + 1).padStart(2, '0')}`;
+    if (funcional) return { codigo, descripcion, estado_rf: estado || 'pendiente' };
+    return { codigo, descripcion, categoria: '', evaluacion: estado || 'Pendiente' };
+  };
+  const requerimientos = requisitos.filter(req => req.type !== 'non_functional').map((req, i) => convertir(req, i, true));
+  const req_no_funcionales = requisitos.filter(req => req.type === 'non_functional').map((req, i) => convertir(req, i, false));
+  return {
+    proyecto_origen: {
+      codigo: proyecto.code, nombre: proyecto.name, cliente: proyecto.client,
+      responsable: proyecto.responsible_name, avance: proyecto.progress,
+      inicio: proyecto.start_date, entrega: proyecto.end_date, repositorio: proyecto.github_url,
+    },
+    antecedentes: proyecto.description?.trim() || '',
+    url_sitio_publicado: proyecto.website_url || '',
+    tecnologias_usadas: [...new Set(tecnologias.map(t => t.name?.trim()).filter(Boolean))].join(', '),
+    estado_general: {
+      pending: 'INCONCLUSO', active: 'EN DESARROLLO', paused: 'PAUSADO',
+      finished_by_ti: 'EN DESARROLLO', completed: 'COMPLETADO', cancelled: 'INCONCLUSO',
+    }[proyecto.status],
+    requerimientos,
+    req_no_funcionales,
+    reqs_funcionales_total: requerimientos.length,
+  };
+}
+
+function completarDesdeProyecto(actual, origen) {
+  const datos = { ...actual, proyecto_origen: origen.proyecto_origen };
+  for (const campo of ['url_sitio_publicado', 'tecnologias_usadas', 'estado_general']) {
+    if (!datos[campo] && origen[campo]) datos[campo] = origen[campo];
+  }
+  if (!datos.antecedentes?.trim() && !datos.antecedentes_tablas?.length && origen.antecedentes) {
+    datos.antecedentes = origen.antecedentes;
+    delete datos.antecedentes_segmentos;
+  }
+  if (!datos.requerimientos?.length) {
+    datos.requerimientos = origen.requerimientos;
+    if (!datos.reqs_funcionales_total) datos.reqs_funcionales_total = origen.reqs_funcionales_total;
+  }
+  if (!datos.req_no_funcionales?.length) datos.req_no_funcionales = origen.req_no_funcionales;
+  return datos;
+}
+
 function openNuevoModal() {
   showModal('Nuevo Informe de Estado', `
     <div class="space-y-4">
@@ -312,6 +370,7 @@ function openNuevoModal() {
           <option value="">\u2014 Sin proyecto \u2014</option>
           ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
         </select>
+        <p class="mt-1 text-xs text-gray-500">Se copiar\u00e1n los datos disponibles y los requisitos del proyecto.</p>
       </div>
       <div>
         <label class="label" for="ni-fecha">Fecha l\u00edmite de respuesta</label>
@@ -326,6 +385,15 @@ function openNuevoModal() {
   `);
 
   document.getElementById('ni-cancel').addEventListener('click', closeModal);
+  const proyecto = document.getElementById('ni-project');
+  const tituloInput = document.getElementById('ni-titulo');
+  let tituloSugerido = '';
+  proyecto.addEventListener('change', () => {
+    const seleccionado = _projects.find(p => String(p.id) === proyecto.value);
+    const sugerencia = seleccionado ? `Informe de estado del proyecto ${seleccionado.name}` : '';
+    if (!tituloInput.value.trim() || tituloInput.value === tituloSugerido) tituloInput.value = sugerencia;
+    tituloSugerido = sugerencia;
+  });
   const create = document.getElementById('ni-crear');
   create.addEventListener('click', async () => {
     const titulo  = document.getElementById('ni-titulo').value.trim();
@@ -340,9 +408,12 @@ function openNuevoModal() {
 
     create.disabled = true;
     try {
+      const datos = { areas_participantes: AREAS_PREDETERMINADAS };
+      if (projId) Object.assign(datos, await leerProyectoParaInforme(projId));
+      if (!create.isConnected) return;
       const nuevo = await api.post('/informes-estado', {
         titulo, project_id: projId || null, fecha_limite: fecha || null,
-        datos: { areas_participantes: AREAS_PREDETERMINADAS },
+        datos,
       });
       toast('Informe creado');
       if (create.isConnected) {
@@ -405,6 +476,7 @@ function mountDetalle(inf, dat) {
         </div>
       </div>
       <div class="flex shrink-0 flex-wrap items-center gap-2">
+        ${inf.project_id ? `<button id="btn-importar-proyecto" class="btn-secondary whitespace-nowrap">${icon('sync', 16)} Completar desde proyecto</button>` : ''}
         <button id="btn-estado" class="btn-secondary whitespace-nowrap">${icon('swap_horiz',16)} Cambiar estado</button>
         <button id="btn-preview" class="btn-primary whitespace-nowrap">${icon('print',16)} Vista previa</button>
         <span id="save-status" role="status" class="min-h-4 basis-full text-xs text-gray-500 lg:text-right"></span>
@@ -450,6 +522,24 @@ function mountDetalle(inf, dat) {
 
   // Preview
   document.getElementById('btn-preview').addEventListener('click', openPreview);
+  const importar = document.getElementById('btn-importar-proyecto');
+  importar?.addEventListener('click', async () => {
+    importar.disabled = true;
+    try {
+      const origen = await leerProyectoParaInforme(inf.project_id);
+      if (!importar.isConnected) return;
+      collectPortadaFields();
+      inf.datos = completarDesdeProyecto(inf.datos, origen);
+      document.getElementById('tab-panel').innerHTML = renderTab(_tab, inf, inf.datos);
+      wireTab(_tab);
+      scheduleAutosave();
+      await flushAutosave();
+    } catch (e) {
+      toast('Error al cargar los datos del proyecto: ' + e.message, 'error');
+    } finally {
+      importar.disabled = false;
+    }
+  });
 
   // Wire primer tab
   wireTab(_tab);
@@ -478,11 +568,34 @@ function areasParticipantes(dat) {
   return dat.areas_participantes ?? AREAS_PREDETERMINADAS;
 }
 
+function renderProyectoOrigen(proyecto) {
+  if (!proyecto) return '';
+  const campos = [
+    ['Proyecto', [proyecto.codigo, proyecto.nombre].filter(Boolean).join(' \u00b7 ')],
+    ['Cliente', proyecto.cliente],
+    ['Responsable', proyecto.responsable],
+    ['Avance del proyecto', proyecto.avance == null ? '' : `${proyecto.avance}%`],
+    ['Inicio', proyecto.inicio && fmtDate(proyecto.inicio)],
+    ['Entrega del proyecto', proyecto.entrega && fmtDate(proyecto.entrega)],
+    ['Repositorio', proyecto.repositorio],
+  ].filter(([, valor]) => valor);
+  return `<section class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <h3 class="mb-3 font-semibold text-gray-900">Proyecto vinculado</h3>
+    <dl class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+      ${campos.map(([etiqueta, valor]) => `<div class="min-w-0">
+        <dt class="text-xs text-gray-500">${etiqueta}</dt>
+        <dd class="break-words font-medium text-gray-900">${esc(valor)}</dd>
+      </div>`).join('')}
+    </dl>
+  </section>`;
+}
+
 function renderTabPortada(inf, dat) {
   const seleccionadas = areasParticipantes(dat);
   const opciones = [...new Set([...AREAS_DISPONIBLES, ...seleccionadas])];
   return `
     <h2 class="text-lg font-bold text-gray-900 mb-5">Portada del informe</h2>
+    ${renderProyectoOrigen(dat.proyecto_origen)}
     <section class="rounded-xl border border-gray-200 p-4 sm:p-5 mb-4" aria-labelledby="portada-identificacion">
       <h3 id="portada-identificacion" class="font-semibold text-gray-900 mb-4">Identificaci\u00f3n</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1721,6 +1834,8 @@ function buildPreviewHTML(inf, dat) {
         <div class="font-mono font-bold text-base mt-1">${esc(inf.codigo)}</div>
         <p class="text-xs text-gray-500 mt-1">Versi\u00f3n ${esc(inf.version || '1.0')} \u00b7 ${fmtDate(inf.fecha_emision || inf.created_at)}</p>
       </div>
+
+      ${renderProyectoOrigen(dat.proyecto_origen)}
 
       <!-- Portada info -->
       <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
