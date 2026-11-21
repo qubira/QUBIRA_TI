@@ -31,7 +31,9 @@ const COLORES_MODULO = {
   pendiente: 'bg-gray-100 text-gray-600',
 };
 
-const EVAL_RNF = ['Cumple', 'Cumple con reserva', 'Limitaci\u00f3n', 'Brecha cr\u00edtica', 'Pendiente'];
+const EVAL_RNF = [...new Set([
+  'Cumple', 'Cumple con reserva', 'Limitaci\u00f3n', 'Brecha cr\u00edtica', ...Object.values(ESTADOS_RF),
+])];
 const COLORES_RNF = {
   'Cumple':             'bg-emerald-100 text-emerald-800',
   'Cumple con reserva': 'bg-blue-100 text-blue-800',
@@ -312,7 +314,7 @@ async function leerProyectoParaInforme(id) {
     const implementacion = Object.hasOwn(ESTADOS_RF, req.implementation_status) ? req.implementation_status : null;
     const comun = { codigo, descripcion, requisito_proyecto_id: req.id, implementation_status: implementacion };
     if (funcional) return { ...comun, estado_rf: implementacion || estado || 'pendiente' };
-    return { ...comun, evaluacion: estado || 'Pendiente' };
+    return { ...comun, evaluacion: ESTADOS_RF[implementacion] || estado || 'Pendiente' };
   };
   const requerimientos = requisitos.filter(req => req.type !== 'non_functional').map((req, i) => convertir(req, i, true));
   const req_no_funcionales = requisitos.filter(req => req.type === 'non_functional').map((req, i) => convertir(req, i, false));
@@ -359,6 +361,7 @@ function actualizarEstadosRequisitos(actuales, origen, funcional) {
     if (estado) {
       actualizado.implementation_status = estado;
       if (funcional) actualizado.estado_rf = estado;
+      else actualizado.evaluacion = ESTADOS_RF[estado];
     }
     return actualizado;
   });
@@ -934,7 +937,6 @@ function renderTabRNF(dat) {
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
             <th class="px-3 py-2 text-left w-24">C\u00f3digo</th>
             <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
-            <th class="px-3 py-2 text-left w-36">Estado del proyecto</th>
             <th class="px-3 py-2 text-left w-48">Evaluaci\u00f3n</th>
             <th class="px-3 py-2 w-10"></th>
           </tr>
@@ -947,15 +949,22 @@ function renderTabRNF(dat) {
     </div>`;
 }
 
+function evaluacionRNF(req) {
+  if (req.evaluacion_manual || (req.evaluacion && req.evaluacion !== 'Pendiente')) {
+    return req.evaluacion;
+  }
+  return ESTADOS_RF[req.implementation_status] || 'Pendiente';
+}
+
 function rowRNF(r, i) {
+  const evaluacion = evaluacionRNF(r);
   return `
     <tr data-rnfi="${i}" class="border-b border-gray-100">
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" /></td>
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-desc" value="${esc(r.descripcion || '')}" /></td>
-      <td class="px-3 py-2 text-xs text-gray-600">${esc(ESTADOS_RF[r.implementation_status] || '\u2014')}</td>
       <td class="px-3 py-2">
         <select class="input text-sm rnf-eval">
-          ${EVAL_RNF.map(o => `<option value="${o}" ${r.evaluacion === o ? 'selected' : ''}>${o}</option>`).join('')}
+          ${EVAL_RNF.map(o => `<option value="${o}" ${evaluacion === o ? 'selected' : ''}>${o}</option>`).join('')}
         </select>
       </td>
       <td class="px-3 py-2 text-right">
@@ -1592,7 +1601,9 @@ function wireRNF() {
     const row = e.target.closest('[data-rnfi]');
     if (!row) return;
     const i = parseInt(row.dataset.rnfi);
-    _currentInforme.datos.req_no_funcionales[i].evaluacion = e.target.value;
+    const requisito = _currentInforme.datos.req_no_funcionales[i];
+    requisito.evaluacion = e.target.value;
+    requisito.evaluacion_manual = true;
     scheduleAutosave();
   });
 }
@@ -1957,8 +1968,11 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">5. Requerimientos No Funcionales</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left">Estado del proyecto</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
-            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5">${esc(ESTADOS_RF[r.implementation_status] || '\u2014')}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
+            <tbody>${rnfs.map((r, i) => {
+              const evaluacion = evaluacionRNF(r);
+              return `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[evaluacion] || ''}">${esc(evaluacion)}</span></td></tr>`;
+            }).join('')}</tbody>
           </table>
         </div>` : ''}
 
