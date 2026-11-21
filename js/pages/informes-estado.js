@@ -2291,6 +2291,22 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
         </tbody>
       </table>
 
+      <div class="border-t-2 border-gray-800 pt-4">
+        <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
+          <p><strong>Elaborado por</strong><br>${esc(inf.elaborado_nombre || '\u2014')}</p>
+          <p><strong>Responsable de enviar el informe final a firma</strong><br>${esc(dat.responsable_envio_firma || '\u2014')}</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          ${areasParticipantes(dat).map(area => `
+            <div class="text-center border border-gray-300 rounded p-3 break-inside-avoid">
+              <div class="h-10 border-b border-gray-400 mb-2"></div>
+              <p class="text-xs font-semibold">Revisa y firma \u00b7 ${esc(area)}</p>
+              <p class="text-xs mt-1">${esc(responsableFirma(inf, dat, area) || '\u2014')}</p>
+            </div>`).join('')}
+        </div>
+      </div>
+
       <!-- Resumen Ejecutivo -->
       ${dat.resumen_ejecutivo ? `
         <div>
@@ -2397,22 +2413,6 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Recomendaci\u00f3n</h2>
           <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.recomendacion)}</p>
         </div>` : ''}
-
-      <div class="border-t-2 border-gray-800 pt-4">
-        <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
-          <p><strong>Elaborado por</strong><br>${esc(inf.elaborado_nombre || '\u2014')}</p>
-          <p><strong>Responsable de enviar el informe final a firma</strong><br>${esc(dat.responsable_envio_firma || '\u2014')}</p>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          ${areasParticipantes(dat).map(area => `
-            <div class="text-center border border-gray-300 rounded p-3 break-inside-avoid">
-              <div class="h-10 border-b border-gray-400 mb-2"></div>
-              <p class="text-xs font-semibold">Revisa y firma \u00b7 ${esc(area)}</p>
-              <p class="text-xs mt-1">${esc(responsableFirma(inf, dat, area) || '\u2014')}</p>
-            </div>`).join('')}
-        </div>
-      </div>
 
       <!-- Hoja de respuesta -->
       ${dat.hoja_respuesta ? `
