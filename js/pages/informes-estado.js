@@ -1,12 +1,12 @@
 ﻿import { api } from '../api.js';
 import { toast, showModal, closeModal, confirmModal, spinner, icon, pageHeader, fmtDate } from '../utils.js';
 
-// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Constantes -----------------------------------------------------------
 const ESTADOS_INFORME = {
-  borrador:    { label: 'Borrador',     color: 'bg-gray-100 text-gray-700 border-gray-300' },
-  en_revision: { label: 'En revisiÃ³n',  color: 'bg-amber-100 text-amber-800 border-amber-300' },
-  emitido:     { label: 'Emitido',      color: 'bg-blue-100 text-blue-800 border-blue-300' },
-  cerrado:     { label: 'Cerrado',      color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  borrador:    { label: 'Borrador',       color: 'bg-gray-100 text-gray-700 border-gray-300' },
+  en_revision: { label: 'En revisi\u00f3n', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+  emitido:     { label: 'Emitido',        color: 'bg-blue-100 text-blue-800 border-blue-300' },
+  cerrado:     { label: 'Cerrado',        color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
 };
 
 const ESTADOS_RF = {
@@ -37,12 +37,12 @@ const COLORES_MODULO = {
   pendiente: 'bg-gray-100 text-gray-600',
 };
 
-const EVAL_RNF = ['Cumple', 'Cumple con reserva', 'LimitaciÃ³n', 'Brecha crÃ­tica', 'Pendiente'];
+const EVAL_RNF = ['Cumple', 'Cumple con reserva', 'Limitaci\u00f3n', 'Brecha cr\u00edtica', 'Pendiente'];
 const COLORES_RNF = {
   'Cumple':             'bg-emerald-100 text-emerald-800',
   'Cumple con reserva': 'bg-blue-100 text-blue-800',
-  'LimitaciÃ³n':         'bg-yellow-100 text-yellow-800',
-  'Brecha crÃ­tica':     'bg-red-100 text-red-800',
+  'Limitaci\u00f3n':    'bg-yellow-100 text-yellow-800',
+  'Brecha cr\u00edtica':'bg-red-100 text-red-800',
   'Pendiente':          'bg-gray-100 text-gray-600',
 };
 
@@ -67,7 +67,7 @@ const TABS = [
   { id: 'conclusiones', label: 'Conclusiones' },
 ];
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Helpers --------------------------------------------------------------
 function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -82,7 +82,7 @@ function miniSelect(opts, val, cls = '') {
   return `<select class="input text-sm ${cls}">${opts.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
 }
 
-// â”€â”€â”€ Estado local â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Estado local ---------------------------------------------------------
 let _informes  = [];
 let _projects  = [];
 let _currentInforme = null;
@@ -90,7 +90,7 @@ let _tab       = 'portada';
 let _saving    = false;
 let _saveTimer = null;
 
-// â”€â”€â”€ Punto de entrada pÃºblico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Punto de entrada p\u00fablico -----------------------------------------------
 export function render(params = {}) {
   if (params.id) {
     renderDetalle(params.id);
@@ -99,9 +99,9 @@ export function render(params = {}) {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // LISTA
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 async function renderLista() {
   const app = document.getElementById('main');
   app.innerHTML = spinner();
@@ -124,16 +124,16 @@ async function renderLista() {
   app.innerHTML = `
     ${pageHeader(
       'Informes de Estado del Proyecto',
-      'IT-IE Â· Ãrea emisora: OTI Â· Revisores: ODN, OPP Â· Aprueba: ADG',
+      'IT-IE \u00b7 \u00c1rea emisora: OTI \u00b7 Revisores: ODN, OPP \u00b7 Aprueba: ADG',
       `<button id="btn-nuevo" class="btn-primary inline-flex items-center gap-1.5">${icon('add', 18)} Nuevo Informe</button>`
     )}
 
     <!-- KPIs -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      ${kpiCard('Total', total, 'assignment', 'text-gray-700', 'bg-gray-50')}
-      ${kpiCard('Borradores', borradores, 'edit_note', 'text-gray-500', 'bg-gray-50')}
-      ${kpiCard('En revisiÃ³n', enRevision, 'rate_review', 'text-amber-600', 'bg-amber-50')}
-      ${kpiCard('Emitidos', emitidos, 'check_circle', 'text-blue-600', 'bg-blue-50')}
+      ${kpiCard('Total', total, 'assignment', 'text-gray-600', 'bg-gray-100', 'border-gray-400')}
+      ${kpiCard('Borradores', borradores, 'edit_note', 'text-gray-500', 'bg-gray-100', 'border-gray-300')}
+      ${kpiCard('En revisi\u00f3n', enRevision, 'rate_review', 'text-amber-600', 'bg-amber-50', 'border-amber-400')}
+      ${kpiCard('Emitidos', emitidos, 'check_circle', 'text-blue-600', 'bg-blue-50', 'border-blue-400')}
     </div>
 
     <!-- Filtros -->
@@ -154,8 +154,8 @@ async function renderLista() {
         <table class="w-full text-sm">
           <thead>
             <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
-              <th class="px-4 py-3 text-left">CÃ³digo</th>
-              <th class="px-4 py-3 text-left">TÃ­tulo</th>
+              <th class="px-4 py-3 text-left">C\u00f3digo</th>
+              <th class="px-4 py-3 text-left">T\u00edtulo</th>
               <th class="px-4 py-3 text-left">Proyecto</th>
               <th class="px-4 py-3 text-left">Estado</th>
               <th class="px-4 py-3 text-left">Fecha</th>
@@ -187,9 +187,9 @@ async function renderLista() {
   });
 }
 
-function kpiCard(label, value, iconName, textCls, bgCls) {
+function kpiCard(label, value, iconName, textCls, bgCls, borderCls) {
   return `
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-3">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-3 border-l-4 ${borderCls}">
       <div class="w-10 h-10 rounded-xl ${bgCls} flex items-center justify-center shrink-0">
         <span class="material-icons ${textCls}" style="font-size:20px">${iconName}</span>
       </div>
@@ -203,7 +203,7 @@ function kpiCard(label, value, iconName, textCls, bgCls) {
 function emptyState() {
   return `<div class="py-16 text-center text-gray-400">
     <span class="material-icons" style="font-size:48px">description</span>
-    <p class="mt-2 text-sm">No hay informes aÃºn. Crea el primero.</p>
+    <p class="mt-2 text-sm">No hay informes a\u00fan. Crea el primero.</p>
   </div>`;
 }
 
@@ -215,7 +215,7 @@ function renderFilasInformes(list) {
         <span class="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">${esc(inf.codigo)}</span>
       </td>
       <td class="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">${esc(inf.titulo)}</td>
-      <td class="px-4 py-3 text-gray-600 text-sm">${esc(inf.project_name || 'â€”')}</td>
+      <td class="px-4 py-3 text-gray-600 text-sm">${esc(inf.project_name || '\u2014')}</td>
       <td class="px-4 py-3">${stateBadge(inf.estado)}</td>
       <td class="px-4 py-3 text-gray-500 text-sm">${fmtDate(inf.fecha_emision || inf.created_at)}</td>
       <td class="px-4 py-3 text-right">
@@ -247,7 +247,7 @@ async function eliminarInforme(id) {
   const inf = _informes.find(i => i.id === id);
   if (!inf) return;
   const ok = await confirmModal(
-    `Â¿Eliminar el informe <strong>${esc(inf.codigo)}</strong>? Esta acciÃ³n no se puede deshacer.`,
+    `\u00bfEliminar el informe <strong>${esc(inf.codigo)}</strong>? Esta acci\u00f3n no se puede deshacer.`,
     { title: 'Eliminar informe', confirmLabel: 'Eliminar', danger: true }
   );
   if (!ok) return;
@@ -260,16 +260,16 @@ async function eliminarInforme(id) {
   }
 }
 
-// â”€â”€â”€ Helper de navegaciÃ³n (usa el router de la app si existe, si no history.pushState) â”€
+// --- Helper de navegaci\u00f3n --------------------------------------------------
 function navigate(path) {
   if (window.navigateTo) { window.navigateTo(path); return; }
   history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // MODAL NUEVO INFORME
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 async function openNuevoModal() {
   if (!_projects.length) {
     try { _projects = await api.get('/projects'); } catch { _projects = []; }
@@ -278,22 +278,22 @@ async function openNuevoModal() {
   showModal('Nuevo Informe de Estado', `
     <div class="space-y-4">
       <div>
-        <label class="label">TÃ­tulo del informe *</label>
-        <input id="ni-titulo" class="input w-full" placeholder="Ej: Informe de Estado â€” Sistema de GestiÃ³n Qubira" />
+        <label class="label">T\u00edtulo del informe *</label>
+        <input id="ni-titulo" class="input w-full" placeholder="Ej: Informe de Estado \u2013 Sistema de Gesti\u00f3n Qubira" />
       </div>
       <div>
         <label class="label">Proyecto vinculado</label>
         <select id="ni-project" class="input w-full">
-          <option value="">â€” Sin proyecto â€”</option>
+          <option value="">\u2014 Sin proyecto \u2014</option>
           ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label class="label">Fecha lÃ­mite de respuesta</label>
+        <label class="label">Fecha l\u00edmite de respuesta</label>
         <input id="ni-fecha" type="date" class="input w-full" />
       </div>
       <div>
-        <label class="label">VersiÃ³n</label>
+        <label class="label">Versi\u00f3n</label>
         <input id="ni-version" class="input w-full" value="1.0" />
       </div>
     </div>
@@ -313,7 +313,7 @@ async function openNuevoModal() {
 
     if (!titulo) {
       document.getElementById('ni-titulo').classList.add('border-red-500');
-      toast('El tÃ­tulo es obligatorio', 'error');
+      toast('El t\u00edtulo es obligatorio', 'error');
       return;
     }
 
@@ -330,9 +330,9 @@ async function openNuevoModal() {
   });
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// DETALLE / EDICIÃ“N
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
+// DETALLE / EDICI\u00d3N
+// ==========================================================================
 async function renderDetalle(id) {
   const app = document.getElementById('main');
   app.innerHTML = spinner();
@@ -374,7 +374,7 @@ function mountDetalle(inf, dat) {
         </div>
       </div>
       <div class="flex flex-wrap gap-2 items-center">
-        <span id="save-status" class="text-xs text-gray-400 italic hidden">Guardandoâ€¦</span>
+        <span id="save-status" class="text-xs text-gray-400 italic hidden">Guardando\u2026</span>
         <button id="btn-estado" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('swap_horiz',16)} Cambiar estado</button>
         <button id="btn-preview" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('print',16)} Vista previa</button>
       </div>
@@ -420,9 +420,9 @@ function mountDetalle(inf, dat) {
   wireTab(_tab);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // RENDER DE TABS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 function renderTab(tab, inf, dat) {
   switch (tab) {
     case 'portada':       return renderTabPortada(inf, dat);
@@ -438,29 +438,29 @@ function renderTab(tab, inf, dat) {
   }
 }
 
-// â”€â”€ Tab: Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Portada ------------------------------------------------------------
 function renderTabPortada(inf, dat) {
   return `
-    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">1. Portada / IdentificaciÃ³n</h2>
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">1. Portada / Identificaci\u00f3n</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       <div>
-        <label class="label">TÃ­tulo del informe</label>
+        <label class="label">T\u00edtulo del informe</label>
         <input id="f-titulo" class="input w-full" value="${esc(inf.titulo)}" data-field="titulo" data-root="1" />
       </div>
       <div>
-        <label class="label">VersiÃ³n</label>
+        <label class="label">Versi\u00f3n</label>
         <input id="f-version" class="input w-full" value="${esc(inf.version || '1.0')}" data-field="version" data-root="1" />
       </div>
       <div>
         <label class="label">Dirigido a</label>
-        <input id="f-dirigido-a" class="input w-full" value="${esc(dat.dirigido_a || 'Alta DirecciÃ³n Gerencial (ADG)')}" data-field="dirigido_a" />
+        <input id="f-dirigido-a" class="input w-full" value="${esc(dat.dirigido_a || 'Alta Direcci\u00f3n Gerencial (ADG)')}" data-field="dirigido_a" />
       </div>
       <div>
-        <label class="label">UbicaciÃ³n</label>
-        <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, PerÃº')}" data-field="ubicacion" />
+        <label class="label">Ubicaci\u00f3n</label>
+        <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, Per\u00fa')}" data-field="ubicacion" />
       </div>
       <div>
-        <label class="label">Ãreas participantes (separadas por coma)</label>
+        <label class="label">\u00c1reas participantes (separadas por coma)</label>
         <input id="f-areas" class="input w-full" value="${esc((dat.areas_participantes || ['OTI','ODN','OPP']).join(', '))}" data-field="areas_participantes" />
       </div>
       <div>
@@ -468,19 +468,19 @@ function renderTabPortada(inf, dat) {
         <input id="f-url-sitio" class="input w-full" value="${esc(dat.url_sitio_publicado || '')}" data-field="url_sitio_publicado" />
       </div>
       <div>
-        <label class="label">TecnologÃ­as usadas</label>
+        <label class="label">Tecnolog\u00edas usadas</label>
         <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" data-field="tecnologias_usadas" />
       </div>
       <div>
-        <label class="label">LÃ­neas de cÃ³digo (aprox.)</label>
+        <label class="label">L\u00edneas de c\u00f3digo (aprox.)</label>
         <input id="f-lineas" type="number" class="input w-full" value="${esc(dat.lineas_codigo || 0)}" data-field="lineas_codigo" />
       </div>
       <div>
-        <label class="label">Fecha de emisiÃ³n</label>
+        <label class="label">Fecha de emisi\u00f3n</label>
         <input id="f-fecha-emision" type="date" class="input w-full" value="${inf.fecha_emision ? inf.fecha_emision.slice(0,10) : ''}" data-field="fecha_emision" data-root="1" />
       </div>
       <div>
-        <label class="label">Fecha lÃ­mite de respuesta</label>
+        <label class="label">Fecha l\u00edmite de respuesta</label>
         <input id="f-fecha-limite" type="date" class="input w-full" value="${inf.fecha_limite ? inf.fecha_limite.slice(0,10) : ''}" data-field="fecha_limite" data-root="1" />
       </div>
     </div>
@@ -492,10 +492,10 @@ function renderTabPortada(inf, dat) {
     <!-- Firmas -->
     <h3 class="text-sm font-bold text-gray-700 mt-8 mb-3">Firmas del documento</h3>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      ${firmaCard('OTI', 'ElaborÃ³', inf.elaborado_nombre)}
-      ${firmaCard('ODN', 'RevisÃ³', inf.revisado_por_odn_nombre || 'â€”')}
-      ${firmaCard('OPP', 'RevisÃ³', inf.revisado_por_opp_nombre || 'â€”')}
-      ${firmaCard('ADG', 'AprobÃ³', inf.aprobado_nombre || 'â€”')}
+      ${firmaCard('OTI', 'Elabor\u00f3', inf.elaborado_nombre)}
+      ${firmaCard('ODN', 'Revis\u00f3', inf.revisado_por_odn_nombre || '\u2014')}
+      ${firmaCard('OPP', 'Revis\u00f3', inf.revisado_por_opp_nombre || '\u2014')}
+      ${firmaCard('ADG', 'Aprob\u00f3', inf.aprobado_nombre || '\u2014')}
     </div>
   `;
 }
@@ -505,11 +505,11 @@ function firmaCard(area, rol, nombre) {
     <div class="border border-gray-200 rounded-xl p-3 text-center bg-gray-50/50">
       <span class="text-xs font-bold text-gray-500 uppercase">${area}</span>
       <p class="text-xs text-gray-400 mt-0.5">${rol}</p>
-      <p class="text-sm font-medium text-gray-700 mt-1">${esc(nombre || 'â€”')}</p>
+      <p class="text-sm font-medium text-gray-700 mt-1">${esc(nombre || '\u2014')}</p>
     </div>`;
 }
 
-// â”€â”€ Tab: Componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Componentes --------------------------------------------------------
 function renderTabComponentes(dat) {
   const rows = (dat.componentes || []);
   return `
@@ -522,8 +522,8 @@ function renderTabComponentes(dat) {
         <thead>
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
             <th class="px-3 py-2 text-left">Nombre</th>
-            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
-            <th class="px-3 py-2 text-left">URL de la pÃ¡gina</th>
+            <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
+            <th class="px-3 py-2 text-left">URL de la p\u00e1gina</th>
             <th class="px-3 py-2"></th>
           </tr>
         </thead>
@@ -547,7 +547,7 @@ function rowComponente(c, i) {
     </tr>`;
 }
 
-// â”€â”€ Tab: Estado del Proyecto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Estado del Proyecto ------------------------------------------------
 function renderTabEstado(dat) {
   const modulos = dat.modulos || [];
   return `
@@ -560,14 +560,14 @@ function renderTabEstado(dat) {
     </div>
 
     <div class="flex items-center justify-between mb-3">
-      <h3 class="text-sm font-bold text-gray-700">MÃ³dulos / Componentes</h3>
-      <button id="btn-add-mod" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar mÃ³dulo</button>
+      <h3 class="text-sm font-bold text-gray-700">M\u00f3dulos / Componentes</h3>
+      <button id="btn-add-mod" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar m\u00f3dulo</button>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
-            <th class="px-3 py-2 text-left">MÃ³dulo</th>
+            <th class="px-3 py-2 text-left">M\u00f3dulo</th>
             <th class="px-3 py-2 text-left">Estado</th>
             <th class="px-3 py-2 text-left">Detalle</th>
             <th class="px-3 py-2"></th>
@@ -577,7 +577,7 @@ function renderTabEstado(dat) {
           ${modulos.map((m, i) => rowModulo(m, i)).join('')}
         </tbody>
       </table>
-      ${modulos.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin mÃ³dulos registrados.</p>` : ''}
+      ${modulos.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin m\u00f3dulos registrados.</p>` : ''}
     </div>`;
 }
 
@@ -597,7 +597,7 @@ function rowModulo(m, i) {
     </tr>`;
 }
 
-// â”€â”€ Tab: Requerimientos Funcionales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Requerimientos Funcionales -----------------------------------------
 function renderTabRF(dat) {
   const reqs = dat.requerimientos || [];
   const total = dat.reqs_funcionales_total || 0;
@@ -614,8 +614,8 @@ function renderTabRF(dat) {
       <table class="w-full text-sm">
         <thead>
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
-            <th class="px-3 py-2 text-left w-24">CÃ³digo</th>
-            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
+            <th class="px-3 py-2 text-left w-24">C\u00f3digo</th>
+            <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
             <th class="px-3 py-2 text-left w-48">Estado</th>
             <th class="px-3 py-2 w-10"></th>
           </tr>
@@ -644,7 +644,7 @@ function rowRF(r, i) {
     </tr>`;
 }
 
-// â”€â”€ Tab: Requerimientos No Funcionales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Requerimientos No Funcionales --------------------------------------
 function renderTabRNF(dat) {
   const rnfs = dat.req_no_funcionales || [];
   return `
@@ -656,10 +656,10 @@ function renderTabRNF(dat) {
       <table class="w-full text-sm">
         <thead>
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
-            <th class="px-3 py-2 text-left w-32">CategorÃ­a</th>
-            <th class="px-3 py-2 text-left w-24">CÃ³digo</th>
-            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
-            <th class="px-3 py-2 text-left w-48">EvaluaciÃ³n</th>
+            <th class="px-3 py-2 text-left w-32">Categor\u00eda</th>
+            <th class="px-3 py-2 text-left w-24">C\u00f3digo</th>
+            <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
+            <th class="px-3 py-2 text-left w-48">Evaluaci\u00f3n</th>
             <th class="px-3 py-2 w-10"></th>
           </tr>
         </thead>
@@ -688,27 +688,27 @@ function rowRNF(r, i) {
     </tr>`;
 }
 
-// â”€â”€ Tab: Observaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Observaciones ------------------------------------------------------
 function renderTabObservaciones(dat) {
   return `
-    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Observaciones por Ãrea</h2>
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Observaciones por \u00c1rea</h2>
     <div class="space-y-5">
       <div>
-        <label class="label flex items-center gap-1.5">${icon('computer',16)} OTI â€” Jefatura de TecnologÃ­as de InformaciÃ³n</label>
+        <label class="label flex items-center gap-1.5">${icon('computer',16)} OTI \u2013 Jefatura de Tecnolog\u00edas de Informaci\u00f3n</label>
         <textarea id="f-obs-oti" class="input w-full" rows="4" data-field="obs_oti">${esc(dat.obs_oti || '')}</textarea>
       </div>
       <div>
-        <label class="label flex items-center gap-1.5">${icon('business',16)} ODN â€” Oficina de Desarrollo de Negocios</label>
+        <label class="label flex items-center gap-1.5">${icon('business',16)} ODN \u2013 Oficina de Desarrollo de Negocios</label>
         <textarea id="f-obs-odn" class="input w-full" rows="4" data-field="obs_odn">${esc(dat.obs_odn || '')}</textarea>
       </div>
       <div>
-        <label class="label flex items-center gap-1.5">${icon('analytics',16)} OPP â€” Oficina de Planeamiento y Presupuesto</label>
+        <label class="label flex items-center gap-1.5">${icon('analytics',16)} OPP \u2013 Oficina de Planeamiento y Presupuesto</label>
         <textarea id="f-obs-opp" class="input w-full" rows="4" data-field="obs_opp">${esc(dat.obs_opp || '')}</textarea>
       </div>
     </div>`;
 }
 
-// â”€â”€ Tab: Brechas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Brechas ------------------------------------------------------------
 function renderTabBrechas(dat) {
   const brechas = dat.brechas || [];
   return `
@@ -736,30 +736,30 @@ function cardBrecha(b, i) {
       </div>
       <div>
         <label class="label text-xs">Necesidad</label>
-        <input class="input w-full text-sm brecha-necesidad" value="${esc(b.necesidad || '')}" placeholder="QuÃ© se necesita" />
+        <input class="input w-full text-sm brecha-necesidad" value="${esc(b.necesidad || '')}" placeholder="Qu\u00e9 se necesita" />
       </div>
       <div>
-        <label class="label text-xs">QuÃ© implica</label>
-        <input class="input w-full text-sm brecha-implica" value="${esc(b.que_implica || '')}" placeholder="Implicaciones tÃ©cnicas u organizacionales" />
+        <label class="label text-xs">Qu\u00e9 implica</label>
+        <input class="input w-full text-sm brecha-implica" value="${esc(b.que_implica || '')}" placeholder="Implicaciones t\u00e9cnicas u organizacionales" />
       </div>
       <div>
-        <label class="label text-xs">Criterio de aceptaciÃ³n</label>
-        <input class="input w-full text-sm brecha-criterio" value="${esc(b.criterio_aceptacion || '')}" placeholder="CondiciÃ³n para cerrar esta brecha" />
+        <label class="label text-xs">Criterio de aceptaci\u00f3n</label>
+        <input class="input w-full text-sm brecha-criterio" value="${esc(b.criterio_aceptacion || '')}" placeholder="Condici\u00f3n para cerrar esta brecha" />
       </div>
     </div>`;
 }
 
-// â”€â”€ Tab: Escenarios de DecisiÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Escenarios de Decisi\u00f3n -------------------------------------------
 function renderTabEscenarios(dat) {
   const fasesA = dat.escenario_a_fases || [];
   return `
-    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Escenarios de DecisiÃ³n</h2>
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Escenarios de Decisi\u00f3n</h2>
 
     <!-- Escenario A -->
     <div class="bg-blue-50/50 border border-blue-200 rounded-2xl p-5 mb-5">
       <div class="flex items-center gap-2 mb-3">
         <span class="w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center">A</span>
-        <input id="f-esc-a-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_a_titulo || 'La marca continÃºa con el proyecto')}" data-field="escenario_a_titulo" />
+        <input id="f-esc-a-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_a_titulo || 'La marca contin\u00faa con el proyecto')}" data-field="escenario_a_titulo" />
       </div>
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs font-semibold text-gray-600">Fases propuestas</span>
@@ -772,7 +772,7 @@ function renderTabEscenarios(dat) {
               <th class="px-3 py-2 text-left">Fase</th>
               <th class="px-3 py-2 text-left">Entregable</th>
               <th class="px-3 py-2 text-left">Requerimientos</th>
-              <th class="px-3 py-2 text-left w-24">DuraciÃ³n</th>
+              <th class="px-3 py-2 text-left w-24">Duraci\u00f3n</th>
               <th class="px-3 py-2 w-10"></th>
             </tr>
           </thead>
@@ -788,15 +788,15 @@ function renderTabEscenarios(dat) {
     <div class="bg-amber-50/50 border border-amber-200 rounded-2xl p-5 mb-5">
       <div class="flex items-center gap-2 mb-3">
         <span class="w-7 h-7 rounded-full bg-amber-500 text-white text-sm font-bold flex items-center justify-center">B</span>
-        <input id="f-esc-b-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_b_titulo || 'La marca no continÃºa')}" data-field="escenario_b_titulo" />
+        <input id="f-esc-b-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_b_titulo || 'La marca no contin\u00faa')}" data-field="escenario_b_titulo" />
       </div>
-      <label class="label text-xs">DescripciÃ³n</label>
+      <label class="label text-xs">Descripci\u00f3n</label>
       <textarea id="f-esc-b-desc" class="input w-full" rows="4" data-field="escenario_b_descripcion">${esc(dat.escenario_b_descripcion || '')}</textarea>
     </div>
 
     <!-- Plazo -->
     <div class="flex items-center gap-3">
-      <label class="label shrink-0">Plazo de respuesta (dÃ­as)</label>
+      <label class="label shrink-0">Plazo de respuesta (d\u00edas)</label>
       <input id="f-plazo" type="number" class="input w-32" value="${dat.plazo_respuesta_dias || 15}" data-field="plazo_respuesta_dias" min="1" />
     </div>`;
 }
@@ -814,7 +814,7 @@ function rowFase(f, i) {
     </tr>`;
 }
 
-// â”€â”€ Tab: Conclusiones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Tab: Conclusiones -------------------------------------------------------
 function renderTabConclusiones(inf, dat) {
   return `
     <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Conclusiones y Recomendaciones</h2>
@@ -824,7 +824,7 @@ function renderTabConclusiones(inf, dat) {
         <textarea id="f-conclusiones" class="input w-full" rows="6" data-field="conclusiones">${esc(dat.conclusiones || '')}</textarea>
       </div>
       <div>
-        <label class="label">RecomendaciÃ³n</label>
+        <label class="label">Recomendaci\u00f3n</label>
         <textarea id="f-recomendacion" class="input w-full" rows="4" data-field="recomendacion">${esc(dat.recomendacion || '')}</textarea>
       </div>
       <div>
@@ -834,9 +834,9 @@ function renderTabConclusiones(inf, dat) {
     </div>`;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // WIRE TABS (eventos interactivos)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 function wireTab(tab) {
   switch (tab) {
     case 'portada':       wirePortada(); break;
@@ -851,7 +851,7 @@ function wireTab(tab) {
   }
 }
 
-// â”€â”€ Wire: Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Portada -----------------------------------------------------------
 function wirePortada() {
   const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion', 'f-areas',
                   'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
@@ -863,7 +863,7 @@ function wirePortada() {
   });
 }
 
-// â”€â”€ Wire: Componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Componentes -------------------------------------------------------
 function wireComponentes() {
   document.getElementById('btn-add-comp')?.addEventListener('click', () => {
     const dat = _currentInforme.datos || {};
@@ -900,7 +900,7 @@ function wireComponentes() {
   });
 }
 
-// â”€â”€ Wire: Estado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Estado ------------------------------------------------------------
 function wireEstado() {
   document.getElementById('f-estado-general')?.addEventListener('change', e => {
     _currentInforme.datos.estado_general = e.target.value;
@@ -948,7 +948,7 @@ function wireEstado() {
   });
 }
 
-// â”€â”€ Wire: RF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: RF ----------------------------------------------------------------
 function wireRF() {
   document.getElementById('btn-add-rf')?.addEventListener('click', () => {
     const dat = _currentInforme.datos;
@@ -996,7 +996,7 @@ function wireRF() {
   });
 }
 
-// â”€â”€ Wire: RNF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: RNF ---------------------------------------------------------------
 function wireRNF() {
   document.getElementById('btn-add-rnf')?.addEventListener('click', () => {
     const dat = _currentInforme.datos;
@@ -1040,7 +1040,7 @@ function wireRNF() {
   });
 }
 
-// â”€â”€ Wire: Observaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Observaciones -----------------------------------------------------
 function wireObservaciones() {
   ['f-obs-oti', 'f-obs-odn', 'f-obs-opp'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', e => {
@@ -1051,7 +1051,7 @@ function wireObservaciones() {
   });
 }
 
-// â”€â”€ Wire: Brechas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Brechas -----------------------------------------------------------
 function wireBrechas() {
   document.getElementById('btn-add-brecha')?.addEventListener('click', () => {
     const dat = _currentInforme.datos;
@@ -1094,7 +1094,7 @@ function wireBrechas() {
   });
 }
 
-// â”€â”€ Wire: Escenarios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Escenarios --------------------------------------------------------
 function wireEscenarios() {
   document.getElementById('f-esc-a-titulo')?.addEventListener('input', e => {
     _currentInforme.datos.escenario_a_titulo = e.target.value;
@@ -1146,7 +1146,7 @@ function wireEscenarios() {
   });
 }
 
-// â”€â”€ Wire: Conclusiones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Wire: Conclusiones ------------------------------------------------------
 function wireConclusiones() {
   ['f-conclusiones', 'f-recomendacion', 'f-hoja-respuesta'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', e => {
@@ -1157,21 +1157,21 @@ function wireConclusiones() {
   });
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // AUTOGUARDADO (debounce 1s)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 function scheduleAutosave() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(doAutosave, 1000);
   const st = document.getElementById('save-status');
-  if (st) { st.textContent = 'Guardandoâ€¦'; st.classList.remove('hidden'); }
+  if (st) { st.textContent = 'Guardando\u2026'; st.classList.remove('hidden'); }
 }
 
 async function doAutosave() {
   if (_saving || !_currentInforme) return;
   _saving = true;
 
-  // Recolectar campos de raÃ­z del tab activo (portada)
+  // Recolectar campos de ra\u00edz del tab activo (portada)
   collectPortadaFields();
 
   const payload = buildPayload();
@@ -1179,7 +1179,7 @@ async function doAutosave() {
     const updated = await api.put(`/informes-estado/${_currentInforme.id}`, payload);
     _currentInforme = { ..._currentInforme, ...updated, datos: _currentInforme.datos };
     const st = document.getElementById('save-status');
-    if (st) { st.textContent = 'Guardado âœ“'; setTimeout(() => st.classList.add('hidden'), 2000); }
+    if (st) { st.textContent = 'Guardado \u2713'; setTimeout(() => st.classList.add('hidden'), 2000); }
   } catch (e) {
     toast('Error al guardar: ' + e.message, 'error');
   } finally {
@@ -1221,9 +1221,9 @@ function buildPayload() {
   };
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // CAMBIAR ESTADO
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 function openCambiarEstadoModal() {
   const orden = ['borrador', 'en_revision', 'emitido', 'cerrado'];
   const actual = _currentInforme.estado;
@@ -1239,10 +1239,10 @@ function openCambiarEstadoModal() {
         return `
           <button data-new-estado="${e}" class="w-full text-left px-4 py-3 rounded-xl border ${isCurrent ? 'border-primary-400 bg-primary-50 cursor-default' : isPrev ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-gray-200 hover:bg-gray-50 cursor-pointer'} flex items-center justify-between transition-colors">
             <span class="flex items-center gap-2">
-              <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs ${isCurrent ? 'border-primary-500 bg-primary-500 text-white' : 'border-gray-300'}">${isCurrent ? 'âœ“' : i + 1}</span>
+              <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs ${isCurrent ? 'border-primary-500 bg-primary-500 text-white' : 'border-gray-300'}">${isCurrent ? '\u2713' : i + 1}</span>
               <span class="text-sm font-medium">${cfg.label}</span>
             </span>
-            ${isCurrent ? `<span class="text-xs text-primary-600 font-semibold">Actual</span>` : !isPrev ? `<span class="text-xs text-gray-400">â†’ Siguiente</span>` : ''}
+            ${isCurrent ? `<span class="text-xs text-primary-600 font-semibold">Actual</span>` : !isPrev ? `<span class="text-xs text-gray-400">\u2192 Siguiente</span>` : ''}
           </button>`;
       }).join('')}
     </div>
@@ -1267,15 +1267,15 @@ function openCambiarEstadoModal() {
   });
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 // VISTA PREVIA / PREVIEW COMPLETO
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ==========================================================================
 function openPreview() {
   const inf = _currentInforme;
   const dat = inf.datos || {};
 
   showModal(
-    `${esc(inf.codigo)} â€” Vista previa`,
+    `${esc(inf.codigo)} \u2013 Vista previa`,
     buildPreviewHTML(inf, dat),
     '2xl'
   );
@@ -1302,19 +1302,19 @@ function buildPreviewHTML(inf, dat) {
         <div class="text-xs text-gray-500 uppercase tracking-widest">QUBIRA S.A.C.</div>
         <h1 class="text-xl font-bold uppercase mt-1">INFORME DE ESTADO DEL PROYECTO</h1>
         <div class="font-mono font-bold text-base mt-1">${esc(inf.codigo)}</div>
-        <p class="text-xs text-gray-500 mt-1">VersiÃ³n ${esc(inf.version || '1.0')} Â· ${fmtDate(inf.fecha_emision || inf.created_at)}</p>
+        <p class="text-xs text-gray-500 mt-1">Versi\u00f3n ${esc(inf.version || '1.0')} \u00b7 ${fmtDate(inf.fecha_emision || inf.created_at)}</p>
       </div>
 
       <!-- Portada info -->
       <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
         <tbody>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold w-40">TÃ­tulo</td><td class="px-3 py-2">${esc(inf.titulo)}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold w-40">T\u00edtulo</td><td class="px-3 py-2">${esc(inf.titulo)}</td></tr>
           <tr><td class="px-3 py-2 font-semibold">Dirigido a</td><td class="px-3 py-2">${esc(dat.dirigido_a || 'ADG')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Ãreas</td><td class="px-3 py-2">${esc((dat.areas_participantes || []).join(', '))}</td></tr>
-          <tr><td class="px-3 py-2 font-semibold">UbicaciÃ³n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || 'â€”')}</td></tr>
-          <tr><td class="px-3 py-2 font-semibold">TecnologÃ­as</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || 'â€”')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">LÃ­neas de cÃ³digo</td><td class="px-3 py-2">${dat.lineas_codigo || 0}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">\u00c1reas</td><td class="px-3 py-2">${esc((dat.areas_participantes || []).join(', '))}</td></tr>
+          <tr><td class="px-3 py-2 font-semibold">Ubicaci\u00f3n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || '\u2014')}</td></tr>
+          <tr><td class="px-3 py-2 font-semibold">Tecnolog\u00edas</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || '\u2014')}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">L\u00edneas de c\u00f3digo</td><td class="px-3 py-2">${dat.lineas_codigo || 0}</td></tr>
         </tbody>
       </table>
 
@@ -1337,17 +1337,17 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Componentes del Proyecto</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Nombre</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left">URL</th></tr></thead>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Nombre</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left">URL</th></tr></thead>
             <tbody>${componentes.map((c,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5">${esc(c.nombre)}</td><td class="px-3 py-1.5">${esc(c.descripcion)}</td><td class="px-3 py-1.5 font-mono text-xs">${esc(c.pagina_url)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
-      <!-- MÃ³dulos -->
+      <!-- M\u00f3dulos -->
       ${modulos.length ? `
         <div>
-          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">3. Estado de MÃ³dulos</h2>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">3. Estado de M\u00f3dulos</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">MÃ³dulo</th><th class="px-3 py-1.5 text-left">Estado</th><th class="px-3 py-1.5 text-left">Detalle</th></tr></thead>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">M\u00f3dulo</th><th class="px-3 py-1.5 text-left">Estado</th><th class="px-3 py-1.5 text-left">Detalle</th></tr></thead>
             <tbody>${modulos.map((m,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(m.nombre)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_MODULO[m.estado_modulo] || ''}">${ESTADOS_MODULO[m.estado_modulo] || m.estado_modulo}</span></td><td class="px-3 py-1.5">${esc(m.detalle)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
@@ -1355,9 +1355,9 @@ function buildPreviewHTML(inf, dat) {
       <!-- RF -->
       ${reqs.length ? `
         <div>
-          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">4. Requerimientos Funcionales (${rfTotal} total â€” ${rfOpMaqueta} operativos, ${rfSimulado} simulados, ${rfPendiente} pendientes)</h2>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">4. Requerimientos Funcionales (${rfTotal} total \u2013 ${rfOpMaqueta} operativos, ${rfSimulado} simulados, ${rfPendiente} pendientes)</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">CÃ³digo</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left w-40">Estado</th></tr></thead>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Estado</th></tr></thead>
             <tbody>${reqs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RF[r.estado_rf] || ''}">${ESTADOS_RF[r.estado_rf] || r.estado_rf}</span></td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
@@ -1367,7 +1367,7 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">5. Requerimientos No Funcionales</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">CategorÃ­a</th><th class="px-3 py-1.5 text-left w-20">CÃ³digo</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left w-40">EvaluaciÃ³n</th></tr></thead>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Categor\u00eda</th><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
             <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(r.categoria)}</td><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
@@ -1375,10 +1375,10 @@ function buildPreviewHTML(inf, dat) {
       <!-- Observaciones -->
       ${(dat.obs_oti || dat.obs_odn || dat.obs_opp) ? `
         <div>
-          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">6. Observaciones por Ãrea</h2>
-          ${dat.obs_oti ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">OTI â€” Jefatura de TI</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_oti)}</p></div>` : ''}
-          ${dat.obs_odn ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">ODN â€” Desarrollo de Negocios</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_odn)}</p></div>` : ''}
-          ${dat.obs_opp ? `<div><p class="font-semibold text-xs text-gray-600 mb-1">OPP â€” Planeamiento y Presupuesto</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_opp)}</p></div>` : ''}
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">6. Observaciones por \u00c1rea</h2>
+          ${dat.obs_oti ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">OTI \u2013 Jefatura de TI</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_oti)}</p></div>` : ''}
+          ${dat.obs_odn ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">ODN \u2013 Desarrollo de Negocios</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_odn)}</p></div>` : ''}
+          ${dat.obs_opp ? `<div><p class="font-semibold text-xs text-gray-600 mb-1">OPP \u2013 Planeamiento y Presupuesto</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_opp)}</p></div>` : ''}
         </div>` : ''}
 
       <!-- Brechas -->
@@ -1386,19 +1386,19 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">7. Brechas Identificadas</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">#</th><th class="px-3 py-1.5 text-left">Necesidad</th><th class="px-3 py-1.5 text-left">QuÃ© implica</th><th class="px-3 py-1.5 text-left w-20">Prioridad</th><th class="px-3 py-1.5 text-left">Criterio aceptaciÃ³n</th></tr></thead>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">#</th><th class="px-3 py-1.5 text-left">Necesidad</th><th class="px-3 py-1.5 text-left">Qu\u00e9 implica</th><th class="px-3 py-1.5 text-left w-20">Prioridad</th><th class="px-3 py-1.5 text-left">Criterio aceptaci\u00f3n</th></tr></thead>
             <tbody>${brechas.map((b,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-bold text-gray-500">${i+1}</td><td class="px-3 py-1.5">${esc(b.necesidad)}</td><td class="px-3 py-1.5">${esc(b.que_implica)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_PRIORIDAD[b.prioridad] || ''}">${esc(b.prioridad)}</span></td><td class="px-3 py-1.5">${esc(b.criterio_aceptacion)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
       <!-- Escenarios -->
       <div>
-        <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">8. Escenarios de DecisiÃ³n</h2>
+        <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">8. Escenarios de Decisi\u00f3n</h2>
         <div class="mb-4">
           <p class="font-bold mb-2">Escenario A: ${esc(dat.escenario_a_titulo || '')}</p>
           ${fasesA.length ? `
             <table class="w-full text-xs border border-gray-200">
-              <thead><tr class="bg-blue-50 font-semibold"><th class="px-3 py-1.5 text-left">Fase</th><th class="px-3 py-1.5 text-left">Entregable</th><th class="px-3 py-1.5 text-left">Requerimientos</th><th class="px-3 py-1.5 text-left">DuraciÃ³n</th></tr></thead>
+              <thead><tr class="bg-blue-50 font-semibold"><th class="px-3 py-1.5 text-left">Fase</th><th class="px-3 py-1.5 text-left">Entregable</th><th class="px-3 py-1.5 text-left">Requerimientos</th><th class="px-3 py-1.5 text-left">Duraci\u00f3n</th></tr></thead>
               <tbody>${fasesA.map((f,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(f.fase)}</td><td class="px-3 py-1.5">${esc(f.entregable)}</td><td class="px-3 py-1.5">${esc(f.requerimientos)}</td><td class="px-3 py-1.5">${esc(f.duracion)}</td></tr>`).join('')}</tbody>
             </table>` : '<p class="text-xs text-gray-400">Sin fases definidas.</p>'}
         </div>
@@ -1406,7 +1406,7 @@ function buildPreviewHTML(inf, dat) {
           <p class="font-bold mb-1">Escenario B: ${esc(dat.escenario_b_titulo || '')}</p>
           ${dat.escenario_b_descripcion ? `<p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.escenario_b_descripcion)}</p>` : ''}
         </div>
-        <p class="mt-3 text-xs text-gray-500">Plazo de respuesta: <strong>${dat.plazo_respuesta_dias || 15} dÃ­as hÃ¡biles</strong></p>
+        <p class="mt-3 text-xs text-gray-500">Plazo de respuesta: <strong>${dat.plazo_respuesta_dias || 15} d\u00edas h\u00e1biles</strong></p>
       </div>
 
       <!-- Conclusiones -->
@@ -1417,7 +1417,7 @@ function buildPreviewHTML(inf, dat) {
         </div>` : ''}
       ${dat.recomendacion ? `
         <div>
-          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">RecomendaciÃ³n</h2>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Recomendaci\u00f3n</h2>
           <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.recomendacion)}</p>
         </div>` : ''}
 
@@ -1425,7 +1425,7 @@ function buildPreviewHTML(inf, dat) {
       <div class="border-t-2 border-gray-800 pt-4">
         <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
         <div class="grid grid-cols-4 gap-3">
-          ${['OTI Â· ElaborÃ³', 'ODN Â· RevisÃ³', 'OPP Â· RevisÃ³', 'ADG Â· AprobÃ³'].map(f => `
+          ${['OTI \u00b7 Elabor\u00f3', 'ODN \u00b7 Revis\u00f3', 'OPP \u00b7 Revis\u00f3', 'ADG \u00b7 Aprob\u00f3'].map(f => `
             <div class="text-center border border-gray-300 rounded p-3">
               <div class="h-10 border-b border-gray-400 mb-2"></div>
               <p class="text-xs font-semibold">${f}</p>
