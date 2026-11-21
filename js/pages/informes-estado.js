@@ -531,16 +531,17 @@ function renderTabPortada(inf, dat) {
         </div>
         <div>
           <label class="label" for="f-tecnologias">Tecnolog\u00edas usadas</label>
-          <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" data-field="tecnologias_usadas" />
+          <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" placeholder="Ej. HTML, CSS, JavaScript" aria-describedby="f-tecnologias-ayuda" data-field="tecnologias_usadas" />
+          <p id="f-tecnologias-ayuda" class="mt-1 text-xs text-gray-500">Usa el an\u00e1lisis del repositorio para completar este campo o escr\u00edbelo manualmente.</p>
         </div>
         <div class="md:col-span-2">
           <label class="label" for="f-lineas">L\u00edneas de c\u00f3digo (aprox.)</label>
           <div class="flex flex-wrap items-center gap-2">
             <input id="f-lineas" type="number" min="0" step="1" class="input sm:w-40" value="${esc(dat.lineas_codigo ?? '')}" placeholder="Sin calcular" aria-describedby="f-lineas-ayuda" data-field="lineas_codigo" />
-            <button type="button" id="f-calcular-lineas" class="btn-secondary">${icon('calculate', 18)} Calcular desde repositorio</button>
+            <button type="button" id="f-calcular-lineas" class="btn-secondary">${icon('calculate', 18)} Analizar repositorio</button>
             <input id="f-repo-folder" type="file" webkitdirectory multiple hidden />
           </div>
-          <p id="f-lineas-ayuda" class="text-xs text-gray-500 mt-2">Selecciona la carpeta local del repositorio. Se cuentan las l\u00edneas no vac\u00edas, incluidos los comentarios, y se omiten las dependencias y los directorios de compilaci\u00f3n habituales.</p>
+          <p id="f-lineas-ayuda" class="text-xs text-gray-500 mt-2">Selecciona la carpeta local para detectar tecnolog\u00edas y calcular el tama\u00f1o del c\u00f3digo. Se cuentan las l\u00edneas no vac\u00edas, incluidos los comentarios, y se omiten las dependencias y los directorios de compilaci\u00f3n habituales.</p>
           <p id="f-lineas-estado" class="text-sm text-gray-600 mt-2 empty:hidden" role="status"></p>
         </div>
       </div>
@@ -960,45 +961,95 @@ function wirePortada() {
   });
   const folder = document.getElementById('f-repo-folder');
   document.getElementById('f-calcular-lineas').addEventListener('click', () => folder.click());
-  folder.addEventListener('change', () => calcularLineasRepositorio(folder));
+  folder.addEventListener('change', () => analizarRepositorio(folder));
 }
 
-const EXTENSIONES_CODIGO = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|html?|css|s[ac]ss|less|py|php|rb|go|rs|java|kt|cs|fs|c|cpp|cc|h|hpp|swift|dart|lua|r|sql|sh|ps1|graphql|gql)$/i;
 const CARPETAS_OMITIDAS = new Set(['node_modules', 'vendor', 'dist', 'build', 'out', 'coverage', 'target', 'bin', 'obj', 'venv', '__pycache__']);
 
-function esArchivoFuente(file) {
+const TECNOLOGIAS_POR_EXTENSION = {
+  html: 'HTML', htm: 'HTML', css: 'CSS', scss: 'Sass', sass: 'Sass', less: 'Less',
+  js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript',
+  ts: 'TypeScript', mts: 'TypeScript', cts: 'TypeScript', tsx: 'TypeScript',
+  vue: 'Vue', svelte: 'Svelte', astro: 'Astro', py: 'Python', php: 'PHP', rb: 'Ruby',
+  go: 'Go', rs: 'Rust', java: 'Java', kt: 'Kotlin', cs: 'C#', fs: 'F#',
+  c: 'C', h: 'C/C++', cpp: 'C++', cc: 'C++', hpp: 'C++', swift: 'Swift', dart: 'Dart',
+  lua: 'Lua', r: 'R', sql: 'SQL', sh: 'Shell', ps1: 'PowerShell', graphql: 'GraphQL', gql: 'GraphQL',
+};
+const TECNOLOGIAS_POR_PAQUETE = {
+  react: 'React', next: 'Next.js', vue: 'Vue', nuxt: 'Nuxt', svelte: 'Svelte',
+  '@sveltejs/kit': 'SvelteKit', '@angular/core': 'Angular', astro: 'Astro',
+  express: 'Express', fastify: 'Fastify', '@nestjs/core': 'NestJS',
+  tailwindcss: 'Tailwind CSS', bootstrap: 'Bootstrap', vite: 'Vite', typescript: 'TypeScript',
+};
+
+function perteneceAlProyecto(file) {
   const directorios = file.webkitRelativePath.split('/').slice(1, -1);
-  return EXTENSIONES_CODIGO.test(file.name)
-    && !/\.(?:min\.|bundle\.|generated\.|designer\.)[^.]+$|\.d\.[cm]?ts$/i.test(file.name)
-    && !directorios.some(name => name.startsWith('.') || CARPETAS_OMITIDAS.has(name.toLowerCase()));
+  return !directorios.some(name => name.startsWith('.') || CARPETAS_OMITIDAS.has(name.toLowerCase()));
 }
 
-async function calcularLineasRepositorio(folder) {
-  const archivos = Array.from(folder.files).filter(esArchivoFuente);
+function tecnologiaArchivo(file) {
+  const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+  return Object.hasOwn(TECNOLOGIAS_POR_EXTENSION, extension) ? TECNOLOGIAS_POR_EXTENSION[extension] : '';
+}
+
+function esArchivoFuente(file) {
+  return tecnologiaArchivo(file)
+    && !/\.(?:min\.|bundle\.|generated\.|designer\.)[^.]+$|\.d\.[cm]?ts$/i.test(file.name);
+}
+
+async function analizarRepositorio(folder) {
+  const archivosProyecto = Array.from(folder.files).filter(perteneceAlProyecto);
+  const archivos = archivosProyecto.filter(esArchivoFuente);
+  const manifiestos = archivosProyecto.filter(file => file.name === 'package.json');
   folder.value = '';
   const input = document.getElementById('f-lineas');
+  const tecnologias = document.getElementById('f-tecnologias');
   const boton = document.getElementById('f-calcular-lineas');
   const estado = document.getElementById('f-lineas-estado');
 
-  if (!archivos.length) {
-    estado.textContent = 'No se encontraron archivos de c\u00f3digo compatibles en la carpeta seleccionada.';
+  if (!archivos.length && !manifiestos.length) {
+    estado.textContent = 'No se encontraron archivos de c\u00f3digo ni manifiestos compatibles.';
     return;
   }
 
   boton.disabled = true;
   input.readOnly = true;
-  estado.textContent = 'Calculando l\u00edneas de c\u00f3digo\u2026';
+  estado.textContent = 'Analizando el repositorio\u2026';
   try {
     let total = 0;
+    const detectadas = new Set();
     for (const archivo of archivos) {
       if (!folder.isConnected) return;
       const contenido = await archivo.text();
       total += contenido.split(/\r\n|\n|\r/).filter(linea => linea.trim()).length;
+      detectadas.add(tecnologiaArchivo(archivo));
+    }
+    let manifiestosOmitidos = 0;
+    for (const manifiesto of manifiestos) {
+      if (!folder.isConnected) return;
+      try {
+        const contenido = JSON.parse((await manifiesto.text()).replace(/^\uFEFF/, ''));
+        const paquetes = { ...contenido.dependencies, ...contenido.devDependencies, ...contenido.optionalDependencies, ...contenido.peerDependencies };
+        for (const [paquete, tecnologia] of Object.entries(TECNOLOGIAS_POR_PAQUETE)) {
+          if (Object.hasOwn(paquetes, paquete)) detectadas.add(tecnologia);
+        }
+      } catch {
+        manifiestosOmitidos++;
+      }
     }
     if (!folder.isConnected) return;
-    input.value = total;
+    if (archivos.length) input.value = total;
+    const sugerencias = [...detectadas].sort((a, b) => a.localeCompare(b, 'es')).join(', ');
+    const tieneTecnologias = Boolean(tecnologias.value.trim());
+    if (sugerencias && !tieneTecnologias) tecnologias.value = sugerencias;
     scheduleAutosave();
-    estado.textContent = `${total.toLocaleString('es-PE')} l\u00edneas no vac\u00edas en ${archivos.length.toLocaleString('es-PE')} archivos.`;
+    const resumen = [
+      archivos.length ? `${total.toLocaleString('es-PE')} l\u00edneas no vac\u00edas en ${archivos.length.toLocaleString('es-PE')} archivos.` : '',
+      sugerencias ? `Tecnolog\u00edas detectadas: ${sugerencias}.` : 'No se detectaron tecnolog\u00edas compatibles.',
+      sugerencias && tieneTecnologias ? 'Se conserv\u00f3 el contenido del campo.' : '',
+      manifiestosOmitidos ? 'Algunos manifiestos no se pudieron leer.' : '',
+    ];
+    estado.textContent = resumen.filter(Boolean).join(' ');
   } catch {
     estado.textContent = 'No se pudo leer la carpeta completa. Intenta seleccionarla de nuevo.';
   } finally {
