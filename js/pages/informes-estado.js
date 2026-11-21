@@ -482,26 +482,38 @@ function renderTabPortada(inf, dat) {
   const seleccionadas = areasParticipantes(dat);
   const opciones = [...new Set([...AREAS_DISPONIBLES, ...seleccionadas])];
   return `
-    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">1. Portada / Identificaci\u00f3n</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-      <div>
-        <label class="label">T\u00edtulo del informe</label>
-        <input id="f-titulo" class="input w-full" value="${esc(inf.titulo)}" data-field="titulo" data-root="1" />
+    <h2 class="text-lg font-bold text-gray-900 mb-5">Portada del informe</h2>
+    <section class="rounded-xl border border-gray-200 p-4 sm:p-5 mb-4" aria-labelledby="portada-identificacion">
+      <h3 id="portada-identificacion" class="font-semibold text-gray-900 mb-4">Identificaci\u00f3n</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="label" for="f-titulo">T\u00edtulo del informe</label>
+          <input id="f-titulo" class="input w-full" value="${esc(inf.titulo)}" data-field="titulo" data-root="1" />
+        </div>
+        <div>
+          <label class="label" for="f-version">Versi\u00f3n</label>
+          <input id="f-version" class="input w-full" value="${esc(inf.version || '1.0')}" data-field="version" data-root="1" />
+        </div>
+        <div>
+          <label class="label" for="f-dirigido-a">Dirigido a</label>
+          <input id="f-dirigido-a" class="input w-full" value="${esc(dat.dirigido_a || 'Alta Direcci\u00f3n Gerencial (ADG)')}" data-field="dirigido_a" />
+        </div>
+        <div>
+          <label class="label" for="f-ubicacion">Ubicaci\u00f3n</label>
+          <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, Per\u00fa')}" data-field="ubicacion" />
+        </div>
+        <div>
+          <label class="label" for="f-fecha-emision">Fecha de emisi\u00f3n</label>
+          <input id="f-fecha-emision" type="date" class="input w-full" value="${inf.fecha_emision ? inf.fecha_emision.slice(0,10) : ''}" data-field="fecha_emision" data-root="1" />
+        </div>
+        <div>
+          <label class="label" for="f-fecha-limite">Fecha l\u00edmite de respuesta</label>
+          <input id="f-fecha-limite" type="date" class="input w-full" value="${inf.fecha_limite ? inf.fecha_limite.slice(0,10) : ''}" data-field="fecha_limite" data-root="1" />
+        </div>
       </div>
-      <div>
-        <label class="label">Versi\u00f3n</label>
-        <input id="f-version" class="input w-full" value="${esc(inf.version || '1.0')}" data-field="version" data-root="1" />
-      </div>
-      <div>
-        <label class="label">Dirigido a</label>
-        <input id="f-dirigido-a" class="input w-full" value="${esc(dat.dirigido_a || 'Alta Direcci\u00f3n Gerencial (ADG)')}" data-field="dirigido_a" />
-      </div>
-      <div>
-        <label class="label">Ubicaci\u00f3n</label>
-        <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, Per\u00fa')}" data-field="ubicacion" />
-      </div>
-      <fieldset id="f-areas" class="min-w-0 md:col-span-2">
-        <legend class="label">\u00c1reas participantes</legend>
+    </section>
+    <fieldset id="f-areas" class="min-w-0 rounded-xl border border-gray-200 p-4 sm:p-5 mb-4">
+        <legend class="px-2 font-semibold text-gray-900">\u00c1reas participantes</legend>
         <div class="flex flex-wrap gap-2">
           ${opciones.map(area => `
             <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -509,28 +521,30 @@ function renderTabPortada(inf, dat) {
               ${esc(area)}
             </label>`).join('')}
         </div>
-      </fieldset>
-      <div>
-        <label class="label">URL del sitio publicado</label>
-        <input id="f-url-sitio" class="input w-full" value="${esc(dat.url_sitio_publicado || '')}" data-field="url_sitio_publicado" />
+    </fieldset>
+    <section class="rounded-xl border border-gray-200 p-4 sm:p-5 mb-4" aria-labelledby="portada-tecnica">
+      <h3 id="portada-tecnica" class="font-semibold text-gray-900 mb-4">Informaci\u00f3n t\u00e9cnica</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="label" for="f-url-sitio">URL del sitio publicado</label>
+          <input id="f-url-sitio" class="input w-full" value="${esc(dat.url_sitio_publicado || '')}" data-field="url_sitio_publicado" />
+        </div>
+        <div>
+          <label class="label" for="f-tecnologias">Tecnolog\u00edas usadas</label>
+          <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" data-field="tecnologias_usadas" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="label" for="f-lineas">L\u00edneas de c\u00f3digo (aprox.)</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="f-lineas" type="number" min="0" step="1" class="input sm:w-40" value="${esc(dat.lineas_codigo ?? '')}" placeholder="Sin calcular" aria-describedby="f-lineas-ayuda" data-field="lineas_codigo" />
+            <button type="button" id="f-calcular-lineas" class="btn-secondary">${icon('calculate', 18)} Calcular desde repositorio</button>
+            <input id="f-repo-folder" type="file" webkitdirectory multiple hidden />
+          </div>
+          <p id="f-lineas-ayuda" class="text-xs text-gray-500 mt-2">Selecciona la carpeta local del repositorio. Se cuentan las l\u00edneas no vac\u00edas, incluidos los comentarios, y se omiten las dependencias y los directorios de compilaci\u00f3n habituales.</p>
+          <p id="f-lineas-estado" class="text-sm text-gray-600 mt-2 empty:hidden" role="status"></p>
+        </div>
       </div>
-      <div>
-        <label class="label">Tecnolog\u00edas usadas</label>
-        <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" data-field="tecnologias_usadas" />
-      </div>
-      <div>
-        <label class="label">L\u00edneas de c\u00f3digo (aprox.)</label>
-        <input id="f-lineas" type="number" class="input w-full" value="${esc(dat.lineas_codigo || 0)}" data-field="lineas_codigo" />
-      </div>
-      <div>
-        <label class="label">Fecha de emisi\u00f3n</label>
-        <input id="f-fecha-emision" type="date" class="input w-full" value="${inf.fecha_emision ? inf.fecha_emision.slice(0,10) : ''}" data-field="fecha_emision" data-root="1" />
-      </div>
-      <div>
-        <label class="label">Fecha l\u00edmite de respuesta</label>
-        <input id="f-fecha-limite" type="date" class="input w-full" value="${inf.fecha_limite ? inf.fecha_limite.slice(0,10) : ''}" data-field="fecha_limite" data-root="1" />
-      </div>
-    </div>
+    </section>
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">2. Resumen Ejecutivo</h3>
     <textarea id="f-resumen" class="input w-full" rows="5" data-field="resumen_ejecutivo">${esc(dat.resumen_ejecutivo || '')}</textarea>
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">3. Antecedentes y Alcance</h3>
@@ -909,6 +923,53 @@ function wirePortada() {
     el.addEventListener('input', () => scheduleAutosave());
   });
   document.getElementById('f-areas').addEventListener('change', scheduleAutosave);
+  const folder = document.getElementById('f-repo-folder');
+  document.getElementById('f-calcular-lineas').addEventListener('click', () => folder.click());
+  folder.addEventListener('change', () => calcularLineasRepositorio(folder));
+}
+
+const EXTENSIONES_CODIGO = /\.(?:[cm]?[jt]sx?|vue|svelte|astro|html?|css|s[ac]ss|less|py|php|rb|go|rs|java|kt|cs|fs|c|cpp|cc|h|hpp|swift|dart|lua|r|sql|sh|ps1|graphql|gql)$/i;
+const CARPETAS_OMITIDAS = new Set(['node_modules', 'vendor', 'dist', 'build', 'out', 'coverage', 'target', 'bin', 'obj', 'venv', '__pycache__']);
+
+function esArchivoFuente(file) {
+  const directorios = file.webkitRelativePath.split('/').slice(1, -1);
+  return EXTENSIONES_CODIGO.test(file.name)
+    && !/\.(?:min\.|bundle\.|generated\.|designer\.)[^.]+$|\.d\.[cm]?ts$/i.test(file.name)
+    && !directorios.some(name => name.startsWith('.') || CARPETAS_OMITIDAS.has(name.toLowerCase()));
+}
+
+async function calcularLineasRepositorio(folder) {
+  const archivos = Array.from(folder.files).filter(esArchivoFuente);
+  folder.value = '';
+  const input = document.getElementById('f-lineas');
+  const boton = document.getElementById('f-calcular-lineas');
+  const estado = document.getElementById('f-lineas-estado');
+
+  if (!archivos.length) {
+    estado.textContent = 'No se encontraron archivos de c\u00f3digo compatibles en la carpeta seleccionada.';
+    return;
+  }
+
+  boton.disabled = true;
+  input.readOnly = true;
+  estado.textContent = 'Calculando l\u00edneas de c\u00f3digo\u2026';
+  try {
+    let total = 0;
+    for (const archivo of archivos) {
+      if (!folder.isConnected) return;
+      const contenido = await archivo.text();
+      total += contenido.split(/\r\n|\n|\r/).filter(linea => linea.trim()).length;
+    }
+    if (!folder.isConnected) return;
+    input.value = total;
+    scheduleAutosave();
+    estado.textContent = `${total.toLocaleString('es-PE')} l\u00edneas no vac\u00edas en ${archivos.length.toLocaleString('es-PE')} archivos.`;
+  } catch {
+    estado.textContent = 'No se pudo leer la carpeta completa. Intenta seleccionarla de nuevo.';
+  } finally {
+    boton.disabled = false;
+    input.readOnly = false;
+  }
 }
 
 // -- Wire: Componentes -------------------------------------------------------
@@ -1259,7 +1320,8 @@ function collectPortadaFields() {
   }
   if (get('f-url-sitio') !== null) dat.url_sitio_publicado = get('f-url-sitio');
   if (get('f-tecnologias') !== null) dat.tecnologias_usadas = get('f-tecnologias');
-  if (get('f-lineas') !== null) dat.lineas_codigo = parseInt(get('f-lineas')) || 0;
+  const lineas = document.getElementById('f-lineas');
+  if (lineas) dat.lineas_codigo = lineas.value && lineas.validity.valid ? lineas.valueAsNumber : null;
   if (get('f-resumen') !== null) dat.resumen_ejecutivo = get('f-resumen');
   if (get('f-antecedentes') !== null) dat.antecedentes = get('f-antecedentes');
 
@@ -1377,7 +1439,7 @@ function buildPreviewHTML(inf, dat) {
           <tr><td class="px-3 py-2 font-semibold">Ubicaci\u00f3n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
           <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || '\u2014')}</td></tr>
           <tr><td class="px-3 py-2 font-semibold">Tecnolog\u00edas</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || '\u2014')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">L\u00edneas de c\u00f3digo</td><td class="px-3 py-2">${dat.lineas_codigo || 0}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">L\u00edneas de c\u00f3digo</td><td class="px-3 py-2">${esc(dat.lineas_codigo ?? '\u2014')}</td></tr>
         </tbody>
       </table>
 
