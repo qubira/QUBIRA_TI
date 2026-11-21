@@ -974,22 +974,37 @@ function rowRNF(r, i) {
 }
 
 // -- Tab: Observaciones ------------------------------------------------------
+const NOMBRES_AREAS_OBSERVACIONES = {
+  OTI: 'Jefatura de Tecnolog\u00edas de Informaci\u00f3n',
+  ODN: 'Oficina de Desarrollo de Negocios',
+  OPP: 'Oficina de Planeamiento y Presupuesto',
+  ADG: 'Alta Direcci\u00f3n Gerencial',
+  GG: 'Gerencia General',
+};
+
+function nombreAreaObservaciones(area) {
+  return Object.hasOwn(NOMBRES_AREAS_OBSERVACIONES, area)
+    ? `${area} \u2013 ${NOMBRES_AREAS_OBSERVACIONES[area]}`
+    : area;
+}
+
+function observacionArea(dat, area) {
+  const observaciones = dat.observaciones_por_area || {};
+  if (Object.hasOwn(observaciones, area)) return observaciones[area];
+  const camposAnteriores = { OTI: 'obs_oti', ODN: 'obs_odn', OPP: 'obs_opp' };
+  return Object.hasOwn(camposAnteriores, area) ? dat[camposAnteriores[area]] || '' : '';
+}
+
 function renderTabObservaciones(dat) {
+  const areas = areasParticipantes(dat);
   return `
     <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Observaciones por \u00c1rea</h2>
-    <div class="space-y-5">
-      <div>
-        <label class="label flex items-center gap-1.5">${icon('computer',16)} OTI \u2013 Jefatura de Tecnolog\u00edas de Informaci\u00f3n</label>
-        <textarea id="f-obs-oti" class="input w-full" rows="4" data-field="obs_oti">${esc(dat.obs_oti || '')}</textarea>
-      </div>
-      <div>
-        <label class="label flex items-center gap-1.5">${icon('business',16)} ODN \u2013 Oficina de Desarrollo de Negocios</label>
-        <textarea id="f-obs-odn" class="input w-full" rows="4" data-field="obs_odn">${esc(dat.obs_odn || '')}</textarea>
-      </div>
-      <div>
-        <label class="label flex items-center gap-1.5">${icon('analytics',16)} OPP \u2013 Oficina de Planeamiento y Presupuesto</label>
-        <textarea id="f-obs-opp" class="input w-full" rows="4" data-field="obs_opp">${esc(dat.obs_opp || '')}</textarea>
-      </div>
+    <div id="observaciones-areas" class="space-y-4">
+      ${areas.length ? areas.map((area, indice) => `
+        <div class="rounded-xl border border-gray-200 p-4">
+          <label for="f-obs-area-${indice}" class="label font-semibold">${esc(nombreAreaObservaciones(area))}</label>
+          <textarea id="f-obs-area-${indice}" class="input w-full resize-y" rows="4" data-observacion-area="${esc(area)}" placeholder="Escribe las observaciones del \u00e1rea">${esc(observacionArea(dat, area))}</textarea>
+        </div>`).join('') : '<p class="text-sm text-gray-500">Selecciona las \u00e1reas participantes en Portada.</p>'}
     </div>`;
 }
 
@@ -1610,12 +1625,15 @@ function wireRNF() {
 
 // -- Wire: Observaciones -----------------------------------------------------
 function wireObservaciones() {
-  ['f-obs-oti', 'f-obs-odn', 'f-obs-opp'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', e => {
-      const field = e.target.dataset.field;
-      _currentInforme.datos[field] = e.target.value;
-      scheduleAutosave();
-    });
+  document.getElementById('observaciones-areas').addEventListener('input', event => {
+    const area = event.target.dataset.observacionArea;
+    if (area === undefined) return;
+    const datos = _currentInforme.datos;
+    datos.observaciones_por_area = {
+      ...datos.observaciones_por_area,
+      [area]: event.target.value,
+    };
+    scheduleAutosave();
   });
 }
 
@@ -1881,6 +1899,9 @@ function openPreview() {
 }
 
 function buildPreviewHTML(inf, dat) {
+  const observaciones = areasParticipantes(dat)
+    .map(area => ({ area, texto: observacionArea(dat, area) }))
+    .filter(({ texto }) => texto.trim());
   const reqs = dat.requerimientos || [];
   const rnfs = dat.req_no_funcionales || [];
   const modulos = dat.modulos || [];
@@ -1977,12 +1998,13 @@ function buildPreviewHTML(inf, dat) {
         </div>` : ''}
 
       <!-- Observaciones -->
-      ${(dat.obs_oti || dat.obs_odn || dat.obs_opp) ? `
+      ${observaciones.length ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">6. Observaciones por \u00c1rea</h2>
-          ${dat.obs_oti ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">OTI \u2013 Jefatura de TI</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_oti)}</p></div>` : ''}
-          ${dat.obs_odn ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">ODN \u2013 Desarrollo de Negocios</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_odn)}</p></div>` : ''}
-          ${dat.obs_opp ? `<div><p class="font-semibold text-xs text-gray-600 mb-1">OPP \u2013 Planeamiento y Presupuesto</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_opp)}</p></div>` : ''}
+          ${observaciones.map(({ area, texto }) => `<div class="mb-3">
+            <p class="font-semibold text-xs text-gray-600 mb-1">${esc(nombreAreaObservaciones(area))}</p>
+            <p class="text-sm leading-relaxed whitespace-pre-line">${esc(texto)}</p>
+          </div>`).join('')}
         </div>` : ''}
 
       <!-- Brechas -->
