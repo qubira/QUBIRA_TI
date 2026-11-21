@@ -55,6 +55,8 @@ const COLORES_PRIORIDAD = {
 };
 
 const ESTADO_GENERAL_OPTS = ['INCONCLUSO', 'EN DESARROLLO', 'COMPLETADO', 'PAUSADO'];
+const AREAS_PREDETERMINADAS = ['OTI', 'ODN', 'OPP'];
+const AREAS_DISPONIBLES = [...AREAS_PREDETERMINADAS, 'ADG', 'GG', 'DST', 'OCOS', 'ODACL', 'ORH', 'OCM'];
 
 const TABS = [
   { id: 'portada',      label: 'Portada' },
@@ -340,6 +342,7 @@ function openNuevoModal() {
     try {
       const nuevo = await api.post('/informes-estado', {
         titulo, project_id: projId || null, fecha_limite: fecha || null,
+        datos: { areas_participantes: AREAS_PREDETERMINADAS },
       });
       toast('Informe creado');
       if (create.isConnected) {
@@ -471,7 +474,13 @@ function renderTab(tab, inf, dat) {
 }
 
 // -- Tab: Portada ------------------------------------------------------------
+function areasParticipantes(dat) {
+  return dat.areas_participantes ?? AREAS_PREDETERMINADAS;
+}
+
 function renderTabPortada(inf, dat) {
+  const seleccionadas = areasParticipantes(dat);
+  const opciones = [...new Set([...AREAS_DISPONIBLES, ...seleccionadas])];
   return `
     <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">1. Portada / Identificaci\u00f3n</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -491,10 +500,16 @@ function renderTabPortada(inf, dat) {
         <label class="label">Ubicaci\u00f3n</label>
         <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, Per\u00fa')}" data-field="ubicacion" />
       </div>
-      <div>
-        <label class="label">\u00c1reas participantes (separadas por coma)</label>
-        <input id="f-areas" class="input w-full" value="${esc((dat.areas_participantes || ['OTI','ODN','OPP']).join(', '))}" data-field="areas_participantes" />
-      </div>
+      <fieldset id="f-areas" class="min-w-0 md:col-span-2">
+        <legend class="label">\u00c1reas participantes</legend>
+        <div class="flex flex-wrap gap-2">
+          ${opciones.map(area => `
+            <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              <input type="checkbox" class="h-4 w-4 accent-blue-600" value="${esc(area)}" ${seleccionadas.includes(area) ? 'checked' : ''} />
+              ${esc(area)}
+            </label>`).join('')}
+        </div>
+      </fieldset>
       <div>
         <label class="label">URL del sitio publicado</label>
         <input id="f-url-sitio" class="input w-full" value="${esc(dat.url_sitio_publicado || '')}" data-field="url_sitio_publicado" />
@@ -885,7 +900,7 @@ function wireTab(tab) {
 
 // -- Wire: Portada -----------------------------------------------------------
 function wirePortada() {
-  const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion', 'f-areas',
+  const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion',
                   'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
                   'f-resumen', 'f-antecedentes'];
   fields.forEach(id => {
@@ -893,6 +908,7 @@ function wirePortada() {
     if (!el) return;
     el.addEventListener('input', () => scheduleAutosave());
   });
+  document.getElementById('f-areas').addEventListener('change', scheduleAutosave);
 }
 
 // -- Wire: Componentes -------------------------------------------------------
@@ -1237,7 +1253,10 @@ function collectPortadaFields() {
 
   if (get('f-dirigido-a') !== null) dat.dirigido_a = get('f-dirigido-a');
   if (get('f-ubicacion') !== null) dat.ubicacion = get('f-ubicacion');
-  if (get('f-areas') !== null) dat.areas_participantes = get('f-areas').split(',').map(s => s.trim()).filter(Boolean);
+  const areaSelector = document.getElementById('f-areas');
+  if (areaSelector) {
+    dat.areas_participantes = Array.from(areaSelector.querySelectorAll('input:checked'), input => input.value);
+  }
   if (get('f-url-sitio') !== null) dat.url_sitio_publicado = get('f-url-sitio');
   if (get('f-tecnologias') !== null) dat.tecnologias_usadas = get('f-tecnologias');
   if (get('f-lineas') !== null) dat.lineas_codigo = parseInt(get('f-lineas')) || 0;
@@ -1354,7 +1373,7 @@ function buildPreviewHTML(inf, dat) {
         <tbody>
           <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold w-40">T\u00edtulo</td><td class="px-3 py-2">${esc(inf.titulo)}</td></tr>
           <tr><td class="px-3 py-2 font-semibold">Dirigido a</td><td class="px-3 py-2">${esc(dat.dirigido_a || 'ADG')}</td></tr>
-          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">\u00c1reas</td><td class="px-3 py-2">${esc((dat.areas_participantes || []).join(', '))}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">\u00c1reas</td><td class="px-3 py-2">${esc(areasParticipantes(dat).join(', '))}</td></tr>
           <tr><td class="px-3 py-2 font-semibold">Ubicaci\u00f3n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
           <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || '\u2014')}</td></tr>
           <tr><td class="px-3 py-2 font-semibold">Tecnolog\u00edas</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || '\u2014')}</td></tr>
