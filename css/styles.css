@@ -196,44 +196,34 @@
   display: grid;
   grid-template-columns: 27% 49% 24%;
   border: 1px solid #c7d0d5;
+  background: white;
   color: #172334;
-  font-size: 12px;
-  line-height: 1.25;
+  font: 11px/1.25 Arial, sans-serif;
 }
 .informe-membrete-logo {
   display: grid;
   place-items: center;
-  padding: 7px;
+  padding: 5px;
 }
-.informe-membrete-logo img { width: 72px; height: 60px; object-fit: contain; }
+.informe-membrete-logo img { width: 64px; height: 49px; object-fit: contain; }
 .informe-membrete-centro,
 .informe-membrete-registro {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   min-width: 0;
   border-left: 1px solid #c7d0d5;
   overflow-wrap: anywhere;
 }
-.informe-membrete-titulo { padding: 9px 6px 6px; text-align: center; font-weight: 700; }
-.informe-membrete-titulo strong { color: #008696; }
-.informe-membrete-areas {
-  border-top: 1px solid #c7d0d5;
-  background: #e5f2f3;
-  padding: 4px;
+.informe-membrete-centro {
+  border-left: 0;
+  padding: 4px 6px;
   text-align: center;
-  color: #475569;
-}
-.informe-membrete-registro dl { padding: 5px 7px; }
-.informe-membrete-registro dl div { display: flex; gap: 3px; }
-.informe-membrete-registro dt { font-weight: 700; }
-.informe-membrete-registro p {
-  border-top: 1px solid #c7d0d5;
-  background: #fff5d6;
-  color: #a24500;
-  padding: 4px 7px;
+  color: #154555;
   font-weight: 700;
 }
+.informe-membrete-registro { padding: 4px 7px; font-size: 10px; }
+.informe-membrete-registro dl div { display: flex; gap: 3px; }
 .informe-aviso-uso {
   border-left: 3px solid #008696;
   padding: 8px 10px;
@@ -295,6 +285,7 @@
       vertical-align: middle;
       margin: 5mm 0 4mm;
       border: 1px solid #c7d0d5;
+      border-right: 0;
       background: white;
       print-color-adjust: exact;
     }
@@ -303,7 +294,8 @@
       margin: 5mm 0 4mm;
       padding: 1mm 2mm;
       border-block: 1px solid #c7d0d5;
-      background: #e5f2f3;
+      background: white;
+      text-align: center;
       color: #154555;
       font: bold 8.5pt/1.25 Arial, sans-serif;
       white-space: pre-wrap;
@@ -316,7 +308,7 @@
       margin: 5mm 0 4mm;
       padding: 1mm 2mm;
       border: 1px solid #c7d0d5;
-      background: #fffaf0;
+      background: white;
       color: #172334;
       font: 7.5pt/1.25 Arial, sans-serif;
       white-space: pre-wrap;
