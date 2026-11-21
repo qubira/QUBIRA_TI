@@ -63,6 +63,7 @@ const TABS = [
   { id: 'brechas',      label: 'Brechas' },
   { id: 'escenarios',   label: 'Escenarios' },
   { id: 'conclusiones', label: 'Conclusiones' },
+  { id: 'anexos',       label: 'Anexos' },
 ];
 
 // --- Helpers --------------------------------------------------------------
@@ -599,6 +600,7 @@ function renderTab(tab, inf, dat) {
     case 'brechas':       return renderTabBrechas(dat);
     case 'escenarios':    return renderTabEscenarios(dat);
     case 'conclusiones':  return renderTabConclusiones(inf, dat);
+    case 'anexos':        return renderTabAnexos();
     default:              return '';
   }
 }
@@ -764,12 +766,12 @@ function segmentosAntecedentes(dat) {
   return dat.antecedentes_segmentos || [dat.antecedentes || '', ...(dat.antecedentes_tablas || []).map(() => '')];
 }
 
-function renderContenidoAntecedentes(dat, editar = false) {
+function renderContenidoAntecedentes(dat, editar = false, citar = esc) {
   const tablas = dat.antecedentes_tablas || [];
   return segmentosAntecedentes(dat).map((texto, indice) => {
     const bloque = editar
       ? `<textarea data-segmento="${indice}" rows="${tablas.length ? 2 : 5}" class="block w-full resize-y rounded-md border-0 px-2 py-1 text-sm text-gray-900 [field-sizing:content] min-h-10 focus:ring-2 focus:ring-primary-200" aria-label="Texto de antecedentes ${indice + 1}" aria-describedby="antecedentes-tablas-ayuda" placeholder="Escribe o pega contenido\u2026">${esc(texto)}</textarea>`
-      : texto ? `<p class="text-sm leading-relaxed whitespace-pre-wrap">${esc(texto)}</p>` : '';
+      : texto ? `<p class="text-sm leading-relaxed whitespace-pre-wrap">${citar(texto)}</p>` : '';
     return bloque + (tablas[indice] ? renderTablaAntecedentes(tablas[indice], indice, editar) : '');
   }).join('');
 }
@@ -1165,6 +1167,7 @@ function wireTab(tab) {
     case 'brechas':       wireBrechas(); break;
     case 'escenarios':    wireEscenarios(); break;
     case 'conclusiones':  wireConclusiones(); break;
+    case 'anexos':        wireAnexos(); break;
   }
 }
 
@@ -1956,18 +1959,156 @@ function openCambiarEstadoModal() {
 // ==========================================================================
 // VISTA PREVIA / PREVIEW COMPLETO
 // ==========================================================================
-function openPreview() {
+function rutaFiguras(inf) {
+  return `/informes-estado/${encodeURIComponent(inf.id)}/figuras`;
+}
+
+function renderTabAnexos() {
+  return `
+    <h2 class="mb-3 text-lg font-semibold">Anexos de im\u00e1genes</h2>
+    <p class="mb-4 text-sm text-gray-600">Agrega im\u00e1genes y pega sus citas en el texto del informe. En la vista previa, cada cita lleva a su figura.</p>
+    <form id="figuras-form" class="mb-5 space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <label class="label">Im\u00e1genes PNG, JPEG o WebP (hasta 5 MB cada una)
+        <input type="file" name="imagenes" accept="image/png,image/jpeg,image/webp" multiple required class="input mt-1" />
+      </label>
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="btn-primary" type="submit">${icon('add_photo_alternate', 18)} Agregar im\u00e1genes</button>
+        <span role="status" class="text-sm text-gray-600"></span>
+      </div>
+    </form>
+    <div id="figuras-lista" class="space-y-3">${spinner()}</div>`;
+}
+
+function wireAnexos() {
+  const ruta = rutaFiguras(_currentInforme);
+  const form = document.getElementById('figuras-form');
+  const lista = document.getElementById('figuras-lista');
+  const estado = form.querySelector('[role="status"]');
+  const subir = form.querySelector('button');
+  async function listar() {
+    try {
+      const figuras = await api.get(ruta);
+      lista.innerHTML = figuras.map(f => `
+        <form data-figura="${f.numero}" class="rounded-xl border border-gray-200 p-4">
+          <h3 class="mb-2 font-semibold">Figura ${f.numero}</h3>
+          <label class="label">Leyenda
+            <input name="leyenda" maxlength="300" required class="input mt-1" value="${esc(f.leyenda)}" />
+          </label>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <input class="input max-w-36 font-mono text-xs" name="cita" aria-label="Cita de figura" readonly value="[[figura:${f.numero}]]" />
+            <button type="button" class="btn-secondary" data-copiar-figura>Copiar cita</button>
+            <button type="submit" class="btn-secondary">Guardar leyenda</button>
+            <button type="button" class="btn-secondary text-red-700" data-quitar-figura>Quitar</button>
+          </div>
+        </form>`).join('') || '<p class="text-sm text-gray-500">El informe a\u00fan no tiene figuras.</p>';
+    } catch (e) { lista.textContent = 'No se pudieron cargar los anexos. ' + e.message; }
+  }
+  listar();
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const archivos = [...form.elements.namedItem('imagenes').files];
+    subir.disabled = true;
+    let cargadas = 0;
+    try {
+      for (const archivo of archivos) {
+        estado.textContent = `Agregando imagen ${cargadas + 1} de ${archivos.length}\u2026`;
+        const contenido = new FormData();
+        contenido.append('imagen', archivo);
+        contenido.append('leyenda', archivo.name);
+        await api.post(ruta, contenido);
+        cargadas++;
+      }
+      form.reset();
+      estado.textContent = `Im\u00e1genes agregadas: ${cargadas}.`;
+    } catch (e) {
+      if (cargadas) form.reset();
+      estado.textContent = `Im\u00e1genes agregadas: ${cargadas}. ${e.message}`;
+    } finally {
+      subir.disabled = false;
+      if (lista.isConnected) await listar();
+    }
+  });
+  lista.addEventListener('submit', async event => {
+    event.preventDefault();
+    const tarjeta = event.target;
+    try {
+      await api.patch(`${ruta}/${tarjeta.dataset.figura}`, { leyenda: tarjeta.elements.namedItem('leyenda').value });
+      toast('Leyenda guardada');
+    } catch (e) { toast(e.message, 'error'); }
+  });
+  lista.addEventListener('click', async event => {
+    const boton = event.target.closest('[data-copiar-figura], [data-quitar-figura]');
+    if (!boton) return;
+    const tarjeta = boton.closest('[data-figura]');
+    if (boton.hasAttribute('data-copiar-figura')) {
+      const campo = tarjeta.elements.namedItem('cita');
+      try {
+        await navigator.clipboard.writeText(campo.value);
+        toast('Cita copiada');
+      } catch { campo.focus(); campo.select(); }
+      return;
+    }
+    if (!await confirmModal('La figura se quitar\u00e1 del anexo. Su n\u00famero se conservar\u00e1 en las citas existentes.', { title: 'Quitar figura', confirmLabel: 'Quitar' })) return;
+    try {
+      await api.delete(`${ruta}/${tarjeta.dataset.figura}`);
+      tarjeta.remove();
+      if (!lista.children.length && lista.isConnected) await listar();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+async function openPreview() {
   const inf = _currentInforme;
   const dat = inf.datos || {};
 
+  const boton = document.getElementById('btn-preview');
+  let figuras = [];
+  let errorAnexos = false;
+  boton.disabled = true;
+  try {
+    figuras = await api.get(rutaFiguras(inf));
+  } catch {
+    errorAnexos = true;
+  } finally {
+    boton.disabled = false;
+  }
+  if (!boton.isConnected) return;
   showModal(
     `${esc(inf.codigo)} \u2013 Vista previa`,
-    buildPreviewHTML(inf, dat),
+    buildPreviewHTML(inf, dat, figuras, errorAnexos),
     '2xl'
   );
+  const vista = document.getElementById('preview-content');
+  vista.addEventListener('click', event => {
+    const cita = event.target.closest('[data-cita-figura]');
+    if (cita) vista.querySelector(`#figura-${cita.dataset.citaFigura}`)?.scrollIntoView({ block: 'center' });
+  });
+  cargarImagenesVistaPrevia(inf, vista);
 }
 
-function buildPreviewHTML(inf, dat) {
+async function cargarImagenesVistaPrevia(inf, vista) {
+  const imagenes = [...vista.querySelectorAll('[data-imagen-figura]')];
+  async function cargar(imagen) {
+    try {
+      const blob = await api.getBlob(`${rutaFiguras(inf)}/${imagen.dataset.imagenFigura}`);
+      if (!imagen.isConnected) return;
+      const url = URL.createObjectURL(blob);
+      const limpiar = () => URL.revokeObjectURL(url);
+      imagen.addEventListener('load', limpiar, { once: true });
+      imagen.addEventListener('error', limpiar, { once: true });
+      imagen.src = url;
+    } catch { imagen.alt = 'No se pudo cargar esta imagen.'; }
+  }
+  for (let i = 0; i < imagenes.length && vista.isConnected; i += 4) {
+    await Promise.all(imagenes.slice(i, i + 4).map(cargar));
+  }
+}
+
+function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
+  const numeros = new Set(figuras.map(figura => Number(figura.numero)));
+  const citar = texto => esc(texto).replace(/\[\[figura:(\d+)\]\]/gi, (_, n) => numeros.has(Number(n))
+    ? `<button type="button" class="text-primary-700 underline" data-cita-figura="${Number(n)}">Figura ${Number(n)}</button>`
+    : `Figura ${Number(n)}`);
   const observaciones = areasParticipantes(dat)
     .map(area => ({ area, texto: observacionArea(dat, area) }))
     .filter(({ texto }) => texto.trim());
@@ -2013,14 +2154,14 @@ function buildPreviewHTML(inf, dat) {
       ${dat.resumen_ejecutivo ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">1. Resumen Ejecutivo</h2>
-          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.resumen_ejecutivo)}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.resumen_ejecutivo)}</p>
         </div>` : ''}
 
       <!-- Antecedentes -->
       ${dat.antecedentes || dat.antecedentes_tablas?.length ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">2. Antecedentes y Alcance</h2>
-          <div class="space-y-3">${renderContenidoAntecedentes(dat)}</div>
+          <div class="space-y-3">${renderContenidoAntecedentes(dat, false, citar)}</div>
         </div>` : ''}
 
       <!-- Componentes -->
@@ -2029,7 +2170,7 @@ function buildPreviewHTML(inf, dat) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Componentes del Proyecto</h2>
           <table class="w-full text-xs border border-gray-200">
             <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Nombre</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left">URL</th></tr></thead>
-            <tbody>${componentes.map((c,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5">${esc(c.nombre)}</td><td class="px-3 py-1.5">${esc(c.descripcion)}</td><td class="px-3 py-1.5 font-mono text-xs">${esc(c.pagina_url)}</td></tr>`).join('')}</tbody>
+            <tbody>${componentes.map((c,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5">${esc(c.nombre)}</td><td class="px-3 py-1.5">${citar(c.descripcion)}</td><td class="px-3 py-1.5 font-mono text-xs">${esc(c.pagina_url)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
@@ -2039,7 +2180,7 @@ function buildPreviewHTML(inf, dat) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">3. Estado de M\u00f3dulos</h2>
           <table class="w-full text-xs border border-gray-200">
             <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">M\u00f3dulo</th><th class="px-3 py-1.5 text-left">Estado</th><th class="px-3 py-1.5 text-left">Detalle</th></tr></thead>
-            <tbody>${modulos.map((m,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(m.nombre)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_MODULO[m.estado_modulo] || ''}">${ESTADOS_MODULO[m.estado_modulo] || m.estado_modulo}</span></td><td class="px-3 py-1.5">${esc(m.detalle)}</td></tr>`).join('')}</tbody>
+            <tbody>${modulos.map((m,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(m.nombre)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_MODULO[m.estado_modulo] || ''}">${ESTADOS_MODULO[m.estado_modulo] || m.estado_modulo}</span></td><td class="px-3 py-1.5">${citar(m.detalle)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
@@ -2049,7 +2190,7 @@ function buildPreviewHTML(inf, dat) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">4. Requerimientos Funcionales (${rfTotal} total \u2013 ${rfOpMaqueta} operativos, ${rfSimulado} simulados, ${rfPendiente} pendientes)</h2>
           <table class="w-full text-xs border border-gray-200">
             <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Estado</th></tr></thead>
-            <tbody>${reqs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RF[r.estado_rf] || ''}">${ESTADOS_RF[r.estado_rf] || r.estado_rf}</span></td></tr>`).join('')}</tbody>
+            <tbody>${reqs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${citar(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RF[r.estado_rf] || ''}">${ESTADOS_RF[r.estado_rf] || r.estado_rf}</span></td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
@@ -2061,7 +2202,7 @@ function buildPreviewHTML(inf, dat) {
             <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
             <tbody>${rnfs.map((r, i) => {
               const evaluacion = evaluacionRNF(r);
-              return `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[evaluacion] || ''}">${esc(evaluacion)}</span></td></tr>`;
+              return `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${citar(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[evaluacion] || ''}">${esc(evaluacion)}</span></td></tr>`;
             }).join('')}</tbody>
           </table>
         </div>` : ''}
@@ -2072,7 +2213,7 @@ function buildPreviewHTML(inf, dat) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">6. Observaciones por \u00c1rea</h2>
           ${observaciones.map(({ area, texto }) => `<div class="mb-3">
             <p class="font-semibold text-xs text-gray-600 mb-1">${esc(nombreAreaObservaciones(area))}</p>
-            <p class="text-sm leading-relaxed whitespace-pre-line">${esc(texto)}</p>
+            <p class="text-sm leading-relaxed whitespace-pre-line">${citar(texto)}</p>
           </div>`).join('')}
         </div>` : ''}
 
@@ -2082,7 +2223,7 @@ function buildPreviewHTML(inf, dat) {
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">7. Brechas Identificadas</h2>
           <table class="w-full text-xs border border-gray-200">
             <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">#</th><th class="px-3 py-1.5 text-left">Necesidad</th><th class="px-3 py-1.5 text-left">Qu\u00e9 implica</th><th class="px-3 py-1.5 text-left w-20">Prioridad</th><th class="px-3 py-1.5 text-left">Criterio aceptaci\u00f3n</th></tr></thead>
-            <tbody>${brechas.map((b,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-bold text-gray-500">${i+1}</td><td class="px-3 py-1.5">${esc(b.necesidad)}</td><td class="px-3 py-1.5">${esc(b.que_implica)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_PRIORIDAD[b.prioridad] || ''}">${esc(b.prioridad)}</span></td><td class="px-3 py-1.5">${esc(b.criterio_aceptacion)}</td></tr>`).join('')}</tbody>
+            <tbody>${brechas.map((b,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-bold text-gray-500">${i+1}</td><td class="px-3 py-1.5">${citar(b.necesidad)}</td><td class="px-3 py-1.5">${citar(b.que_implica)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_PRIORIDAD[b.prioridad] || ''}">${esc(b.prioridad)}</span></td><td class="px-3 py-1.5">${citar(b.criterio_aceptacion)}</td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
@@ -2094,12 +2235,12 @@ function buildPreviewHTML(inf, dat) {
           ${fasesA.length ? `
             <table class="w-full text-xs border border-gray-200">
               <thead><tr class="bg-blue-50 font-semibold"><th class="px-3 py-1.5 text-left">Fase</th><th class="px-3 py-1.5 text-left">Entregable</th><th class="px-3 py-1.5 text-left">Requerimientos</th><th class="px-3 py-1.5 text-left">Duraci\u00f3n</th></tr></thead>
-              <tbody>${fasesA.map((f,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(f.fase)}</td><td class="px-3 py-1.5">${esc(f.entregable)}</td><td class="px-3 py-1.5">${esc(f.requerimientos)}</td><td class="px-3 py-1.5">${esc(f.duracion)}</td></tr>`).join('')}</tbody>
+              <tbody>${fasesA.map((f,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(f.fase)}</td><td class="px-3 py-1.5">${citar(f.entregable)}</td><td class="px-3 py-1.5">${esc(f.requerimientos)}</td><td class="px-3 py-1.5">${esc(f.duracion)}</td></tr>`).join('')}</tbody>
             </table>` : '<p class="text-xs text-gray-400">Sin fases definidas.</p>'}
         </div>
         <div>
           <p class="font-bold mb-1">Escenario B: ${esc(dat.escenario_b_titulo || '')}</p>
-          ${dat.escenario_b_descripcion ? `<p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.escenario_b_descripcion)}</p>` : ''}
+          ${dat.escenario_b_descripcion ? `<p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.escenario_b_descripcion)}</p>` : ''}
         </div>
         <p class="mt-3 text-xs text-gray-500">Plazo de respuesta: <strong>${dat.plazo_respuesta_dias || 15} d\u00edas h\u00e1biles</strong></p>
       </div>
@@ -2108,12 +2249,12 @@ function buildPreviewHTML(inf, dat) {
       ${dat.conclusiones ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">9. Conclusiones</h2>
-          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.conclusiones)}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.conclusiones)}</p>
         </div>` : ''}
       ${dat.recomendacion ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Recomendaci\u00f3n</h2>
-          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.recomendacion)}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.recomendacion)}</p>
         </div>` : ''}
 
       <div class="border-t-2 border-gray-800 pt-4">
@@ -2136,7 +2277,16 @@ function buildPreviewHTML(inf, dat) {
       ${dat.hoja_respuesta ? `
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <h2 class="font-bold text-sm uppercase mb-2">10. Hoja de Respuesta</h2>
-          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.hoja_respuesta)}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${citar(dat.hoja_respuesta)}</p>
         </div>` : ''}
+      ${errorAnexos ? '<p class="text-sm text-red-700">No se pudieron cargar los anexos.</p>' : ''}
+      ${figuras.length ? `<section class="border-t-2 border-gray-800 pt-4">
+        <h2 class="mb-4 text-base font-bold">Anexo de im\u00e1genes</h2>
+        <div class="space-y-5">${figuras.map(f => `
+          <figure id="figura-${f.numero}" class="break-inside-avoid rounded-lg border border-gray-200 p-3">
+            <img data-imagen-figura="${f.numero}" alt="${esc(f.leyenda)}" class="mx-auto max-h-[65vh] max-w-full object-contain" />
+            <figcaption class="mt-2 text-center text-sm"><strong>Figura ${f.numero}.</strong> ${esc(f.leyenda)}</figcaption>
+          </figure>`).join('')}</div>
+      </section>` : ''}
     </div>`;
 }

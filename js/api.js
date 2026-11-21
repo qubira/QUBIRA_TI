@@ -16,7 +16,7 @@ function resolveUrl(path) {
   return CENTRAL_API + '/api/ti' + path;
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, responseType) {
   const token = localStorage.getItem('token');
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -42,6 +42,7 @@ async function request(method, path, body) {
     throw new Error('No autorizado');
   }
 
+  if (res.ok && responseType === 'blob') return res.blob();
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
 
@@ -52,6 +53,7 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  getBlob: path => request('GET', path, undefined, 'blob'),
   get(path, params) {
     let url = path;
     if (params) {
