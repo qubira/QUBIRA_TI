@@ -6,7 +6,7 @@ import { toast, showModal, closeModal,
          fmtDate, fmtDateTime,
          fmtRelative, fmtMoney, spinner, icon,
          isOverdue, overdueBadge, previewFile,
-         sanitizeRichText } from '../utils.js';
+         sanitizeRichText, ESTADOS_IMPLEMENTACION } from '../utils.js';
 
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
@@ -1493,16 +1493,29 @@ function reqLabel(r, index) {
   return `${r.type === 'non_functional' ? 'RNF' : 'RF'}${index + 1}`;
 }
 
+function selectorEstadoRequisito(requisito, label, editable) {
+  const estado = requisito.implementation_status || 'pendiente';
+  return `<label class="inline-flex flex-wrap items-center gap-2 text-xs text-gray-500">
+    Estado
+    <select class="input req-implementation-status w-auto max-w-full text-xs" data-id="${esc(requisito.id)}" aria-label="Estado de ${label}" ${editable ? '' : 'disabled'}>
+      ${Object.entries(ESTADOS_IMPLEMENTACION).map(([valor, texto]) => `<option value="${valor}" ${valor === estado ? 'selected' : ''}>${texto}</option>`).join('')}
+    </select>
+  </label>`;
+}
+
 function requirementRow(r, index) {
   const canEditProgress = isResponsible();
   const label = reqLabel(r, index);
   return `
-  <div class="flex items-start gap-2 p-2.5 rounded-lg border border-gray-100">
+  <div class="rounded-lg border border-gray-100 p-2.5">
+  <div class="flex items-start gap-2">
     <div class="flex-1 min-w-0 text-sm text-gray-700 break-words rte-display"><span class="font-semibold text-gray-400 mr-1.5">${label}.</span>${sanitizeRichText(r.description || '')}</div>
     ${canEditProgress
       ? `<input type="number" min="0" max="100" value="${r.progress ?? 0}" class="req-progress-input input text-xs text-center shrink-0" style="width:56px;padding:3px 4px" data-id="${r.id}">`
       : `<span class="text-xs font-medium text-gray-500 shrink-0 mt-0.5" title="Solo el responsable puede editar el avance">${r.progress ?? 0}</span>`}
     <span class="text-xs text-gray-400 shrink-0 mt-1.5">%</span>
+  </div>
+  <div class="mt-2">${selectorEstadoRequisito(r, label, canEditProgress)}</div>
   </div>`;
 }
 
@@ -1518,6 +1531,26 @@ async function refreshProjectProgress() {
 }
 
 function wireRequirementsTab() {
+  document.querySelectorAll('.req-implementation-status:not(:disabled)').forEach(select => {
+    select.addEventListener('change', async () => {
+      const requisito = _requirements.find(r => String(r.id) === select.dataset.id);
+      if (!requisito) return;
+      const anterior = requisito.implementation_status || 'pendiente';
+      const estado = select.value;
+      select.disabled = true;
+      try {
+        const resultado = await api.put(`/requirements/${requisito.id}`, { implementation_status: estado });
+        if (resultado?.implementation_status !== estado) throw new Error('No se pudo guardar el estado del requisito');
+        requisito.implementation_status = estado;
+      } catch (e) {
+        select.value = anterior;
+        toast(e.message, 'error');
+      } finally {
+        select.disabled = false;
+      }
+    });
+  });
+
   document.querySelectorAll('.req-progress-input').forEach(inp => {
     inp.addEventListener('change', async () => {
       const value = Math.max(0, Math.min(100, parseInt(inp.value) || 0));

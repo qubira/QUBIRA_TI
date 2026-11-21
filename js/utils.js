@@ -1,3 +1,10 @@
+export const ESTADOS_IMPLEMENTACION = {
+  operativo_maqueta: 'Operativo en maqueta',
+  operativo_local:   'Operativo (solo local)',
+  simulado:          'Simulado',
+  pendiente:         'Pendiente',
+};
+
 // ─── Toast ───────────────────────────────────────────────────────────────────
 export function toast(msg, type = 'success') {
   const container = document.getElementById('toast-container');

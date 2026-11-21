@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { navigate } from '../state.js';
-import { toast, showModal, closeModal, confirmModal, spinner, icon, pageHeader, fmtDate } from '../utils.js';
+import { toast, showModal, closeModal, confirmModal, spinner, icon, pageHeader, fmtDate, ESTADOS_IMPLEMENTACION as ESTADOS_RF } from '../utils.js';
 
 // --- Constantes -----------------------------------------------------------
 const ESTADOS_INFORME = {
@@ -8,13 +8,6 @@ const ESTADOS_INFORME = {
   en_revision: { label: 'En revisi\u00f3n', color: 'bg-amber-100 text-amber-800 border-amber-300' },
   emitido:     { label: 'Emitido',        color: 'bg-blue-100 text-blue-800 border-blue-300' },
   cerrado:     { label: 'Cerrado',        color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-};
-
-const ESTADOS_RF = {
-  operativo_maqueta: 'Operativo en maqueta',
-  operativo_local:   'Operativo (solo local)',
-  simulado:          'Simulado',
-  pendiente:         'Pendiente',
 };
 
 const COLORES_RF = {
@@ -316,8 +309,9 @@ async function leerProyectoParaInforme(id) {
     const estado = funcional ? Object.keys(ESTADOS_RF).find(key => ESTADOS_RF[key] === etiqueta) : EVAL_RNF.find(value => value === etiqueta);
     if (estado) descripcion = descripcion.slice(0, separador).trim();
     const codigo = `${funcional ? 'RF' : 'RNF'}-${String(indice + 1).padStart(2, '0')}`;
-    if (funcional) return { codigo, descripcion, estado_rf: estado || 'pendiente' };
-    return { codigo, descripcion, categoria: '', evaluacion: estado || 'Pendiente' };
+    const implementacion = Object.hasOwn(ESTADOS_RF, req.implementation_status) ? req.implementation_status : null;
+    if (funcional) return { codigo, descripcion, estado_rf: implementacion || estado || 'pendiente' };
+    return { codigo, descripcion, categoria: '', evaluacion: estado || 'Pendiente', implementation_status: implementacion };
   };
   const requerimientos = requisitos.filter(req => req.type !== 'non_functional').map((req, i) => convertir(req, i, true));
   const req_no_funcionales = requisitos.filter(req => req.type === 'non_functional').map((req, i) => convertir(req, i, false));
@@ -925,7 +919,8 @@ function rowRNF(r, i) {
   return `
     <tr data-rnfi="${i}" class="border-b border-gray-100">
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-cat" value="${esc(r.categoria || '')}" placeholder="Rendimiento" /></td>
-      <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" />
+        ${r.implementation_status ? `<span class="mt-1 block text-xs text-gray-500">${ESTADOS_RF[r.implementation_status] || ''}</span>` : ''}</td>
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-desc" value="${esc(r.descripcion || '')}" /></td>
       <td class="px-3 py-2">
         <select class="input text-sm rnf-eval">
