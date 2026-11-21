@@ -2211,26 +2211,87 @@ async function openPreview() {
   imprimir.disabled = false;
 }
 
+function imagenMembreteImpreso(inf, { titulo, areas, version, fecha }) {
+  const lienzo = document.createElement('canvas');
+  lienzo.width = 672;
+  lienzo.height = 70;
+  const dibujo = lienzo.getContext('2d');
+  if (!dibujo) return '';
+  const izquierda = 182;
+  const derecha = 510;
+  const franja = 48;
+  dibujo.fillStyle = '#ffffff';
+  dibujo.fillRect(0, 0, lienzo.width, lienzo.height);
+  dibujo.fillStyle = '#e5f2f3';
+  dibujo.fillRect(izquierda, franja, derecha - izquierda, 22);
+  dibujo.fillStyle = '#fff5d6';
+  dibujo.fillRect(derecha, franja, lienzo.width - derecha, 22);
+  dibujo.strokeStyle = '#c7d0d5';
+  dibujo.strokeRect(0.5, 0.5, lienzo.width - 1, lienzo.height - 1);
+  dibujo.beginPath();
+  for (const x of [izquierda, derecha]) {
+    dibujo.moveTo(x + 0.5, 0);
+    dibujo.lineTo(x + 0.5, lienzo.height);
+  }
+  dibujo.moveTo(izquierda, franja + 0.5);
+  dibujo.lineTo(lienzo.width, franja + 0.5);
+  dibujo.stroke();
+
+  const logo = document.querySelector('#preview-content .informe-membrete-logo img');
+  if (logo?.naturalWidth) dibujo.drawImage(logo, 59, 10, 64, 49);
+  dibujo.textAlign = 'center';
+  dibujo.fillStyle = '#008696';
+  dibujo.font = 'bold 12px Arial';
+  dibujo.fillText('QUBIRA S.A.C.', 346, 19, 314);
+  dibujo.fillStyle = '#172334';
+  dibujo.fillText(titulo, 346, 34, 314);
+  dibujo.font = '11px Arial';
+  dibujo.fillStyle = '#475569';
+  dibujo.fillText(areas, 346, 63, 314);
+
+  dibujo.textAlign = 'left';
+  const registro = [['C\u00f3digo', inf.codigo], ['Versi\u00f3n', version], ['Fecha', fecha]];
+  registro.forEach(([etiqueta, valor], indice) => {
+    const y = 14 + indice * 13;
+    dibujo.fillStyle = '#172334';
+    dibujo.font = 'bold 11px Arial';
+    dibujo.fillText(etiqueta, 518, y);
+    const ancho = dibujo.measureText(etiqueta).width;
+    dibujo.font = '11px Arial';
+    dibujo.fillText(String(valor || ''), 522 + ancho, y, 142 - ancho);
+  });
+  dibujo.fillStyle = '#a24500';
+  dibujo.font = 'bold 11px Arial';
+  dibujo.fillText('Uso restringido', 518, 63);
+  return lienzo.toDataURL('image/png');
+}
+
 function imprimirInforme(inf, dat) {
   const estilo = document.createElement('style');
-  const { titulo, areas, version, fecha } = datosMembrete(inf, dat);
-  const logo = document.querySelector('#preview-content .informe-membrete-logo img');
-  let logoImpreso = '';
-  if (logo?.naturalWidth) {
-    const lienzo = document.createElement('canvas');
-    lienzo.width = logo.naturalWidth;
-    lienzo.height = logo.naturalHeight;
-    lienzo.getContext('2d').drawImage(logo, 0, 0);
-    logoImpreso = `@top-left { content: url("${lienzo.toDataURL('image/png')}"); }`;
-  }
+  const datos = datosMembrete(inf, dat);
+  const { titulo, areas, version, fecha } = datos;
+  const imagen = imagenMembreteImpreso(inf, datos);
   const cssTexto = texto => '"' + String(texto).replace(/[\x00-\x1f"\\]/g, caracter =>
     '\\' + caracter.charCodeAt(0).toString(16) + ' ') + '"';
-  estilo.textContent = `@page qubira-informe {
-    ${logoImpreso}
+  const membrete = imagen ? `
+    @top-left { content: none; }
+    @top-center {
+      content: url("${imagen}");
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: none;
+      vertical-align: middle;
+    }
+    @top-right { content: none; }
+  ` : `
     @top-center { content: ${cssTexto(['QUBIRA S.A.C.', titulo, areas].join('\n'))}; }
     @top-right { content: ${cssTexto([
       'C\u00f3digo: ' + (inf.codigo || ''), 'Versi\u00f3n: ' + version, 'Fecha: ' + fecha, 'Uso restringido',
     ].join('\n'))}; }
+  `;
+  estilo.textContent = `@page qubira-informe {
+    ${membrete}
     @bottom-right { content: "P\u00e1gina " counter(page) " de " counter(pages) ${cssTexto(' | Versi\u00f3n ' + version)}; }
   }`;
   document.head.append(estilo);
