@@ -1,0 +1,1443 @@
+﻿import { api } from '../api.js';
+import { toast, showModal, closeModal, confirmModal, spinner, icon, pageHeader, fmtDate } from '../utils.js';
+
+// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const ESTADOS_INFORME = {
+  borrador:    { label: 'Borrador',     color: 'bg-gray-100 text-gray-700 border-gray-300' },
+  en_revision: { label: 'En revisiÃ³n',  color: 'bg-amber-100 text-amber-800 border-amber-300' },
+  emitido:     { label: 'Emitido',      color: 'bg-blue-100 text-blue-800 border-blue-300' },
+  cerrado:     { label: 'Cerrado',      color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+};
+
+const ESTADOS_RF = {
+  operativo_maqueta: 'Operativo en maqueta',
+  operativo_local:   'Operativo (solo local)',
+  simulado:          'Simulado',
+  pendiente:         'Pendiente',
+};
+
+const COLORES_RF = {
+  operativo_maqueta: 'bg-green-100 text-green-800',
+  operativo_local:   'bg-blue-100 text-blue-800',
+  simulado:          'bg-yellow-100 text-yellow-800',
+  pendiente:         'bg-gray-100 text-gray-600',
+};
+
+const ESTADOS_MODULO = {
+  terminado: 'Terminado',
+  parcial:   'Parcial',
+  simulado:  'Simulado',
+  pendiente: 'Pendiente',
+};
+
+const COLORES_MODULO = {
+  terminado: 'bg-emerald-100 text-emerald-800',
+  parcial:   'bg-blue-100 text-blue-800',
+  simulado:  'bg-yellow-100 text-yellow-800',
+  pendiente: 'bg-gray-100 text-gray-600',
+};
+
+const EVAL_RNF = ['Cumple', 'Cumple con reserva', 'LimitaciÃ³n', 'Brecha crÃ­tica', 'Pendiente'];
+const COLORES_RNF = {
+  'Cumple':             'bg-emerald-100 text-emerald-800',
+  'Cumple con reserva': 'bg-blue-100 text-blue-800',
+  'LimitaciÃ³n':         'bg-yellow-100 text-yellow-800',
+  'Brecha crÃ­tica':     'bg-red-100 text-red-800',
+  'Pendiente':          'bg-gray-100 text-gray-600',
+};
+
+const PRIORIDADES_BRECHA = ['Alta', 'Media', 'Baja'];
+const COLORES_PRIORIDAD = {
+  Alta:  'bg-red-100 text-red-800',
+  Media: 'bg-amber-100 text-amber-800',
+  Baja:  'bg-gray-100 text-gray-600',
+};
+
+const ESTADO_GENERAL_OPTS = ['INCONCLUSO', 'EN DESARROLLO', 'COMPLETADO', 'PAUSADO'];
+
+const TABS = [
+  { id: 'portada',      label: 'Portada' },
+  { id: 'componentes',  label: 'Componentes' },
+  { id: 'estado',       label: 'Estado del Proyecto' },
+  { id: 'rf',           label: 'Req. Funcionales' },
+  { id: 'rnf',          label: 'Req. No Funcionales' },
+  { id: 'observaciones',label: 'Observaciones' },
+  { id: 'brechas',      label: 'Brechas' },
+  { id: 'escenarios',   label: 'Escenarios' },
+  { id: 'conclusiones', label: 'Conclusiones' },
+];
+
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function stateBadge(estado) {
+  const cfg = ESTADOS_INFORME[estado] || { label: estado, color: 'bg-gray-100 text-gray-700 border-gray-300' };
+  return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg.color}">${cfg.label}</span>`;
+}
+
+function miniSelect(opts, val, cls = '') {
+  return `<select class="input text-sm ${cls}">${opts.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+}
+
+// â”€â”€â”€ Estado local â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let _informes  = [];
+let _projects  = [];
+let _currentInforme = null;
+let _tab       = 'portada';
+let _saving    = false;
+let _saveTimer = null;
+
+// â”€â”€â”€ Punto de entrada pÃºblico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export function render(params = {}) {
+  if (params.id) {
+    renderDetalle(params.id);
+  } else {
+    renderLista();
+  }
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// LISTA
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function renderLista() {
+  const app = document.getElementById('main');
+  app.innerHTML = spinner();
+
+  try {
+    [_informes, _projects] = await Promise.all([
+      api.get('/informes-estado'),
+      api.get('/projects'),
+    ]);
+  } catch (e) {
+    app.innerHTML = `<p class="text-red-600 p-6">Error al cargar informes: ${esc(e.message)}</p>`;
+    return;
+  }
+
+  const total       = _informes.length;
+  const borradores  = _informes.filter(i => i.estado === 'borrador').length;
+  const enRevision  = _informes.filter(i => i.estado === 'en_revision').length;
+  const emitidos    = _informes.filter(i => i.estado === 'emitido').length;
+
+  app.innerHTML = `
+    ${pageHeader(
+      'Informes de Estado del Proyecto',
+      'IT-IE Â· Ãrea emisora: OTI Â· Revisores: ODN, OPP Â· Aprueba: ADG',
+      `<button id="btn-nuevo" class="btn-primary inline-flex items-center gap-1.5">${icon('add', 18)} Nuevo Informe</button>`
+    )}
+
+    <!-- KPIs -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      ${kpiCard('Total', total, 'assignment', 'text-gray-700', 'bg-gray-50')}
+      ${kpiCard('Borradores', borradores, 'edit_note', 'text-gray-500', 'bg-gray-50')}
+      ${kpiCard('En revisiÃ³n', enRevision, 'rate_review', 'text-amber-600', 'bg-amber-50')}
+      ${kpiCard('Emitidos', emitidos, 'check_circle', 'text-blue-600', 'bg-blue-50')}
+    </div>
+
+    <!-- Filtros -->
+    <div class="flex flex-wrap gap-3 mb-4">
+      <select id="filter-estado" class="input text-sm w-auto">
+        <option value="">Todos los estados</option>
+        ${Object.entries(ESTADOS_INFORME).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+      </select>
+      <select id="filter-project" class="input text-sm w-auto">
+        <option value="">Todos los proyectos</option>
+        ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+      </select>
+    </div>
+
+    <!-- Tabla -->
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
+              <th class="px-4 py-3 text-left">CÃ³digo</th>
+              <th class="px-4 py-3 text-left">TÃ­tulo</th>
+              <th class="px-4 py-3 text-left">Proyecto</th>
+              <th class="px-4 py-3 text-left">Estado</th>
+              <th class="px-4 py-3 text-left">Fecha</th>
+              <th class="px-4 py-3 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-informes">
+            ${renderFilasInformes(_informes)}
+          </tbody>
+        </table>
+      </div>
+      ${_informes.length === 0 ? emptyState() : ''}
+    </div>
+  `;
+
+  // Eventos
+  document.getElementById('btn-nuevo').addEventListener('click', openNuevoModal);
+
+  document.getElementById('filter-estado').addEventListener('change', aplicarFiltros);
+  document.getElementById('filter-project').addEventListener('change', aplicarFiltros);
+
+  document.getElementById('tabla-informes').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const { action, id } = btn.dataset;
+    if (action === 'ver')    navigate(`/informes-estado/${id}`);
+    if (action === 'editar') navigate(`/informes-estado/${id}`);
+    if (action === 'eliminar') await eliminarInforme(id);
+  });
+}
+
+function kpiCard(label, value, iconName, textCls, bgCls) {
+  return `
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl ${bgCls} flex items-center justify-center shrink-0">
+        <span class="material-icons ${textCls}" style="font-size:20px">${iconName}</span>
+      </div>
+      <div>
+        <p class="text-2xl font-bold text-gray-900">${value}</p>
+        <p class="text-xs text-gray-500">${label}</p>
+      </div>
+    </div>`;
+}
+
+function emptyState() {
+  return `<div class="py-16 text-center text-gray-400">
+    <span class="material-icons" style="font-size:48px">description</span>
+    <p class="mt-2 text-sm">No hay informes aÃºn. Crea el primero.</p>
+  </div>`;
+}
+
+function renderFilasInformes(list) {
+  if (!list.length) return '';
+  return list.map(inf => `
+    <tr class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+      <td class="px-4 py-3">
+        <span class="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">${esc(inf.codigo)}</span>
+      </td>
+      <td class="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">${esc(inf.titulo)}</td>
+      <td class="px-4 py-3 text-gray-600 text-sm">${esc(inf.project_name || 'â€”')}</td>
+      <td class="px-4 py-3">${stateBadge(inf.estado)}</td>
+      <td class="px-4 py-3 text-gray-500 text-sm">${fmtDate(inf.fecha_emision || inf.created_at)}</td>
+      <td class="px-4 py-3 text-right">
+        <div class="flex items-center justify-end gap-1">
+          <button data-action="ver" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700" title="Ver">
+            ${icon('visibility', 16)}
+          </button>
+          <button data-action="editar" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 hover:text-blue-700" title="Editar">
+            ${icon('edit', 16)}
+          </button>
+          <button data-action="eliminar" data-id="${inf.id}" class="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600" title="Eliminar">
+            ${icon('delete', 16)}
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function aplicarFiltros() {
+  const estado    = document.getElementById('filter-estado').value;
+  const projectId = document.getElementById('filter-project').value;
+  let lista = _informes;
+  if (estado)    lista = lista.filter(i => i.estado === estado);
+  if (projectId) lista = lista.filter(i => i.project_id === projectId);
+  document.getElementById('tabla-informes').innerHTML = renderFilasInformes(lista);
+}
+
+async function eliminarInforme(id) {
+  const inf = _informes.find(i => i.id === id);
+  if (!inf) return;
+  const ok = await confirmModal(
+    `Â¿Eliminar el informe <strong>${esc(inf.codigo)}</strong>? Esta acciÃ³n no se puede deshacer.`,
+    { title: 'Eliminar informe', confirmLabel: 'Eliminar', danger: true }
+  );
+  if (!ok) return;
+  try {
+    await api.delete(`/informes-estado/${id}`);
+    toast('Informe eliminado');
+    renderLista();
+  } catch (e) {
+    toast('Error al eliminar: ' + e.message, 'error');
+  }
+}
+
+// â”€â”€â”€ Helper de navegaciÃ³n (usa el router de la app si existe, si no history.pushState) â”€
+function navigate(path) {
+  if (window.navigateTo) { window.navigateTo(path); return; }
+  history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// MODAL NUEVO INFORME
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function openNuevoModal() {
+  if (!_projects.length) {
+    try { _projects = await api.get('/projects'); } catch { _projects = []; }
+  }
+
+  showModal('Nuevo Informe de Estado', `
+    <div class="space-y-4">
+      <div>
+        <label class="label">TÃ­tulo del informe *</label>
+        <input id="ni-titulo" class="input w-full" placeholder="Ej: Informe de Estado â€” Sistema de GestiÃ³n Qubira" />
+      </div>
+      <div>
+        <label class="label">Proyecto vinculado</label>
+        <select id="ni-project" class="input w-full">
+          <option value="">â€” Sin proyecto â€”</option>
+          ${_projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="label">Fecha lÃ­mite de respuesta</label>
+        <input id="ni-fecha" type="date" class="input w-full" />
+      </div>
+      <div>
+        <label class="label">VersiÃ³n</label>
+        <input id="ni-version" class="input w-full" value="1.0" />
+      </div>
+    </div>
+  `, 'md', `
+    <div class="flex justify-end gap-3">
+      <button id="ni-cancel" class="btn-secondary">Cancelar</button>
+      <button id="ni-crear" class="btn-primary inline-flex items-center gap-1.5">${icon('save', 16)} Crear Informe</button>
+    </div>
+  `);
+
+  document.getElementById('ni-cancel').addEventListener('click', closeModal);
+  document.getElementById('ni-crear').addEventListener('click', async () => {
+    const titulo  = document.getElementById('ni-titulo').value.trim();
+    const projId  = document.getElementById('ni-project').value;
+    const fecha   = document.getElementById('ni-fecha').value;
+    const version = document.getElementById('ni-version').value.trim() || '1.0';
+
+    if (!titulo) {
+      document.getElementById('ni-titulo').classList.add('border-red-500');
+      toast('El tÃ­tulo es obligatorio', 'error');
+      return;
+    }
+
+    try {
+      const nuevo = await api.post('/informes-estado', {
+        titulo, project_id: projId || null, fecha_limite: fecha || null, version,
+      });
+      closeModal();
+      toast('Informe creado');
+      navigate(`/informes-estado/${nuevo.id}`);
+    } catch (e) {
+      toast('Error al crear: ' + e.message, 'error');
+    }
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// DETALLE / EDICIÃ“N
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function renderDetalle(id) {
+  const app = document.getElementById('main');
+  app.innerHTML = spinner();
+
+  try {
+    [_currentInforme, _projects] = await Promise.all([
+      api.get(`/informes-estado/${id}`),
+      api.get('/projects'),
+    ]);
+  } catch (e) {
+    app.innerHTML = `<p class="text-red-600 p-6">Error al cargar informe: ${esc(e.message)}</p>`;
+    return;
+  }
+
+  const inf  = _currentInforme;
+  const dat  = inf.datos || {};
+
+  mountDetalle(inf, dat);
+}
+
+function mountDetalle(inf, dat) {
+  const app = document.getElementById('main');
+
+  app.innerHTML = `
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5">
+      <div class="flex items-start gap-3">
+        <button id="btn-back" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 mt-0.5" title="Volver">
+          ${icon('arrow_back', 20)}
+        </button>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-mono text-sm font-bold text-gray-700 bg-gray-100 px-2.5 py-0.5 rounded">${esc(inf.codigo)}</span>
+            ${stateBadge(inf.estado)}
+            <span class="text-xs text-gray-400">${fmtDate(inf.created_at)}</span>
+          </div>
+          <h1 class="text-xl font-bold text-gray-900 mt-0.5">${esc(inf.titulo)}</h1>
+          ${inf.project_name ? `<p class="text-sm text-gray-500">${icon('folder_open',14)} ${esc(inf.project_name)}</p>` : ''}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 items-center">
+        <span id="save-status" class="text-xs text-gray-400 italic hidden">Guardandoâ€¦</span>
+        <button id="btn-estado" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('swap_horiz',16)} Cambiar estado</button>
+        <button id="btn-preview" class="btn-secondary text-sm inline-flex items-center gap-1.5">${icon('print',16)} Vista previa</button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 overflow-x-auto pb-1 mb-5 border-b border-gray-200">
+      ${TABS.map(t => `
+        <button data-tab="${t.id}" class="tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${_tab === t.id ? 'bg-white border border-b-white border-gray-200 text-primary-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}">
+          ${t.label}
+        </button>`).join('')}
+    </div>
+
+    <!-- Panel de tab -->
+    <div id="tab-panel" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      ${renderTab(_tab, inf, dat)}
+    </div>
+  `;
+
+  // Volver
+  document.getElementById('btn-back').addEventListener('click', () => navigate('/informes-estado'));
+
+  // Cambiar tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        const active = b.dataset.tab === _tab;
+        b.className = `tab-btn shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${active ? 'bg-white border border-b-white border-gray-200 text-primary-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}`;
+      });
+      document.getElementById('tab-panel').innerHTML = renderTab(_tab, _currentInforme, _currentInforme.datos || {});
+      wireTab(_tab);
+    });
+  });
+
+  // Cambiar estado
+  document.getElementById('btn-estado').addEventListener('click', openCambiarEstadoModal);
+
+  // Preview
+  document.getElementById('btn-preview').addEventListener('click', openPreview);
+
+  // Wire primer tab
+  wireTab(_tab);
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// RENDER DE TABS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function renderTab(tab, inf, dat) {
+  switch (tab) {
+    case 'portada':       return renderTabPortada(inf, dat);
+    case 'componentes':   return renderTabComponentes(dat);
+    case 'estado':        return renderTabEstado(dat);
+    case 'rf':            return renderTabRF(dat);
+    case 'rnf':           return renderTabRNF(dat);
+    case 'observaciones': return renderTabObservaciones(dat);
+    case 'brechas':       return renderTabBrechas(dat);
+    case 'escenarios':    return renderTabEscenarios(dat);
+    case 'conclusiones':  return renderTabConclusiones(inf, dat);
+    default:              return '';
+  }
+}
+
+// â”€â”€ Tab: Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabPortada(inf, dat) {
+  return `
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">1. Portada / IdentificaciÃ³n</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div>
+        <label class="label">TÃ­tulo del informe</label>
+        <input id="f-titulo" class="input w-full" value="${esc(inf.titulo)}" data-field="titulo" data-root="1" />
+      </div>
+      <div>
+        <label class="label">VersiÃ³n</label>
+        <input id="f-version" class="input w-full" value="${esc(inf.version || '1.0')}" data-field="version" data-root="1" />
+      </div>
+      <div>
+        <label class="label">Dirigido a</label>
+        <input id="f-dirigido-a" class="input w-full" value="${esc(dat.dirigido_a || 'Alta DirecciÃ³n Gerencial (ADG)')}" data-field="dirigido_a" />
+      </div>
+      <div>
+        <label class="label">UbicaciÃ³n</label>
+        <input id="f-ubicacion" class="input w-full" value="${esc(dat.ubicacion || 'Lima, PerÃº')}" data-field="ubicacion" />
+      </div>
+      <div>
+        <label class="label">Ãreas participantes (separadas por coma)</label>
+        <input id="f-areas" class="input w-full" value="${esc((dat.areas_participantes || ['OTI','ODN','OPP']).join(', '))}" data-field="areas_participantes" />
+      </div>
+      <div>
+        <label class="label">URL del sitio publicado</label>
+        <input id="f-url-sitio" class="input w-full" value="${esc(dat.url_sitio_publicado || '')}" data-field="url_sitio_publicado" />
+      </div>
+      <div>
+        <label class="label">TecnologÃ­as usadas</label>
+        <input id="f-tecnologias" class="input w-full" value="${esc(dat.tecnologias_usadas || '')}" data-field="tecnologias_usadas" />
+      </div>
+      <div>
+        <label class="label">LÃ­neas de cÃ³digo (aprox.)</label>
+        <input id="f-lineas" type="number" class="input w-full" value="${esc(dat.lineas_codigo || 0)}" data-field="lineas_codigo" />
+      </div>
+      <div>
+        <label class="label">Fecha de emisiÃ³n</label>
+        <input id="f-fecha-emision" type="date" class="input w-full" value="${inf.fecha_emision ? inf.fecha_emision.slice(0,10) : ''}" data-field="fecha_emision" data-root="1" />
+      </div>
+      <div>
+        <label class="label">Fecha lÃ­mite de respuesta</label>
+        <input id="f-fecha-limite" type="date" class="input w-full" value="${inf.fecha_limite ? inf.fecha_limite.slice(0,10) : ''}" data-field="fecha_limite" data-root="1" />
+      </div>
+    </div>
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">2. Resumen Ejecutivo</h3>
+    <textarea id="f-resumen" class="input w-full" rows="5" data-field="resumen_ejecutivo">${esc(dat.resumen_ejecutivo || '')}</textarea>
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">3. Antecedentes y Alcance</h3>
+    <textarea id="f-antecedentes" class="input w-full" rows="5" data-field="antecedentes">${esc(dat.antecedentes || '')}</textarea>
+
+    <!-- Firmas -->
+    <h3 class="text-sm font-bold text-gray-700 mt-8 mb-3">Firmas del documento</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      ${firmaCard('OTI', 'ElaborÃ³', inf.elaborado_nombre)}
+      ${firmaCard('ODN', 'RevisÃ³', inf.revisado_por_odn_nombre || 'â€”')}
+      ${firmaCard('OPP', 'RevisÃ³', inf.revisado_por_opp_nombre || 'â€”')}
+      ${firmaCard('ADG', 'AprobÃ³', inf.aprobado_nombre || 'â€”')}
+    </div>
+  `;
+}
+
+function firmaCard(area, rol, nombre) {
+  return `
+    <div class="border border-gray-200 rounded-xl p-3 text-center bg-gray-50/50">
+      <span class="text-xs font-bold text-gray-500 uppercase">${area}</span>
+      <p class="text-xs text-gray-400 mt-0.5">${rol}</p>
+      <p class="text-sm font-medium text-gray-700 mt-1">${esc(nombre || 'â€”')}</p>
+    </div>`;
+}
+
+// â”€â”€ Tab: Componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabComponentes(dat) {
+  const rows = (dat.componentes || []);
+  return `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-bold text-gray-800">Componentes del Proyecto</h2>
+      <button id="btn-add-comp" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar componente</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
+            <th class="px-3 py-2 text-left">Nombre</th>
+            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
+            <th class="px-3 py-2 text-left">URL de la pÃ¡gina</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-comp">
+          ${rows.map((c, i) => rowComponente(c, i)).join('')}
+        </tbody>
+      </table>
+      ${rows.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin componentes registrados.</p>` : ''}
+    </div>`;
+}
+
+function rowComponente(c, i) {
+  return `
+    <tr data-ci="${i}" class="border-b border-gray-100">
+      <td class="px-3 py-2"><input class="input w-full text-sm comp-nombre" value="${esc(c.nombre || '')}" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm comp-descripcion" value="${esc(c.descripcion || '')}" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm comp-url" value="${esc(c.pagina_url || '')}" /></td>
+      <td class="px-3 py-2 text-right">
+        <button data-rm-comp="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+      </td>
+    </tr>`;
+}
+
+// â”€â”€ Tab: Estado del Proyecto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabEstado(dat) {
+  const modulos = dat.modulos || [];
+  return `
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Estado Actual del Proyecto</h2>
+    <div class="mb-5">
+      <label class="label">Estado general</label>
+      <select id="f-estado-general" class="input w-full md:w-64" data-field="estado_general">
+        ${ESTADO_GENERAL_OPTS.map(o => `<option value="${o}" ${dat.estado_general === o ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-bold text-gray-700">MÃ³dulos / Componentes</h3>
+      <button id="btn-add-mod" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar mÃ³dulo</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
+            <th class="px-3 py-2 text-left">MÃ³dulo</th>
+            <th class="px-3 py-2 text-left">Estado</th>
+            <th class="px-3 py-2 text-left">Detalle</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-mod">
+          ${modulos.map((m, i) => rowModulo(m, i)).join('')}
+        </tbody>
+      </table>
+      ${modulos.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin mÃ³dulos registrados.</p>` : ''}
+    </div>`;
+}
+
+function rowModulo(m, i) {
+  return `
+    <tr data-mi="${i}" class="border-b border-gray-100">
+      <td class="px-3 py-2"><input class="input w-full text-sm mod-nombre" value="${esc(m.nombre || '')}" /></td>
+      <td class="px-3 py-2">
+        <select class="input text-sm mod-estado">
+          ${Object.entries(ESTADOS_MODULO).map(([k,v]) => `<option value="${k}" ${m.estado_modulo === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+      </td>
+      <td class="px-3 py-2"><input class="input w-full text-sm mod-detalle" value="${esc(m.detalle || '')}" /></td>
+      <td class="px-3 py-2 text-right">
+        <button data-rm-mod="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+      </td>
+    </tr>`;
+}
+
+// â”€â”€ Tab: Requerimientos Funcionales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabRF(dat) {
+  const reqs = dat.requerimientos || [];
+  const total = dat.reqs_funcionales_total || 0;
+  return `
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-base font-bold text-gray-800">Requerimientos Funcionales (RF)</h2>
+      <div class="flex gap-2 items-center">
+        <span class="text-xs text-gray-500">Total declarado:</span>
+        <input id="f-rf-total" type="number" class="input w-20 text-sm" value="${total}" data-field="reqs_funcionales_total" min="0" />
+        <button id="btn-add-rf" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar RF</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
+            <th class="px-3 py-2 text-left w-24">CÃ³digo</th>
+            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
+            <th class="px-3 py-2 text-left w-48">Estado</th>
+            <th class="px-3 py-2 w-10"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-rf">
+          ${reqs.map((r, i) => rowRF(r, i)).join('')}
+        </tbody>
+      </table>
+      ${reqs.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin requerimientos funcionales.</p>` : ''}
+    </div>`;
+}
+
+function rowRF(r, i) {
+  return `
+    <tr data-rfi="${i}" class="border-b border-gray-100">
+      <td class="px-3 py-2"><input class="input w-full text-sm rf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RF-01" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm rf-desc" value="${esc(r.descripcion || '')}" /></td>
+      <td class="px-3 py-2">
+        <select class="input text-sm rf-estado">
+          ${Object.entries(ESTADOS_RF).map(([k,v]) => `<option value="${k}" ${r.estado_rf === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+      </td>
+      <td class="px-3 py-2 text-right">
+        <button data-rm-rf="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+      </td>
+    </tr>`;
+}
+
+// â”€â”€ Tab: Requerimientos No Funcionales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabRNF(dat) {
+  const rnfs = dat.req_no_funcionales || [];
+  return `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-bold text-gray-800">Requerimientos No Funcionales (RNF)</h2>
+      <button id="btn-add-rnf" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar RNF</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
+            <th class="px-3 py-2 text-left w-32">CategorÃ­a</th>
+            <th class="px-3 py-2 text-left w-24">CÃ³digo</th>
+            <th class="px-3 py-2 text-left">DescripciÃ³n</th>
+            <th class="px-3 py-2 text-left w-48">EvaluaciÃ³n</th>
+            <th class="px-3 py-2 w-10"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-rnf">
+          ${rnfs.map((r, i) => rowRNF(r, i)).join('')}
+        </tbody>
+      </table>
+      ${rnfs.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin requerimientos no funcionales.</p>` : ''}
+    </div>`;
+}
+
+function rowRNF(r, i) {
+  return `
+    <tr data-rnfi="${i}" class="border-b border-gray-100">
+      <td class="px-3 py-2"><input class="input w-full text-sm rnf-cat" value="${esc(r.categoria || '')}" placeholder="Rendimiento" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm rnf-desc" value="${esc(r.descripcion || '')}" /></td>
+      <td class="px-3 py-2">
+        <select class="input text-sm rnf-eval">
+          ${EVAL_RNF.map(o => `<option value="${o}" ${r.evaluacion === o ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>
+      </td>
+      <td class="px-3 py-2 text-right">
+        <button data-rm-rnf="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+      </td>
+    </tr>`;
+}
+
+// â”€â”€ Tab: Observaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabObservaciones(dat) {
+  return `
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Observaciones por Ãrea</h2>
+    <div class="space-y-5">
+      <div>
+        <label class="label flex items-center gap-1.5">${icon('computer',16)} OTI â€” Jefatura de TecnologÃ­as de InformaciÃ³n</label>
+        <textarea id="f-obs-oti" class="input w-full" rows="4" data-field="obs_oti">${esc(dat.obs_oti || '')}</textarea>
+      </div>
+      <div>
+        <label class="label flex items-center gap-1.5">${icon('business',16)} ODN â€” Oficina de Desarrollo de Negocios</label>
+        <textarea id="f-obs-odn" class="input w-full" rows="4" data-field="obs_odn">${esc(dat.obs_odn || '')}</textarea>
+      </div>
+      <div>
+        <label class="label flex items-center gap-1.5">${icon('analytics',16)} OPP â€” Oficina de Planeamiento y Presupuesto</label>
+        <textarea id="f-obs-opp" class="input w-full" rows="4" data-field="obs_opp">${esc(dat.obs_opp || '')}</textarea>
+      </div>
+    </div>`;
+}
+
+// â”€â”€ Tab: Brechas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabBrechas(dat) {
+  const brechas = dat.brechas || [];
+  return `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-bold text-gray-800">Brechas Identificadas</h2>
+      <button id="btn-add-brecha" class="btn-primary text-sm inline-flex items-center gap-1.5">${icon('add',16)} Agregar brecha</button>
+    </div>
+    <div class="space-y-4" id="list-brechas">
+      ${brechas.map((b, i) => cardBrecha(b, i)).join('')}
+      ${brechas.length === 0 ? `<p class="text-sm text-gray-400 py-6 text-center">Sin brechas registradas.</p>` : ''}
+    </div>`;
+}
+
+function cardBrecha(b, i) {
+  return `
+    <div data-bi="${i}" class="border border-gray-200 rounded-xl p-4 bg-gray-50/40 space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-gray-500">BRECHA ${i + 1}</span>
+        <div class="flex items-center gap-2">
+          <select class="input text-xs brecha-prioridad w-28">
+            ${PRIORIDADES_BRECHA.map(p => `<option value="${p}" ${b.prioridad === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select>
+          <button data-rm-brecha="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+        </div>
+      </div>
+      <div>
+        <label class="label text-xs">Necesidad</label>
+        <input class="input w-full text-sm brecha-necesidad" value="${esc(b.necesidad || '')}" placeholder="QuÃ© se necesita" />
+      </div>
+      <div>
+        <label class="label text-xs">QuÃ© implica</label>
+        <input class="input w-full text-sm brecha-implica" value="${esc(b.que_implica || '')}" placeholder="Implicaciones tÃ©cnicas u organizacionales" />
+      </div>
+      <div>
+        <label class="label text-xs">Criterio de aceptaciÃ³n</label>
+        <input class="input w-full text-sm brecha-criterio" value="${esc(b.criterio_aceptacion || '')}" placeholder="CondiciÃ³n para cerrar esta brecha" />
+      </div>
+    </div>`;
+}
+
+// â”€â”€ Tab: Escenarios de DecisiÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabEscenarios(dat) {
+  const fasesA = dat.escenario_a_fases || [];
+  return `
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Escenarios de DecisiÃ³n</h2>
+
+    <!-- Escenario A -->
+    <div class="bg-blue-50/50 border border-blue-200 rounded-2xl p-5 mb-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-7 h-7 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center">A</span>
+        <input id="f-esc-a-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_a_titulo || 'La marca continÃºa con el proyecto')}" data-field="escenario_a_titulo" />
+      </div>
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold text-gray-600">Fases propuestas</span>
+        <button id="btn-add-fase" class="btn-secondary text-xs inline-flex items-center gap-1">${icon('add',14)} Agregar fase</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-blue-200 bg-blue-50/60">
+              <th class="px-3 py-2 text-left">Fase</th>
+              <th class="px-3 py-2 text-left">Entregable</th>
+              <th class="px-3 py-2 text-left">Requerimientos</th>
+              <th class="px-3 py-2 text-left w-24">DuraciÃ³n</th>
+              <th class="px-3 py-2 w-10"></th>
+            </tr>
+          </thead>
+          <tbody id="tbody-fases">
+            ${fasesA.map((f, i) => rowFase(f, i)).join('')}
+          </tbody>
+        </table>
+        ${fasesA.length === 0 ? `<p class="text-xs text-gray-400 py-4 text-center">Sin fases.</p>` : ''}
+      </div>
+    </div>
+
+    <!-- Escenario B -->
+    <div class="bg-amber-50/50 border border-amber-200 rounded-2xl p-5 mb-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-7 h-7 rounded-full bg-amber-500 text-white text-sm font-bold flex items-center justify-center">B</span>
+        <input id="f-esc-b-titulo" class="input flex-1 font-semibold" value="${esc(dat.escenario_b_titulo || 'La marca no continÃºa')}" data-field="escenario_b_titulo" />
+      </div>
+      <label class="label text-xs">DescripciÃ³n</label>
+      <textarea id="f-esc-b-desc" class="input w-full" rows="4" data-field="escenario_b_descripcion">${esc(dat.escenario_b_descripcion || '')}</textarea>
+    </div>
+
+    <!-- Plazo -->
+    <div class="flex items-center gap-3">
+      <label class="label shrink-0">Plazo de respuesta (dÃ­as)</label>
+      <input id="f-plazo" type="number" class="input w-32" value="${dat.plazo_respuesta_dias || 15}" data-field="plazo_respuesta_dias" min="1" />
+    </div>`;
+}
+
+function rowFase(f, i) {
+  return `
+    <tr data-fi="${i}" class="border-b border-blue-100">
+      <td class="px-3 py-2"><input class="input w-full text-sm fase-fase" value="${esc(f.fase || '')}" placeholder="Fase 1" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm fase-entregable" value="${esc(f.entregable || '')}" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm fase-reqs" value="${esc(f.requerimientos || '')}" /></td>
+      <td class="px-3 py-2"><input class="input w-full text-sm fase-dur" value="${esc(f.duracion || '')}" placeholder="2 semanas" /></td>
+      <td class="px-3 py-2 text-right">
+        <button data-rm-fase="${i}" class="p-1.5 rounded hover:bg-red-50 text-red-400">${icon('delete',15)}</button>
+      </td>
+    </tr>`;
+}
+
+// â”€â”€ Tab: Conclusiones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderTabConclusiones(inf, dat) {
+  return `
+    <h2 class="text-base font-bold text-gray-800 mb-4 pb-2 border-b">Conclusiones y Recomendaciones</h2>
+    <div class="space-y-5">
+      <div>
+        <label class="label">Conclusiones</label>
+        <textarea id="f-conclusiones" class="input w-full" rows="6" data-field="conclusiones">${esc(dat.conclusiones || '')}</textarea>
+      </div>
+      <div>
+        <label class="label">RecomendaciÃ³n</label>
+        <textarea id="f-recomendacion" class="input w-full" rows="4" data-field="recomendacion">${esc(dat.recomendacion || '')}</textarea>
+      </div>
+      <div>
+        <label class="label">Hoja de respuesta (texto de respuesta esperado del ADG)</label>
+        <textarea id="f-hoja-respuesta" class="input w-full" rows="4" data-field="hoja_respuesta">${esc(dat.hoja_respuesta || '')}</textarea>
+      </div>
+    </div>`;
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// WIRE TABS (eventos interactivos)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function wireTab(tab) {
+  switch (tab) {
+    case 'portada':       wirePortada(); break;
+    case 'componentes':   wireComponentes(); break;
+    case 'estado':        wireEstado(); break;
+    case 'rf':            wireRF(); break;
+    case 'rnf':           wireRNF(); break;
+    case 'observaciones': wireObservaciones(); break;
+    case 'brechas':       wireBrechas(); break;
+    case 'escenarios':    wireEscenarios(); break;
+    case 'conclusiones':  wireConclusiones(); break;
+  }
+}
+
+// â”€â”€ Wire: Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wirePortada() {
+  const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion', 'f-areas',
+                  'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
+                  'f-resumen', 'f-antecedentes'];
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => scheduleAutosave());
+  });
+}
+
+// â”€â”€ Wire: Componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireComponentes() {
+  document.getElementById('btn-add-comp')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos || {};
+    if (!dat.componentes) dat.componentes = [];
+    dat.componentes.push({ nombre: '', descripcion: '', pagina_url: '' });
+    _currentInforme.datos = dat;
+    document.getElementById('tab-panel').innerHTML = renderTab('componentes', _currentInforme, dat);
+    wireTab('componentes');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-comp]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmComp);
+    const dat = _currentInforme.datos || {};
+    dat.componentes.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('componentes', _currentInforme, dat);
+    wireTab('componentes');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.comp-nombre,.comp-descripcion,.comp-url')) return;
+    const row  = e.target.closest('[data-ci]');
+    if (!row) return;
+    const i    = parseInt(row.dataset.ci);
+    const dat  = _currentInforme.datos;
+    const c    = dat.componentes[i];
+    if (e.target.classList.contains('comp-nombre'))      c.nombre      = e.target.value;
+    if (e.target.classList.contains('comp-descripcion')) c.descripcion = e.target.value;
+    if (e.target.classList.contains('comp-url'))         c.pagina_url  = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: Estado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireEstado() {
+  document.getElementById('f-estado-general')?.addEventListener('change', e => {
+    _currentInforme.datos.estado_general = e.target.value;
+    scheduleAutosave();
+  });
+
+  document.getElementById('btn-add-mod')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos || {};
+    if (!dat.modulos) dat.modulos = [];
+    dat.modulos.push({ nombre: '', estado_modulo: 'pendiente', detalle: '' });
+    document.getElementById('tab-panel').innerHTML = renderTab('estado', _currentInforme, dat);
+    wireTab('estado');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-mod]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmMod);
+    _currentInforme.datos.modulos.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('estado', _currentInforme, _currentInforme.datos);
+    wireTab('estado');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.mod-nombre,.mod-estado,.mod-detalle')) return;
+    const row = e.target.closest('[data-mi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.mi);
+    const m = _currentInforme.datos.modulos[i];
+    if (e.target.classList.contains('mod-nombre'))  m.nombre       = e.target.value;
+    if (e.target.classList.contains('mod-estado'))  m.estado_modulo = e.target.value;
+    if (e.target.classList.contains('mod-detalle')) m.detalle      = e.target.value;
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('change', e => {
+    if (!e.target.classList.contains('mod-estado')) return;
+    const row = e.target.closest('[data-mi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.mi);
+    _currentInforme.datos.modulos[i].estado_modulo = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: RF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireRF() {
+  document.getElementById('btn-add-rf')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos;
+    if (!dat.requerimientos) dat.requerimientos = [];
+    const n = dat.requerimientos.length + 1;
+    dat.requerimientos.push({ codigo: `RF-${String(n).padStart(2,'0')}`, descripcion: '', estado_rf: 'pendiente' });
+    document.getElementById('tab-panel').innerHTML = renderTab('rf', _currentInforme, dat);
+    wireTab('rf');
+    scheduleAutosave();
+  });
+
+  document.getElementById('f-rf-total')?.addEventListener('input', e => {
+    _currentInforme.datos.reqs_funcionales_total = parseInt(e.target.value) || 0;
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-rf]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmRf);
+    _currentInforme.datos.requerimientos.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('rf', _currentInforme, _currentInforme.datos);
+    wireTab('rf');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.rf-codigo,.rf-desc')) return;
+    const row = e.target.closest('[data-rfi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.rfi);
+    const r = _currentInforme.datos.requerimientos[i];
+    if (e.target.classList.contains('rf-codigo')) r.codigo      = e.target.value;
+    if (e.target.classList.contains('rf-desc'))   r.descripcion = e.target.value;
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('change', e => {
+    if (!e.target.classList.contains('rf-estado')) return;
+    const row = e.target.closest('[data-rfi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.rfi);
+    _currentInforme.datos.requerimientos[i].estado_rf = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: RNF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireRNF() {
+  document.getElementById('btn-add-rnf')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos;
+    if (!dat.req_no_funcionales) dat.req_no_funcionales = [];
+    const n = dat.req_no_funcionales.length + 1;
+    dat.req_no_funcionales.push({ categoria: '', codigo: `RNF-${String(n).padStart(2,'0')}`, descripcion: '', evaluacion: 'Pendiente' });
+    document.getElementById('tab-panel').innerHTML = renderTab('rnf', _currentInforme, dat);
+    wireTab('rnf');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-rnf]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmRnf);
+    _currentInforme.datos.req_no_funcionales.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('rnf', _currentInforme, _currentInforme.datos);
+    wireTab('rnf');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.rnf-cat,.rnf-codigo,.rnf-desc')) return;
+    const row = e.target.closest('[data-rnfi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.rnfi);
+    const r = _currentInforme.datos.req_no_funcionales[i];
+    if (e.target.classList.contains('rnf-cat'))    r.categoria  = e.target.value;
+    if (e.target.classList.contains('rnf-codigo')) r.codigo     = e.target.value;
+    if (e.target.classList.contains('rnf-desc'))   r.descripcion = e.target.value;
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('change', e => {
+    if (!e.target.classList.contains('rnf-eval')) return;
+    const row = e.target.closest('[data-rnfi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.rnfi);
+    _currentInforme.datos.req_no_funcionales[i].evaluacion = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: Observaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireObservaciones() {
+  ['f-obs-oti', 'f-obs-odn', 'f-obs-opp'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', e => {
+      const field = e.target.dataset.field;
+      _currentInforme.datos[field] = e.target.value;
+      scheduleAutosave();
+    });
+  });
+}
+
+// â”€â”€ Wire: Brechas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireBrechas() {
+  document.getElementById('btn-add-brecha')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos;
+    if (!dat.brechas) dat.brechas = [];
+    dat.brechas.push({ necesidad: '', que_implica: '', prioridad: 'Media', criterio_aceptacion: '' });
+    document.getElementById('tab-panel').innerHTML = renderTab('brechas', _currentInforme, dat);
+    wireTab('brechas');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-brecha]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmBrecha);
+    _currentInforme.datos.brechas.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('brechas', _currentInforme, _currentInforme.datos);
+    wireTab('brechas');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.brecha-necesidad,.brecha-implica,.brecha-criterio')) return;
+    const card = e.target.closest('[data-bi]');
+    if (!card) return;
+    const i = parseInt(card.dataset.bi);
+    const b = _currentInforme.datos.brechas[i];
+    if (e.target.classList.contains('brecha-necesidad')) b.necesidad         = e.target.value;
+    if (e.target.classList.contains('brecha-implica'))   b.que_implica       = e.target.value;
+    if (e.target.classList.contains('brecha-criterio'))  b.criterio_aceptacion = e.target.value;
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('change', e => {
+    if (!e.target.classList.contains('brecha-prioridad')) return;
+    const card = e.target.closest('[data-bi]');
+    if (!card) return;
+    const i = parseInt(card.dataset.bi);
+    _currentInforme.datos.brechas[i].prioridad = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: Escenarios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireEscenarios() {
+  document.getElementById('f-esc-a-titulo')?.addEventListener('input', e => {
+    _currentInforme.datos.escenario_a_titulo = e.target.value;
+    scheduleAutosave();
+  });
+  document.getElementById('f-esc-b-titulo')?.addEventListener('input', e => {
+    _currentInforme.datos.escenario_b_titulo = e.target.value;
+    scheduleAutosave();
+  });
+  document.getElementById('f-esc-b-desc')?.addEventListener('input', e => {
+    _currentInforme.datos.escenario_b_descripcion = e.target.value;
+    scheduleAutosave();
+  });
+  document.getElementById('f-plazo')?.addEventListener('input', e => {
+    _currentInforme.datos.plazo_respuesta_dias = parseInt(e.target.value) || 15;
+    scheduleAutosave();
+  });
+
+  document.getElementById('btn-add-fase')?.addEventListener('click', () => {
+    const dat = _currentInforme.datos;
+    if (!dat.escenario_a_fases) dat.escenario_a_fases = [];
+    dat.escenario_a_fases.push({ fase: '', entregable: '', requerimientos: '', duracion: '' });
+    document.getElementById('tab-panel').innerHTML = renderTab('escenarios', _currentInforme, dat);
+    wireTab('escenarios');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('click', e => {
+    const btn = e.target.closest('[data-rm-fase]');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.rmFase);
+    _currentInforme.datos.escenario_a_fases.splice(i, 1);
+    document.getElementById('tab-panel').innerHTML = renderTab('escenarios', _currentInforme, _currentInforme.datos);
+    wireTab('escenarios');
+    scheduleAutosave();
+  });
+
+  document.getElementById('tab-panel').addEventListener('input', e => {
+    if (!e.target.matches('.fase-fase,.fase-entregable,.fase-reqs,.fase-dur')) return;
+    const row = e.target.closest('[data-fi]');
+    if (!row) return;
+    const i = parseInt(row.dataset.fi);
+    const f = _currentInforme.datos.escenario_a_fases[i];
+    if (e.target.classList.contains('fase-fase'))       f.fase           = e.target.value;
+    if (e.target.classList.contains('fase-entregable')) f.entregable     = e.target.value;
+    if (e.target.classList.contains('fase-reqs'))       f.requerimientos = e.target.value;
+    if (e.target.classList.contains('fase-dur'))        f.duracion       = e.target.value;
+    scheduleAutosave();
+  });
+}
+
+// â”€â”€ Wire: Conclusiones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function wireConclusiones() {
+  ['f-conclusiones', 'f-recomendacion', 'f-hoja-respuesta'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', e => {
+      const field = e.target.dataset.field;
+      _currentInforme.datos[field] = e.target.value;
+      scheduleAutosave();
+    });
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// AUTOGUARDADO (debounce 1s)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function scheduleAutosave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(doAutosave, 1000);
+  const st = document.getElementById('save-status');
+  if (st) { st.textContent = 'Guardandoâ€¦'; st.classList.remove('hidden'); }
+}
+
+async function doAutosave() {
+  if (_saving || !_currentInforme) return;
+  _saving = true;
+
+  // Recolectar campos de raÃ­z del tab activo (portada)
+  collectPortadaFields();
+
+  const payload = buildPayload();
+  try {
+    const updated = await api.put(`/informes-estado/${_currentInforme.id}`, payload);
+    _currentInforme = { ..._currentInforme, ...updated, datos: _currentInforme.datos };
+    const st = document.getElementById('save-status');
+    if (st) { st.textContent = 'Guardado âœ“'; setTimeout(() => st.classList.add('hidden'), 2000); }
+  } catch (e) {
+    toast('Error al guardar: ' + e.message, 'error');
+  } finally {
+    _saving = false;
+  }
+}
+
+function collectPortadaFields() {
+  if (_tab !== 'portada') return;
+  const dat = _currentInforme.datos || {};
+
+  const get = id => document.getElementById(id)?.value ?? null;
+
+  if (get('f-titulo') !== null) _currentInforme.titulo = get('f-titulo');
+  if (get('f-version') !== null) _currentInforme.version = get('f-version');
+  if (get('f-fecha-emision') !== null) _currentInforme.fecha_emision = get('f-fecha-emision') || null;
+  if (get('f-fecha-limite') !== null) _currentInforme.fecha_limite = get('f-fecha-limite') || null;
+
+  if (get('f-dirigido-a') !== null) dat.dirigido_a = get('f-dirigido-a');
+  if (get('f-ubicacion') !== null) dat.ubicacion = get('f-ubicacion');
+  if (get('f-areas') !== null) dat.areas_participantes = get('f-areas').split(',').map(s => s.trim()).filter(Boolean);
+  if (get('f-url-sitio') !== null) dat.url_sitio_publicado = get('f-url-sitio');
+  if (get('f-tecnologias') !== null) dat.tecnologias_usadas = get('f-tecnologias');
+  if (get('f-lineas') !== null) dat.lineas_codigo = parseInt(get('f-lineas')) || 0;
+  if (get('f-resumen') !== null) dat.resumen_ejecutivo = get('f-resumen');
+  if (get('f-antecedentes') !== null) dat.antecedentes = get('f-antecedentes');
+
+  _currentInforme.datos = dat;
+}
+
+function buildPayload() {
+  const inf = _currentInforme;
+  return {
+    titulo:          inf.titulo,
+    version:         inf.version,
+    fecha_emision:   inf.fecha_emision || null,
+    fecha_limite:    inf.fecha_limite  || null,
+    datos:           inf.datos || {},
+  };
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CAMBIAR ESTADO
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function openCambiarEstadoModal() {
+  const orden = ['borrador', 'en_revision', 'emitido', 'cerrado'];
+  const actual = _currentInforme.estado;
+  const idx = orden.indexOf(actual);
+
+  showModal('Cambiar estado del informe', `
+    <p class="text-sm text-gray-600 mb-4">Estado actual: ${stateBadge(actual)}</p>
+    <div class="space-y-2">
+      ${orden.map((e, i) => {
+        const cfg = ESTADOS_INFORME[e];
+        const isCurrent = e === actual;
+        const isPrev = i < idx;
+        return `
+          <button data-new-estado="${e}" class="w-full text-left px-4 py-3 rounded-xl border ${isCurrent ? 'border-primary-400 bg-primary-50 cursor-default' : isPrev ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' : 'border-gray-200 hover:bg-gray-50 cursor-pointer'} flex items-center justify-between transition-colors">
+            <span class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs ${isCurrent ? 'border-primary-500 bg-primary-500 text-white' : 'border-gray-300'}">${isCurrent ? 'âœ“' : i + 1}</span>
+              <span class="text-sm font-medium">${cfg.label}</span>
+            </span>
+            ${isCurrent ? `<span class="text-xs text-primary-600 font-semibold">Actual</span>` : !isPrev ? `<span class="text-xs text-gray-400">â†’ Siguiente</span>` : ''}
+          </button>`;
+      }).join('')}
+    </div>
+  `, 'sm');
+
+  document.querySelectorAll('[data-new-estado]').forEach(btn => {
+    const e = btn.dataset.newEstado;
+    const i = orden.indexOf(e);
+    if (e === actual || i < idx) return;
+    btn.addEventListener('click', async () => {
+      try {
+        await api.put(`/informes-estado/${_currentInforme.id}`, { estado: e });
+        _currentInforme.estado = e;
+        closeModal();
+        toast(`Estado cambiado a: ${ESTADOS_INFORME[e].label}`);
+        // Re-montar header
+        mountDetalle(_currentInforme, _currentInforme.datos || {});
+      } catch (err) {
+        toast('Error: ' + err.message, 'error');
+      }
+    });
+  });
+}
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// VISTA PREVIA / PREVIEW COMPLETO
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function openPreview() {
+  const inf = _currentInforme;
+  const dat = inf.datos || {};
+
+  showModal(
+    `${esc(inf.codigo)} â€” Vista previa`,
+    buildPreviewHTML(inf, dat),
+    '2xl'
+  );
+}
+
+function buildPreviewHTML(inf, dat) {
+  const reqs = dat.requerimientos || [];
+  const rnfs = dat.req_no_funcionales || [];
+  const modulos = dat.modulos || [];
+  const componentes = dat.componentes || [];
+  const brechas = dat.brechas || [];
+  const fasesA = dat.escenario_a_fases || [];
+
+  const rfTotal = reqs.length;
+  const rfOpMaqueta = reqs.filter(r => r.estado_rf === 'operativo_maqueta').length;
+  const rfSimulado  = reqs.filter(r => r.estado_rf === 'simulado').length;
+  const rfPendiente = reqs.filter(r => r.estado_rf === 'pendiente').length;
+
+  return `
+    <div class="max-w-3xl mx-auto font-sans text-sm text-gray-800 space-y-6" id="preview-content">
+
+      <!-- Encabezado institucional -->
+      <div class="text-center border-b-2 border-gray-800 pb-4">
+        <div class="text-xs text-gray-500 uppercase tracking-widest">QUBIRA S.A.C.</div>
+        <h1 class="text-xl font-bold uppercase mt-1">INFORME DE ESTADO DEL PROYECTO</h1>
+        <div class="font-mono font-bold text-base mt-1">${esc(inf.codigo)}</div>
+        <p class="text-xs text-gray-500 mt-1">VersiÃ³n ${esc(inf.version || '1.0')} Â· ${fmtDate(inf.fecha_emision || inf.created_at)}</p>
+      </div>
+
+      <!-- Portada info -->
+      <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+        <tbody>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold w-40">TÃ­tulo</td><td class="px-3 py-2">${esc(inf.titulo)}</td></tr>
+          <tr><td class="px-3 py-2 font-semibold">Dirigido a</td><td class="px-3 py-2">${esc(dat.dirigido_a || 'ADG')}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Ãreas</td><td class="px-3 py-2">${esc((dat.areas_participantes || []).join(', '))}</td></tr>
+          <tr><td class="px-3 py-2 font-semibold">UbicaciÃ³n</td><td class="px-3 py-2">${esc(dat.ubicacion || '')}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">Estado general</td><td class="px-3 py-2 font-bold">${esc(dat.estado_general || 'â€”')}</td></tr>
+          <tr><td class="px-3 py-2 font-semibold">TecnologÃ­as</td><td class="px-3 py-2">${esc(dat.tecnologias_usadas || 'â€”')}</td></tr>
+          <tr class="bg-gray-50"><td class="px-3 py-2 font-semibold">LÃ­neas de cÃ³digo</td><td class="px-3 py-2">${dat.lineas_codigo || 0}</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Resumen Ejecutivo -->
+      ${dat.resumen_ejecutivo ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">1. Resumen Ejecutivo</h2>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.resumen_ejecutivo)}</p>
+        </div>` : ''}
+
+      <!-- Antecedentes -->
+      ${dat.antecedentes ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">2. Antecedentes y Alcance</h2>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.antecedentes)}</p>
+        </div>` : ''}
+
+      <!-- Componentes -->
+      ${componentes.length ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">Componentes del Proyecto</h2>
+          <table class="w-full text-xs border border-gray-200">
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Nombre</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left">URL</th></tr></thead>
+            <tbody>${componentes.map((c,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5">${esc(c.nombre)}</td><td class="px-3 py-1.5">${esc(c.descripcion)}</td><td class="px-3 py-1.5 font-mono text-xs">${esc(c.pagina_url)}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+
+      <!-- MÃ³dulos -->
+      ${modulos.length ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">3. Estado de MÃ³dulos</h2>
+          <table class="w-full text-xs border border-gray-200">
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">MÃ³dulo</th><th class="px-3 py-1.5 text-left">Estado</th><th class="px-3 py-1.5 text-left">Detalle</th></tr></thead>
+            <tbody>${modulos.map((m,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(m.nombre)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_MODULO[m.estado_modulo] || ''}">${ESTADOS_MODULO[m.estado_modulo] || m.estado_modulo}</span></td><td class="px-3 py-1.5">${esc(m.detalle)}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+
+      <!-- RF -->
+      ${reqs.length ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">4. Requerimientos Funcionales (${rfTotal} total â€” ${rfOpMaqueta} operativos, ${rfSimulado} simulados, ${rfPendiente} pendientes)</h2>
+          <table class="w-full text-xs border border-gray-200">
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">CÃ³digo</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left w-40">Estado</th></tr></thead>
+            <tbody>${reqs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RF[r.estado_rf] || ''}">${ESTADOS_RF[r.estado_rf] || r.estado_rf}</span></td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+
+      <!-- RNF -->
+      ${rnfs.length ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">5. Requerimientos No Funcionales</h2>
+          <table class="w-full text-xs border border-gray-200">
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">CategorÃ­a</th><th class="px-3 py-1.5 text-left w-20">CÃ³digo</th><th class="px-3 py-1.5 text-left">DescripciÃ³n</th><th class="px-3 py-1.5 text-left w-40">EvaluaciÃ³n</th></tr></thead>
+            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(r.categoria)}</td><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+
+      <!-- Observaciones -->
+      ${(dat.obs_oti || dat.obs_odn || dat.obs_opp) ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">6. Observaciones por Ãrea</h2>
+          ${dat.obs_oti ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">OTI â€” Jefatura de TI</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_oti)}</p></div>` : ''}
+          ${dat.obs_odn ? `<div class="mb-3"><p class="font-semibold text-xs text-gray-600 mb-1">ODN â€” Desarrollo de Negocios</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_odn)}</p></div>` : ''}
+          ${dat.obs_opp ? `<div><p class="font-semibold text-xs text-gray-600 mb-1">OPP â€” Planeamiento y Presupuesto</p><p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.obs_opp)}</p></div>` : ''}
+        </div>` : ''}
+
+      <!-- Brechas -->
+      ${brechas.length ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">7. Brechas Identificadas</h2>
+          <table class="w-full text-xs border border-gray-200">
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">#</th><th class="px-3 py-1.5 text-left">Necesidad</th><th class="px-3 py-1.5 text-left">QuÃ© implica</th><th class="px-3 py-1.5 text-left w-20">Prioridad</th><th class="px-3 py-1.5 text-left">Criterio aceptaciÃ³n</th></tr></thead>
+            <tbody>${brechas.map((b,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-bold text-gray-500">${i+1}</td><td class="px-3 py-1.5">${esc(b.necesidad)}</td><td class="px-3 py-1.5">${esc(b.que_implica)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_PRIORIDAD[b.prioridad] || ''}">${esc(b.prioridad)}</span></td><td class="px-3 py-1.5">${esc(b.criterio_aceptacion)}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : ''}
+
+      <!-- Escenarios -->
+      <div>
+        <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-3">8. Escenarios de DecisiÃ³n</h2>
+        <div class="mb-4">
+          <p class="font-bold mb-2">Escenario A: ${esc(dat.escenario_a_titulo || '')}</p>
+          ${fasesA.length ? `
+            <table class="w-full text-xs border border-gray-200">
+              <thead><tr class="bg-blue-50 font-semibold"><th class="px-3 py-1.5 text-left">Fase</th><th class="px-3 py-1.5 text-left">Entregable</th><th class="px-3 py-1.5 text-left">Requerimientos</th><th class="px-3 py-1.5 text-left">DuraciÃ³n</th></tr></thead>
+              <tbody>${fasesA.map((f,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(f.fase)}</td><td class="px-3 py-1.5">${esc(f.entregable)}</td><td class="px-3 py-1.5">${esc(f.requerimientos)}</td><td class="px-3 py-1.5">${esc(f.duracion)}</td></tr>`).join('')}</tbody>
+            </table>` : '<p class="text-xs text-gray-400">Sin fases definidas.</p>'}
+        </div>
+        <div>
+          <p class="font-bold mb-1">Escenario B: ${esc(dat.escenario_b_titulo || '')}</p>
+          ${dat.escenario_b_descripcion ? `<p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.escenario_b_descripcion)}</p>` : ''}
+        </div>
+        <p class="mt-3 text-xs text-gray-500">Plazo de respuesta: <strong>${dat.plazo_respuesta_dias || 15} dÃ­as hÃ¡biles</strong></p>
+      </div>
+
+      <!-- Conclusiones -->
+      ${dat.conclusiones ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">9. Conclusiones</h2>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.conclusiones)}</p>
+        </div>` : ''}
+      ${dat.recomendacion ? `
+        <div>
+          <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">RecomendaciÃ³n</h2>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.recomendacion)}</p>
+        </div>` : ''}
+
+      <!-- Firmas -->
+      <div class="border-t-2 border-gray-800 pt-4">
+        <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
+        <div class="grid grid-cols-4 gap-3">
+          ${['OTI Â· ElaborÃ³', 'ODN Â· RevisÃ³', 'OPP Â· RevisÃ³', 'ADG Â· AprobÃ³'].map(f => `
+            <div class="text-center border border-gray-300 rounded p-3">
+              <div class="h-10 border-b border-gray-400 mb-2"></div>
+              <p class="text-xs font-semibold">${f}</p>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Hoja de respuesta -->
+      ${dat.hoja_respuesta ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h2 class="font-bold text-sm uppercase mb-2">10. Hoja de Respuesta</h2>
+          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.hoja_respuesta)}</p>
+        </div>` : ''}
+    </div>`;
+}

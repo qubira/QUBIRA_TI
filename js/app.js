@@ -15,6 +15,7 @@ import { render as renderAuditoria }   from './pages/auditoria.js';
 import { render as renderHerramientas } from './pages/herramientas.js';
 import { render as renderInfoTecnico }  from './pages/info-tecnico.js?v=35';
 import { render as renderCalidad }      from './pages/calidad.js';
+import { render as renderInformesEstado } from './pages/informes-estado.js';
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const exactRoutes = {};
@@ -60,8 +61,9 @@ const NAV = [
   { grupo: 'General', path: '/calendario', iconName: 'calendar_month', label: 'Calendario' },
   { grupo: 'Proyectos', path: '/projects',   iconName: 'folder',        label: 'Proyectos' },
   { grupo: 'Proyectos', path: '/flujo',      iconName: 'alt_route',     label: 'Flujo de proyectos' },
-  { grupo: 'Proyectos', path: '/calidad',    iconName: 'verified',      label: 'Calidad' },
-  { grupo: 'Proyectos', path: '/herramientas', iconName: 'build',       label: 'Herramientas' },
+  { grupo: 'Proyectos', path: '/calidad',          iconName: 'verified',  label: 'Calidad' },
+  { grupo: 'Proyectos', path: '/informes-estado',  iconName: 'summarize', label: 'Informes de Estado' },
+  { grupo: 'Proyectos', path: '/herramientas',     iconName: 'build',     label: 'Herramientas' },
   { grupo: 'Proyectos', path: '/info-tecnico', iconName: 'memory',      label: 'Info Técnico' },
   { grupo: 'Soporte', path: '/casos',      iconName: 'support_agent', label: 'Casos de soporte' },
   { grupo: 'Comunicación', path: '/whatsapp',   iconName: 'chat',          label: 'WhatsApp' },
@@ -201,6 +203,8 @@ addRoute('/auditoria',       () => renderAuditoria());
 addRoute('/documents',       () => renderDocuments());
 addRoute('/calidad',         () => renderCalidad());
 addRoute('/calidad/:id',     p  => renderCalidad(p));
+addRoute('/informes-estado',     () => renderInformesEstado());
+addRoute('/informes-estado/:id', p  => renderInformesEstado(p));
 addRoute('/herramientas',    () => renderHerramientas());
 addRoute('/info-tecnico',    () => renderInfoTecnico());
 addRoute('/whatsapp',        () => renderWhatsApp());
