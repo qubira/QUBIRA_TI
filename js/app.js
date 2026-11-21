@@ -78,7 +78,7 @@ function navAgrupado(user, currentHash, collapsed) {
   return [...new Set(visibles.map(n => n.grupo))].map((g, i) => {
     const cab = collapsed
       ? (i ? '<div class="border-t border-gray-800 mx-2 my-2"></div>' : '')
-      : `<p class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-3 ${i ? 'pt-4' : ''} pb-1">${g}</p>`;
+      : `<p class="nav-label">${g}</p>`;
     return cab + visibles.filter(n => n.grupo === g).map(n => navLink(n, currentHash)).join('');
   }).join('');
 }
@@ -90,10 +90,7 @@ function isActive(path, currentHash, exact) {
 
 function navLink({ path, iconName, label, exact }, currentHash) {
   const active = isActive(path, currentHash, exact);
-  const cls = active
-    ? 'bg-primary-600 text-white'
-    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200';
-  return `<a href="#${path}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${cls}" title="${sidebarCollapsed ? label : ''}">
+  return `<a href="#${path}" class="nav-item${active ? ' active' : ''}"${active ? ' aria-current="page"' : ''} title="${sidebarCollapsed ? label : ''}">
     ${icon(iconName, 20)}
     ${!sidebarCollapsed ? `<span>${label}</span>` : ''}
   </a>`;
@@ -105,27 +102,27 @@ function renderSidebar(currentHash) {
 
   const sc = document.getElementById('sidebar-container');
   const collapsed = sidebarCollapsed;
+  const scrollTop = sc.querySelector('[data-qb-nav]')?.scrollTop || 0;
 
   sc.innerHTML = `
-  <aside id="sidebar" class="flex flex-col h-full bg-gray-900 transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
-    <!-- Logo -->
-    <div class="flex items-center justify-between px-4 py-4 border-b border-gray-800 min-h-[64px]">
-      <div class="flex items-center gap-2 ${collapsed ? 'mx-auto' : ''}">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-          <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira" class="w-full h-full object-contain">
-        </div>
-        ${!collapsed ? '<span class="font-bold text-white text-lg">Qubira OTI</span>' : ''}
+  <aside id="sidebar" data-qb-sidebar="TI" ${collapsed ? 'data-qb-collapsed' : ''} class="flex flex-col h-full transition-all duration-300 shrink-0 ${collapsed ? 'w-16' : 'w-64'}">
+    <div data-qb-brand>
+      <img src="https://raw.githubusercontent.com/qubira/IMAGENES/main/logo2.png" alt="Qubira">
+      <div data-qb-brand-text>
+        <div data-qb-title>QUBIRA</div>
+        <div data-qb-subtitle>OTI</div>
       </div>
-      ${!collapsed ? `<button id="sb-toggle" class="p-1 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_left', 20)}</button>` : ''}
+      <button type="button" id="sb-toggle" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expandir menú' : 'Contraer menú'}">
+        ${icon(collapsed ? 'chevron_right' : 'chevron_left', 16)}
+      </button>
     </div>
 
-    <!-- Nav -->
-    <nav class="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+    <nav data-qb-nav>
       ${navAgrupado(user, currentHash, collapsed)}
     </nav>
 
     <!-- User -->
-    <div class="border-t border-gray-800 p-2">
+    <div class="border-t border-gray-800 p-2" data-pie-modulo>
       ${!collapsed ? `
       <div class="flex items-center gap-3 px-2 py-2">
         <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
@@ -135,19 +132,20 @@ function renderSidebar(currentHash) {
           <p class="text-sm font-medium text-white truncate">${user.name}</p>
           <p class="text-xs text-gray-400 capitalize">${user.role}</p>
         </div>
-        <button id="switch-module-btn" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
-        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400" title="Cerrar sesión">${icon('logout', 18)}</button>
+        <button id="switch-module-btn" data-pie-cambiar class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
+        <button id="logout-btn" data-pie-salir class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400" title="Cerrar sesión">${icon('logout', 18)}</button>
       </div>` : `
       <div class="flex flex-col items-center gap-2 py-2">
         <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
           <span class="text-primary-700 font-semibold text-sm">${user.name?.[0]?.toUpperCase()}</span>
         </div>
-        <button id="switch-module-btn" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
-        <button id="logout-btn" class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400">${icon('logout', 18)}</button>
-        <button id="sb-toggle" class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400">${icon('chevron_right', 18)}</button>
+        <button id="switch-module-btn" data-pie-cambiar class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white" title="Cambiar de módulo">${icon('apps', 18)}</button>
+        <button id="logout-btn" data-pie-salir class="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-400 hover:text-red-400">${icon('logout', 18)}</button>
       </div>`}
     </div>
   </aside>`;
+
+  sc.querySelector('[data-qb-nav]').scrollTop = scrollTop;
 
   document.getElementById('sb-toggle')?.addEventListener('click', () => {
     sidebarCollapsed = !sidebarCollapsed;
