@@ -310,8 +310,9 @@ async function leerProyectoParaInforme(id) {
     if (estado) descripcion = descripcion.slice(0, separador).trim();
     const codigo = `${funcional ? 'RF' : 'RNF'}-${String(indice + 1).padStart(2, '0')}`;
     const implementacion = Object.hasOwn(ESTADOS_RF, req.implementation_status) ? req.implementation_status : null;
-    if (funcional) return { codigo, descripcion, estado_rf: implementacion || estado || 'pendiente' };
-    return { codigo, descripcion, evaluacion: estado || 'Pendiente', implementation_status: implementacion };
+    const comun = { codigo, descripcion, requisito_proyecto_id: req.id, implementation_status: implementacion };
+    if (funcional) return { ...comun, estado_rf: implementacion || estado || 'pendiente' };
+    return { ...comun, evaluacion: estado || 'Pendiente' };
   };
   const requerimientos = requisitos.filter(req => req.type !== 'non_functional').map((req, i) => convertir(req, i, true));
   const req_no_funcionales = requisitos.filter(req => req.type === 'non_functional').map((req, i) => convertir(req, i, false));
@@ -334,6 +335,35 @@ async function leerProyectoParaInforme(id) {
   };
 }
 
+function actualizarEstadosRequisitos(actuales, origen, funcional) {
+  const normalizar = req => (req.descripcion || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+  const porId = new Map(origen.filter(r => r.requisito_proyecto_id != null).map(r => [String(r.requisito_proyecto_id), r]));
+  const porDescripcion = new Map();
+  const frecuencias = new Map();
+  for (const req of origen) {
+    const clave = normalizar(req);
+    if (clave) porDescripcion.set(clave, porDescripcion.has(clave) ? null : req);
+  }
+  for (const req of actuales) {
+    const clave = normalizar(req);
+    frecuencias.set(clave, (frecuencias.get(clave) || 0) + 1);
+  }
+  return actuales.map(req => {
+    const clave = normalizar(req);
+    const fuente = req.requisito_proyecto_id != null
+      ? porId.get(String(req.requisito_proyecto_id))
+      : frecuencias.get(clave) === 1 ? porDescripcion.get(clave) : null;
+    if (!fuente) return req;
+    const estado = fuente.implementation_status;
+    const actualizado = { ...req, requisito_proyecto_id: fuente.requisito_proyecto_id };
+    if (estado) {
+      actualizado.implementation_status = estado;
+      if (funcional) actualizado.estado_rf = estado;
+    }
+    return actualizado;
+  });
+}
+
 function completarDesdeProyecto(actual, origen) {
   const datos = { ...actual, proyecto_origen: origen.proyecto_origen };
   for (const campo of ['url_sitio_publicado', 'tecnologias_usadas', 'estado_general']) {
@@ -346,8 +376,10 @@ function completarDesdeProyecto(actual, origen) {
   if (!datos.requerimientos?.length) {
     datos.requerimientos = origen.requerimientos;
     if (!datos.reqs_funcionales_total) datos.reqs_funcionales_total = origen.reqs_funcionales_total;
-  }
-  if (!datos.req_no_funcionales?.length) datos.req_no_funcionales = origen.req_no_funcionales;
+  } else datos.requerimientos = actualizarEstadosRequisitos(datos.requerimientos, origen.requerimientos, true);
+  datos.req_no_funcionales = datos.req_no_funcionales?.length
+    ? actualizarEstadosRequisitos(datos.req_no_funcionales, origen.req_no_funcionales, false)
+    : origen.req_no_funcionales;
   return datos;
 }
 
@@ -902,6 +934,7 @@ function renderTabRNF(dat) {
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
             <th class="px-3 py-2 text-left w-24">C\u00f3digo</th>
             <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
+            <th class="px-3 py-2 text-left w-36">Estado del proyecto</th>
             <th class="px-3 py-2 text-left w-48">Evaluaci\u00f3n</th>
             <th class="px-3 py-2 w-10"></th>
           </tr>
@@ -917,9 +950,9 @@ function renderTabRNF(dat) {
 function rowRNF(r, i) {
   return `
     <tr data-rnfi="${i}" class="border-b border-gray-100">
-      <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" />
-        ${r.implementation_status ? `<span class="mt-1 block text-xs text-gray-500">${ESTADOS_RF[r.implementation_status] || ''}</span>` : ''}</td>
+      <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" /></td>
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-desc" value="${esc(r.descripcion || '')}" /></td>
+      <td class="px-3 py-2 text-xs text-gray-600">${esc(ESTADOS_RF[r.implementation_status] || '\u2014')}</td>
       <td class="px-3 py-2">
         <select class="input text-sm rnf-eval">
           ${EVAL_RNF.map(o => `<option value="${o}" ${r.evaluacion === o ? 'selected' : ''}>${o}</option>`).join('')}
@@ -1924,8 +1957,8 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">5. Requerimientos No Funcionales</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
-            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left">Estado del proyecto</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
+            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5">${esc(ESTADOS_RF[r.implementation_status] || '\u2014')}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
