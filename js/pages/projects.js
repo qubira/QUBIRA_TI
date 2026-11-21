@@ -5,22 +5,43 @@ import { toast, showModal, pageHeader,
 
 let _projects = [], _families = [], _filter = { status: '', search: '', family: '' };
 let _groupByFamily = false;
+let searchTimer;
+let requestId = 0;
 
 export function render() {
   const main = document.getElementById('main');
   main.innerHTML = `<div class="p-6 max-w-7xl mx-auto" id="projects-page">${spinner()}</div>`;
   load();
-  api.get('/projects/families').then(f => { _families = f; }).catch(() => {});
+  const pagina = document.getElementById('projects-page');
+  api.get('/projects/families').then(familias => {
+    if (!pagina.isConnected) return;
+    _families = familias;
+    const filtroFamilia = pagina.querySelector('#family-filter');
+    if (filtroFamilia) filtroFamilia.innerHTML = opcionesFamilia();
+  }).catch(() => {});
 }
 
 function load() {
-  api.get('/projects', _filter).then(data => {
+  clearTimeout(searchTimer);
+  const pagina = document.getElementById('projects-page');
+  if (!pagina) return;
+  const id = ++requestId;
+  api.get('/projects', { ..._filter }).then(data => {
+    if (!pagina.isConnected || id !== requestId) return;
     _projects = data;
-    renderPage();
+    if (!pagina.querySelector('#projects-results')) renderPage();
+    else renderResults(pagina);
   }).catch(() => {
-    const c = document.getElementById('projects-page');
-    if (c) c.innerHTML = '<p class="text-center text-gray-400 py-16">Error al cargar proyectos</p>';
+    if (!pagina.isConnected || id !== requestId) return;
+    if (!pagina.querySelector('#projects-results')) renderPage();
+    pagina.querySelector('#projects-count').textContent = '';
+    pagina.querySelector('#projects-results').innerHTML = '<p class="text-center text-gray-500 py-16" role="alert">Error al cargar proyectos</p>';
   });
+}
+
+function opcionesFamilia() {
+  return `<option value="">Todas las familias</option>
+        ${_families.map(f => `<option value="${esc(f.family)}" ${_filter.family===f.family?'selected':''}>${esc(f.family)} (${f.count})</option>`).join('')}`;
 }
 
 function renderPage() {
@@ -28,12 +49,12 @@ function renderPage() {
   if (!container) return;
 
   container.innerHTML = `
-    ${pageHeader('Proyectos', `${_projects.length} proyecto${_projects.length !== 1 ? 's' : ''}`)}
+    ${pageHeader('Proyectos', '<span id="projects-count" aria-live="polite"></span>')}
 
     <div class="flex flex-wrap gap-3 mb-5">
       <div class="relative flex-1 min-w-[200px]">
         <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style="font-size:18px">search</span>
-        <input id="search-input" class="input pl-9" placeholder="Buscar por nombre, cliente o código..." value="${_filter.search}">
+        <input id="search-input" class="input pl-9" placeholder="Buscar por nombre, cliente o código..." value="${esc(_filter.search)}">
       </div>
       <select id="status-filter" class="input w-auto">
         <option value="">Todos los estados</option>
@@ -45,19 +66,22 @@ function renderPage() {
         <option value="cancelled"      ${_filter.status==='cancelled'     ?'selected':''}>Cancelados</option>
       </select>
       <select id="family-filter" class="input w-auto">
-        <option value="">Todas las familias</option>
-        ${_families.map(f => `<option value="${esc(f.family)}" ${_filter.family===f.family?'selected':''}>${esc(f.family)} (${f.count})</option>`).join('')}
+        ${opcionesFamilia()}
       </select>
       <button id="group-family-btn" class="btn-secondary ${_groupByFamily ? 'bg-primary-50 text-primary-700 border-primary-200' : ''}">
         ${icon('workspaces', 18)} Agrupar por familia
       </button>
     </div>
 
-    ${renderProjectsSection()}`;
+    <div id="projects-results"></div>`;
 
   document.getElementById('search-input').addEventListener('input', e => {
     _filter.search = e.target.value;
-    load();
+    clearTimeout(searchTimer);
+    requestId++;
+    searchTimer = setTimeout(() => {
+      if (container.isConnected) load();
+    }, 220);
   });
   document.getElementById('status-filter').addEventListener('change', e => {
     _filter.status = e.target.value;
@@ -72,7 +96,14 @@ function renderPage() {
     renderPage();
   });
 
-  document.querySelectorAll('.history-btn').forEach(btn => {
+  renderResults(container);
+}
+
+function renderResults(container) {
+  const resultados = container.querySelector('#projects-results');
+  container.querySelector('#projects-count').textContent = `${_projects.length} proyecto${_projects.length !== 1 ? 's' : ''}`;
+  resultados.innerHTML = renderProjectsSection();
+  resultados.querySelectorAll('.history-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.preventDefault();
       const id = btn.dataset.id;
@@ -81,7 +112,7 @@ function renderPage() {
     });
   });
 
-  document.querySelectorAll('.claim-btn').forEach(btn => {
+  resultados.querySelectorAll('.claim-btn').forEach(btn => {
     btn.addEventListener('click', async e => {
       e.preventDefault();
       const id = btn.dataset.id;
