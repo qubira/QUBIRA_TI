@@ -2188,14 +2188,69 @@ async function openPreview() {
   showModal(
     `${esc(inf.codigo)} \u2013 Vista previa`,
     buildPreviewHTML(inf, dat, figuras, errorAnexos),
-    '2xl'
+    '2xl',
+    `<div class="flex justify-end">
+      <button id="btn-imprimir-informe" type="button" class="btn-primary" disabled>${icon('print', 18)} Imprimir / Guardar PDF</button>
+    </div>`
   );
   const vista = document.getElementById('preview-content');
+  const imprimir = document.getElementById('btn-imprimir-informe');
+  imprimir.addEventListener('click', () => imprimirInforme(inf, dat));
   vista.addEventListener('click', event => {
     const cita = event.target.closest('[data-cita-figura]');
     if (cita) vista.querySelector(`#figura-${cita.dataset.citaFigura}`)?.scrollIntoView({ block: 'center' });
   });
-  cargarImagenesVistaPrevia(inf, vista);
+  await cargarImagenesVistaPrevia(inf, vista);
+  await Promise.all([...vista.querySelectorAll('img[src]')].map(imagen => imagen.decode().catch(() => {})));
+  imprimir.disabled = false;
+}
+
+function imprimirInforme(inf, dat) {
+  const estilo = document.createElement('style');
+  const { titulo, areas, version, fecha } = datosMembrete(inf, dat);
+  const logo = document.querySelector('#preview-content .informe-membrete-logo img');
+  let logoImpreso = '';
+  if (logo?.naturalWidth) {
+    const lienzo = document.createElement('canvas');
+    lienzo.width = logo.naturalWidth;
+    lienzo.height = logo.naturalHeight;
+    lienzo.getContext('2d').drawImage(logo, 0, 0);
+    logoImpreso = `@top-left { content: url("${lienzo.toDataURL('image/png')}"); }`;
+  }
+  const cssTexto = texto => '"' + String(texto).replace(/[\x00-\x1f"\\]/g, caracter =>
+    '\\' + caracter.charCodeAt(0).toString(16) + ' ') + '"';
+  estilo.textContent = `@page qubira-informe {
+    ${logoImpreso}
+    @top-center { content: ${cssTexto(['QUBIRA S.A.C.', titulo, areas].join('\n'))}; }
+    @top-right { content: ${cssTexto([
+      'C\u00f3digo: ' + (inf.codigo || ''), 'Versi\u00f3n: ' + version, 'Fecha: ' + fecha, 'Uso restringido',
+    ].join('\n'))}; }
+    @bottom-right { content: "P\u00e1gina " counter(page) " de " counter(pages) ${cssTexto(' | Versi\u00f3n ' + version)}; }
+  }`;
+  document.head.append(estilo);
+  document.body.classList.add('imprimir-informe');
+  const limpiar = () => {
+    document.body.classList.remove('imprimir-informe');
+    estilo.remove();
+  };
+  window.addEventListener('afterprint', limpiar, { once: true });
+  try {
+    window.print();
+  } catch (error) {
+    window.removeEventListener('afterprint', limpiar);
+    limpiar();
+    toast('No se pudo abrir la impresi\u00f3n. ' + error.message, 'error');
+  }
+}
+
+function datosMembrete(inf, dat) {
+  const proyecto = inf.project_name || dat.proyecto_origen?.nombre;
+  return {
+    titulo: proyecto ? `Informe de estado \u2013 Proyecto ${proyecto}` : 'Informe de estado',
+    areas: areasParticipantes(dat).join(' \u00b7 '),
+    version: String(inf.version || '1.0').replace(/\s+/g, ' ').slice(0, 24),
+    fecha: fmtDate(inf.fecha_emision?.slice(0, 10) || inf.created_at),
+  };
 }
 
 async function cargarImagenesVistaPrevia(inf, vista) {
@@ -2264,17 +2319,38 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
   const rfOpMaqueta = reqs.filter(r => r.estado_rf === 'operativo_maqueta').length;
   const rfSimulado  = reqs.filter(r => r.estado_rf === 'simulado').length;
   const rfPendiente = reqs.filter(r => r.estado_rf === 'pendiente').length;
+  const { titulo, areas, version, fecha } = datosMembrete(inf, dat);
 
   return `
     <div class="max-w-3xl mx-auto font-sans text-sm text-gray-800 space-y-6" id="preview-content">
 
       <!-- Encabezado institucional -->
-      <div class="text-center border-b-2 border-gray-800 pb-4">
-        <div class="text-xs text-gray-500 uppercase tracking-widest">QUBIRA S.A.C.</div>
-        <h1 class="text-xl font-bold uppercase mt-1">INFORME DE ESTADO DEL PROYECTO</h1>
-        <div class="font-mono font-bold text-base mt-1">${esc(inf.codigo)}</div>
-        <p class="text-xs text-gray-500 mt-1">Versi\u00f3n ${esc(inf.version || '1.0')} \u00b7 ${fmtDate(inf.fecha_emision || inf.created_at)}</p>
+      <header class="informe-membrete">
+        <div class="informe-membrete-logo">
+          <img src="/css/qubira-membrete.png" alt="Qubira" />
+        </div>
+        <div class="informe-membrete-centro">
+          <div class="informe-membrete-titulo">
+            <strong>QUBIRA S.A.C.</strong>
+            <div>${esc(titulo)}</div>
+          </div>
+          <p class="informe-membrete-areas">${esc(areas)}</p>
+        </div>
+        <div class="informe-membrete-registro">
+          <dl>
+            <div><dt>C\u00f3digo</dt><dd>${esc(inf.codigo)}</dd></div>
+            <div><dt>Versi\u00f3n</dt><dd>${esc(version)}</dd></div>
+            <div><dt>Fecha</dt><dd>${esc(fecha)}</dd></div>
+          </dl>
+          <p>Uso restringido</p>
+        </div>
+      </header>
+
+      <div class="informe-aviso-uso">
+        <strong>Documento de uso restringido</strong>
+        <p>Informe para las \u00e1reas participantes y los destinatarios autorizados.</p>
       </div>
+      <h1 class="text-center text-xl font-bold uppercase text-slate-800">${esc(inf.titulo || 'Informe de estado del proyecto')}</h1>
 
       ${renderProyectoOrigen(dat.proyecto_origen)}
 
@@ -2422,5 +2498,9 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
         </div>` : ''}
       ${errorAnexos ? '<p class="text-sm text-red-700">No se pudieron cargar los anexos.</p>' : ''}
       ${renderAnexoFiguras(figuras)}
+      <footer class="informe-pie-vista">
+        <span>QUBIRA S.A.C. \u00b7 Lima, Per\u00fa \u00b7 qubira.vercel.app \u00b7 Technology \u00b7 Innovation \u00b7 Development</span>
+        <span>Versi\u00f3n ${esc(version)}</span>
+      </footer>
     </div>`;
 }
