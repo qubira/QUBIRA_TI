@@ -709,7 +709,7 @@ function renderTabPortada(inf, dat) {
       <div id="antecedentes-editor" class="space-y-2 p-3">${renderContenidoAntecedentes(dat, true)}</div>
     </div>
 
-    <section class="mt-8 space-y-4" aria-labelledby="firmas-titulo">
+    <section id="firmas-documento" class="mt-8 space-y-4" aria-labelledby="firmas-titulo">
       <h3 id="firmas-titulo" class="font-semibold text-gray-900">Firmas del documento</h3>
       <div class="grid gap-3 md:grid-cols-2">
         <div class="rounded-xl border border-gray-200 p-4">
@@ -717,8 +717,7 @@ function renderTabPortada(inf, dat) {
           <p class="font-medium text-gray-900">${esc(inf.elaborado_nombre || 'Sin autor registrado')}</p>
         </div>
         <div class="rounded-xl border border-gray-200 p-4">
-          <label for="f-envio-firma" class="label">Responsable de enviar el informe final a firma</label>
-          <input id="f-envio-firma" class="input" value="${esc(dat.responsable_envio_firma)}" placeholder="Nombre y apellidos" />
+          ${selectorUsuarioFirma('f-envio-firma', 'Responsable de enviar el informe final a firma', dat.responsable_envio_firma)}
         </div>
       </div>
       <div>
@@ -737,15 +736,26 @@ function responsableFirma(inf, dat, area) {
   return '';
 }
 
+function selectorUsuarioFirma(id, etiqueta, nombre, area = '') {
+  return `<div data-selector-firma data-area-firma="${esc(area)}">
+    <label for="${id}" class="label">${esc(etiqueta)}</label>
+    <input id="${id}" type="search" autocomplete="off" class="input" data-buscar-firma aria-controls="${id}-usuarios" placeholder="Buscar usuario de ORH" />
+    <div id="${id}-usuarios" data-resultados-firma class="mt-2 max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white" hidden></div>
+    <div class="mt-2 flex flex-wrap items-center justify-between gap-1 text-sm">
+      <span data-nombre-firma class="font-medium text-gray-700" aria-live="polite">${esc(nombre || 'Sin asignar')}</span>
+      <button type="button" data-quitar-firma class="text-xs font-medium text-gray-500 hover:text-red-600" ${nombre ? '' : 'hidden'}>Quitar</button>
+    </div>
+  </div>`;
+}
+
 function renderFirmasAreas(inf, dat) {
   const areas = areasParticipantes(dat);
   if (!areas.length) return '<p class="text-sm text-gray-500">Selecciona un \u00e1rea participante para habilitar su firma.</p>';
   return `<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-    ${areas.map(area => `
-      <label class="block rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <span class="label">Revisa y firma \u00b7 ${esc(area)}</span>
-        <input class="input" data-area-firma="${esc(area)}" value="${esc(responsableFirma(inf, dat, area))}" placeholder="Nombre y apellidos" />
-      </label>
+    ${areas.map((area, indice) => `
+      <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        ${selectorUsuarioFirma(`f-firmante-${indice}`, `Revisa y firma \u00b7 ${area}`, responsableFirma(inf, dat, area), area)}
+      </div>
     `).join('')}
   </div>`;
 }
@@ -1162,30 +1172,83 @@ function wireTab(tab) {
 function wirePortada() {
   const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion',
                   'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
-                  'f-resumen', 'f-envio-firma'];
+                  'f-resumen'];
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', () => scheduleAutosave());
   });
   wireTablasAntecedentes();
+  wireFirmasDocumento();
   const firmas = document.getElementById('firmas-areas');
-  firmas.addEventListener('input', event => {
-    const { areaFirma } = event.target.dataset;
-    if (!areaFirma) return;
-    const datos = _currentInforme.datos;
-    datos.responsables_revision = {
-      ...datos.responsables_revision,
-      [areaFirma]: event.target.value.trim(),
-    };
-    scheduleAutosave();
-  });
   document.getElementById('f-areas').addEventListener('change', () => {
     scheduleAutosave();
     firmas.innerHTML = renderFirmasAreas(_currentInforme, _currentInforme.datos);
   });
   const boton = document.getElementById('f-calcular-lineas');
   boton.addEventListener('click', () => abrirSelectorRepositorio(boton));
+}
+
+function wireFirmasDocumento() {
+  const seccion = document.getElementById('firmas-documento');
+  const datos = _currentInforme.datos;
+  const normalizar = texto => texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+  let cargaUsuarios;
+
+  seccion.addEventListener('input', async event => {
+    const campo = event.target;
+    if (!campo.matches('[data-buscar-firma]')) return;
+    const resultados = campo.closest('[data-selector-firma]').querySelector('[data-resultados-firma]');
+    const consulta = normalizar(campo.value);
+    resultados.hidden = !consulta;
+    if (!consulta) return;
+    resultados.innerHTML = '<p class="px-3 py-2 text-sm text-gray-500">Buscando usuarios\u2026</p>';
+    cargaUsuarios ??= api.get('/users').catch(error => {
+      cargaUsuarios = null;
+      throw error;
+    });
+    try {
+      const usuarios = await cargaUsuarios;
+      if (!campo.isConnected || normalizar(campo.value) !== consulta) return;
+      const palabras = consulta.split(/\s+/);
+      const coincidencias = usuarios.filter(u => u.name && palabras.every(palabra => normalizar(u.name).includes(palabra))).slice(0, 12);
+      resultados.innerHTML = coincidencias.map(u => `
+        <button type="button" data-elegir-firma="${esc(u.id)}" class="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-primary-50 focus:bg-primary-50">${esc(u.name)}</button>`).join('')
+        || '<p class="px-3 py-2 text-sm text-gray-500">Sin coincidencias.</p>';
+    } catch {
+      if (campo.isConnected && normalizar(campo.value) === consulta) {
+        resultados.innerHTML = '<p class="px-3 py-2 text-sm text-red-700" role="status">No se pudo cargar el directorio. Vuelve a escribir para reintentar.</p>';
+      }
+    }
+  });
+
+  seccion.addEventListener('click', async event => {
+    const boton = event.target.closest('[data-elegir-firma], [data-quitar-firma]');
+    if (!boton) return;
+    const selector = boton.closest('[data-selector-firma]');
+    const area = selector.dataset.areaFirma;
+    let elegido = null;
+    if (boton.dataset.elegirFirma !== undefined) {
+      elegido = (await cargaUsuarios).find(u => String(u.id) === boton.dataset.elegirFirma);
+      if (!elegido || !boton.isConnected) return;
+    }
+    const nombre = elegido?.name || '';
+    const id = elegido?.id ?? null;
+    if (area) {
+      datos.responsables_revision = { ...datos.responsables_revision, [area]: nombre };
+      datos.responsables_revision_ids = { ...datos.responsables_revision_ids, [area]: id };
+    } else {
+      datos.responsable_envio_firma = nombre;
+      datos.responsable_envio_firma_id = id;
+    }
+    const campo = selector.querySelector('[data-buscar-firma]');
+    campo.value = '';
+    selector.querySelector('[data-resultados-firma]').hidden = true;
+    selector.querySelector('[data-nombre-firma]').textContent = nombre || 'Sin asignar';
+    selector.querySelector('[data-quitar-firma]').hidden = !nombre;
+    campo.focus();
+    scheduleAutosave();
+  });
 }
 
 function leerTablaPortapapeles(portapapeles) {
@@ -1817,7 +1880,6 @@ function collectPortadaFields() {
   if (areaSelector) {
     dat.areas_participantes = Array.from(areaSelector.querySelectorAll('input:checked'), input => input.value);
   }
-  if (get('f-envio-firma') !== null) dat.responsable_envio_firma = get('f-envio-firma').trim();
   if (get('f-url-sitio') !== null) dat.url_sitio_publicado = get('f-url-sitio');
   if (get('f-tecnologias') !== null) dat.tecnologias_usadas = get('f-tecnologias');
   const lineas = document.getElementById('f-lineas');
