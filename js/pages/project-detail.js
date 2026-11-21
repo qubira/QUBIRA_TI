@@ -8,6 +8,7 @@ import { toast, showModal, closeModal,
          isOverdue, overdueBadge, previewFile,
          sanitizeRichText, ESTADOS_IMPLEMENTACION } from '../utils.js';
 
+let _informesEstado = [];
 let _id, _project, _documents, _messages, _emails, _activities, _requirements;
 let _tab = 'overview';
 let _scrumRoles = [], _scrumUsers = [];
@@ -55,6 +56,7 @@ export function render({ id }) {
 }
 
 function loadAll() {
+  const pagina = document.getElementById('pd-page');
   Promise.all([
     api.get(`/projects/${_id}`),
     api.get('/documents',     { project_id: _id }),
@@ -62,7 +64,10 @@ function loadAll() {
     api.get('/emails',        { project_id: _id }),
     api.get('/activities',    { project_id: _id }),
     api.get('/requirements',  { project_id: _id }),
-  ]).then(([proj, docs, msgs, mails, acts, reqs]) => {
+    api.get('/informes-estado', { project_id: _id }).catch(() => null),
+  ]).then(([proj, docs, msgs, mails, acts, reqs, informes]) => {
+    if (!pagina?.isConnected) return;
+    _informesEstado = informes;
     _project      = proj;
     _documents    = docs;
     _messages     = msgs;
@@ -71,6 +76,7 @@ function loadAll() {
     _requirements = reqs;
     renderPage();
   }).catch(err => {
+    if (!pagina?.isConnected) return;
     toast(err.message || 'No se pudo cargar el proyecto', 'error');
     navigate('/projects');
   });
@@ -131,8 +137,9 @@ function renderPageBase() {
   <!-- Tabs -->
   <div class="border-b border-gray-200 mb-5">
     <div class="flex gap-1 overflow-x-auto" id="tabs">
-      ${['overview','flujo','github','scrum','schedule','technologies','requirements','documents','whatsapp','emails','activity'].map((t,i) => {
+      ${['overview','flujo','github','scrum','schedule','technologies','requirements','documents','informes-estado','whatsapp','emails','activity'].map((t,i) => {
         const labels = ['Resumen','Flujo y puertas','GitHub','Scrum','Cronograma','Tecnologías',`Requisitos (${_requirements.length})`,`Documentos (${_documents.length})`,
+          _informesEstado ? `Informes de Estado (${_informesEstado.length})` : 'Informes de Estado',
                         `WhatsApp (${_messages.length})`,`Correos (${_emails.length})`,'Actividad'];
         return `<button data-tab="${t}" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
           ${_tab===t ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}">${labels[i]}</button>`;
@@ -227,6 +234,7 @@ function renderTabContent() {
         <div class="space-y-3">
           ${contentSummaryBtn('checklist','text-amber-600','Requisitos',_requirements.length,'requirements')}
           ${contentSummaryBtn('article','text-green-600','Documentos',_documents.length,'documents')}
+          ${contentSummaryBtn('summarize','text-primary-600','Informes de Estado',_informesEstado?.length ?? '\u2014','informes-estado')}
           ${contentSummaryBtn('chat','text-emerald-600','Mensajes WhatsApp',_messages.length,'whatsapp')}
           ${contentSummaryBtn('email','text-purple-600','Correos Electrónicos',_emails.length,'emails')}
         </div>
@@ -319,6 +327,11 @@ function renderTabContent() {
 
     if (scrollF)  { const el = document.getElementById('req-col-functional');     if (el) el.scrollTop = scrollF; }
     if (scrollNF) { const el = document.getElementById('req-col-non_functional'); if (el) el.scrollTop = scrollNF; }
+  }
+
+  if (_tab === 'informes-estado') {
+    c.innerHTML = renderInformesDelProyecto(_informesEstado);
+    return;
   }
 
   if (_tab === 'documents') {
@@ -1563,6 +1576,27 @@ function wireRequirementsTab() {
       } catch (err) { toast(err.message || 'Error', 'error'); }
     });
   });
+}
+
+function renderInformesDelProyecto(informes) {
+  const estados = {
+    borrador: 'Borrador', en_revision: 'En revisi\u00f3n', emitido: 'Emitido', cerrado: 'Cerrado',
+  };
+  return `<section class="card p-5" aria-labelledby="titulo-informes-proyecto">
+    <h2 id="titulo-informes-proyecto" class="mb-3 font-semibold text-gray-900">Informes de Estado del proyecto</h2>
+    ${informes?.length ? `<ul class="divide-y divide-gray-100">${informes.map(informe => `
+      <li class="py-3">
+        <a class="block rounded-lg p-2 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-primary-500"
+            href="#/informes-estado/${encodeURIComponent(informe.id)}">
+          <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <span class="font-mono font-semibold">${esc(informe.codigo)}</span>
+            <span class="rounded-full bg-primary-50 px-2 py-0.5 text-primary-700">${esc(estados[informe.estado] || informe.estado || '')}</span>
+            <span>${fmtDate(informe.fecha_emision || informe.created_at)}</span>
+          </div>
+          <p class="mt-1 break-words text-sm font-semibold text-primary-700">${esc(informe.titulo)}</p>
+        </a>
+      </li>`).join('')}</ul>` : `<p class="text-sm text-gray-500">${informes ? 'Este proyecto a\u00fan no tiene informes de estado vinculados.' : 'No se pudieron cargar los informes de estado.'}</p>`}
+  </section>`;
 }
 
 function contentSummaryBtn(iconName, colorCls, label, count, tabKey) {
