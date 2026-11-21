@@ -1324,18 +1324,22 @@ async function* recorrerRepositorio(carpeta, boton) {
 
 function abrirSelectorRepositorio(boton) {
   showModal('Analizar repositorio', `
-    <div class="flex items-start gap-3">
-      <div class="rounded-xl bg-primary-50 p-2 text-primary-700" aria-hidden="true">${icon('folder_open', 24)}</div>
+    <div class="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-700" aria-hidden="true">${icon('folder_open', 24)}</div>
       <div>
-        <p class="text-sm font-medium text-gray-900">Selecciona la carpeta del proyecto</p>
-        <p class="mt-1 text-sm text-gray-600">Elige la carpeta espec\u00edfica del repositorio. Qubira lee los archivos en tu navegador y guarda las l\u00edneas y tecnolog\u00edas detectadas en el informe.</p>
+        <p class="text-sm font-semibold text-gray-900">Selecciona la carpeta del proyecto</p>
+        <p class="mt-1 text-sm text-gray-600">Elige la carpeta espec\u00edfica del repositorio. Qubira guardar\u00e1 el conteo de l\u00edneas y las tecnolog\u00edas detectadas en el informe.</p>
       </div>
     </div>
-    <p id="repo-picker-status" class="mt-3 text-sm text-gray-600 empty:hidden" role="status"></p>
+    <div class="mt-3 flex items-start gap-2 rounded-lg border border-primary-100 bg-primary-50 px-3 py-2 text-sm text-primary-800">
+      <span aria-hidden="true">${icon('lock_outline', 18)}</span>
+      <p>Tu navegador puede pedir permiso para leer la carpeta. El an\u00e1lisis se hace en tu equipo y los archivos permanecen all\u00ed.</p>
+    </div>
+    <p id="repo-picker-status" class="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 empty:hidden" role="status"></p>
     <input id="f-repo-folder" type="file" webkitdirectory multiple hidden />
   `, 'md', `
     <div class="flex flex-wrap justify-end gap-2">
-      <button id="repo-cancel" class="btn-secondary">Cancelar</button>
+      <button type="button" id="repo-manual" class="btn-secondary">${icon('edit', 16)} Ingresar manualmente</button>
       <button id="repo-choose" class="btn-primary">${icon('folder_open', 18)} Elegir carpeta</button>
     </div>
   `);
@@ -1343,7 +1347,10 @@ function abrirSelectorRepositorio(boton) {
   const folder = document.getElementById('f-repo-folder');
   const mensaje = document.getElementById('repo-picker-status');
   let usarSelector = typeof window.showDirectoryPicker === 'function';
-  document.getElementById('repo-cancel').addEventListener('click', closeModal);
+  document.getElementById('repo-manual').addEventListener('click', () => {
+    closeModal();
+    if (boton.isConnected) document.getElementById('f-tecnologias')?.focus();
+  });
   folder.addEventListener('change', () => {
     const archivos = Array.from(folder.files).filter(file =>
       !file.webkitRelativePath.split('/').slice(1, -1).some(omitirCarpeta));
@@ -1363,7 +1370,7 @@ function abrirSelectorRepositorio(boton) {
       analizarRepositorio(recorrerRepositorio(carpeta, boton), boton);
     } catch (error) {
       if (error.name === 'AbortError') {
-        mensaje.textContent = 'Puedes elegir otra carpeta del proyecto.';
+        mensaje.textContent = 'No se pudo acceder a la carpeta. Puedes elegir otra o ingresar los datos manualmente.';
       } else {
         usarSelector = false;
         mensaje.textContent = 'Vuelve a pulsar Elegir carpeta para usar el selector compatible.';
