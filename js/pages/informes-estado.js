@@ -550,24 +550,45 @@ function renderTabPortada(inf, dat) {
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">3. Antecedentes y Alcance</h3>
     <textarea id="f-antecedentes" class="input w-full" rows="5" data-field="antecedentes">${esc(dat.antecedentes || '')}</textarea>
 
-    <!-- Firmas -->
-    <h3 class="text-sm font-bold text-gray-700 mt-8 mb-3">Firmas del documento</h3>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      ${firmaCard('OTI', 'Elabor\u00f3', inf.elaborado_nombre)}
-      ${firmaCard('ODN', 'Revis\u00f3', inf.revisado_por_odn_nombre || '\u2014')}
-      ${firmaCard('OPP', 'Revis\u00f3', inf.revisado_por_opp_nombre || '\u2014')}
-      ${firmaCard('ADG', 'Aprob\u00f3', inf.aprobado_nombre || '\u2014')}
-    </div>
+    <section class="mt-8 space-y-4" aria-labelledby="firmas-titulo">
+      <h3 id="firmas-titulo" class="font-semibold text-gray-900">Firmas del documento</h3>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="rounded-xl border border-gray-200 p-4">
+          <p class="label">Elaborado por</p>
+          <p class="font-medium text-gray-900">${esc(inf.elaborado_nombre || 'Sin autor registrado')}</p>
+        </div>
+        <div class="rounded-xl border border-gray-200 p-4">
+          <label for="f-envio-firma" class="label">Responsable de enviar el informe final a firma</label>
+          <input id="f-envio-firma" class="input" value="${esc(dat.responsable_envio_firma)}" placeholder="Nombre y apellidos" />
+        </div>
+      </div>
+      <div>
+        <h4 class="label">Revisi\u00f3n y firma por \u00e1rea</h4>
+        <div id="firmas-areas">${renderFirmasAreas(inf, dat)}</div>
+      </div>
+    </section>
   `;
 }
 
-function firmaCard(area, rol, nombre) {
-  return `
-    <div class="border border-gray-200 rounded-xl p-3 text-center bg-gray-50/50">
-      <span class="text-xs font-bold text-gray-500 uppercase">${area}</span>
-      <p class="text-xs text-gray-400 mt-0.5">${rol}</p>
-      <p class="text-sm font-medium text-gray-700 mt-1">${esc(nombre || '\u2014')}</p>
-    </div>`;
+function responsableFirma(inf, dat, area) {
+  const responsables = dat.responsables_revision || {};
+  if (Object.hasOwn(responsables, area)) return responsables[area];
+  if (area === 'ODN') return inf.revisado_por_odn_nombre || '';
+  if (area === 'OPP') return inf.revisado_por_opp_nombre || '';
+  return '';
+}
+
+function renderFirmasAreas(inf, dat) {
+  const areas = areasParticipantes(dat);
+  if (!areas.length) return '<p class="text-sm text-gray-500">Selecciona un \u00e1rea participante para habilitar su firma.</p>';
+  return `<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    ${areas.map(area => `
+      <label class="block rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <span class="label">Revisa y firma \u00b7 ${esc(area)}</span>
+        <input class="input" data-area-firma="${esc(area)}" value="${esc(responsableFirma(inf, dat, area))}" placeholder="Nombre y apellidos" />
+      </label>
+    `).join('')}
+  </div>`;
 }
 
 // -- Tab: Componentes --------------------------------------------------------
@@ -916,13 +937,27 @@ function wireTab(tab) {
 function wirePortada() {
   const fields = ['f-titulo', 'f-version', 'f-dirigido-a', 'f-ubicacion',
                   'f-url-sitio', 'f-tecnologias', 'f-lineas', 'f-fecha-emision', 'f-fecha-limite',
-                  'f-resumen', 'f-antecedentes'];
+                  'f-resumen', 'f-antecedentes', 'f-envio-firma'];
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', () => scheduleAutosave());
   });
-  document.getElementById('f-areas').addEventListener('change', scheduleAutosave);
+  const firmas = document.getElementById('firmas-areas');
+  firmas.addEventListener('input', event => {
+    const { areaFirma } = event.target.dataset;
+    if (!areaFirma) return;
+    const datos = _currentInforme.datos;
+    datos.responsables_revision = {
+      ...datos.responsables_revision,
+      [areaFirma]: event.target.value.trim(),
+    };
+    scheduleAutosave();
+  });
+  document.getElementById('f-areas').addEventListener('change', () => {
+    scheduleAutosave();
+    firmas.innerHTML = renderFirmasAreas(_currentInforme, _currentInforme.datos);
+  });
   const folder = document.getElementById('f-repo-folder');
   document.getElementById('f-calcular-lineas').addEventListener('click', () => folder.click());
   folder.addEventListener('change', () => calcularLineasRepositorio(folder));
@@ -1318,6 +1353,7 @@ function collectPortadaFields() {
   if (areaSelector) {
     dat.areas_participantes = Array.from(areaSelector.querySelectorAll('input:checked'), input => input.value);
   }
+  if (get('f-envio-firma') !== null) dat.responsable_envio_firma = get('f-envio-firma').trim();
   if (get('f-url-sitio') !== null) dat.url_sitio_publicado = get('f-url-sitio');
   if (get('f-tecnologias') !== null) dat.tecnologias_usadas = get('f-tecnologias');
   const lineas = document.getElementById('f-lineas');
@@ -1546,14 +1582,18 @@ function buildPreviewHTML(inf, dat) {
           <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.recomendacion)}</p>
         </div>` : ''}
 
-      <!-- Firmas -->
       <div class="border-t-2 border-gray-800 pt-4">
         <h2 class="font-bold text-sm uppercase mb-3">Firmas</h2>
-        <div class="grid grid-cols-4 gap-3">
-          ${['OTI \u00b7 Elabor\u00f3', 'ODN \u00b7 Revis\u00f3', 'OPP \u00b7 Revis\u00f3', 'ADG \u00b7 Aprob\u00f3'].map(f => `
-            <div class="text-center border border-gray-300 rounded p-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
+          <p><strong>Elaborado por</strong><br>${esc(inf.elaborado_nombre || '\u2014')}</p>
+          <p><strong>Responsable de enviar el informe final a firma</strong><br>${esc(dat.responsable_envio_firma || '\u2014')}</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          ${areasParticipantes(dat).map(area => `
+            <div class="text-center border border-gray-300 rounded p-3 break-inside-avoid">
               <div class="h-10 border-b border-gray-400 mb-2"></div>
-              <p class="text-xs font-semibold">${f}</p>
+              <p class="text-xs font-semibold">Revisa y firma \u00b7 ${esc(area)}</p>
+              <p class="text-xs mt-1">${esc(responsableFirma(inf, dat, area) || '\u2014')}</p>
             </div>`).join('')}
         </div>
       </div>
