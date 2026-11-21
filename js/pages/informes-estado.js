@@ -2352,7 +2352,7 @@ function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
       </div>
       <h1 class="text-center text-xl font-bold uppercase text-slate-800">${esc(inf.titulo || 'Informe de estado del proyecto')}</h1>
 
-      ${renderProyectoOrigen(dat.proyecto_origen)}
+      ${dat.proyecto_origen ? `<div class="print:hidden">${renderProyectoOrigen(dat.proyecto_origen)}</div>` : ''}
 
       <!-- Portada info -->
       <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
