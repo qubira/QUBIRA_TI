@@ -548,7 +548,12 @@ function renderTabPortada(inf, dat) {
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">2. Resumen Ejecutivo</h3>
     <textarea id="f-resumen" class="input w-full" rows="5" data-field="resumen_ejecutivo">${esc(dat.resumen_ejecutivo || '')}</textarea>
     <h3 class="text-sm font-bold text-gray-700 mt-6 mb-3">3. Antecedentes y Alcance</h3>
-    <textarea id="f-antecedentes" class="input w-full" rows="5" data-field="antecedentes">${esc(dat.antecedentes || '')}</textarea>
+    <textarea id="f-antecedentes" class="input w-full" rows="5" aria-label="Antecedentes y alcance" aria-describedby="antecedentes-tablas-ayuda" data-field="antecedentes">${esc(dat.antecedentes || '')}</textarea>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <button type="button" id="antecedentes-insertar-tabla" class="btn-secondary">${icon('table_chart', 18)} Insertar tabla</button>
+      <p id="antecedentes-tablas-ayuda" class="text-sm text-gray-500">Tambi\u00e9n puedes pegar una tabla copiada de Excel, Sheets o Word en el campo de texto.</p>
+    </div>
+    <div id="antecedentes-tablas" class="mt-3 space-y-3">${renderTablasAntecedentes(dat.antecedentes_tablas || [], true)}</div>
 
     <section class="mt-8 space-y-4" aria-labelledby="firmas-titulo">
       <h3 id="firmas-titulo" class="font-semibold text-gray-900">Firmas del documento</h3>
@@ -589,6 +594,30 @@ function renderFirmasAreas(inf, dat) {
       </label>
     `).join('')}
   </div>`;
+}
+
+function renderTablasAntecedentes(tablas, editar = false) {
+  return tablas.map((filas, indice) => `
+    <div class="rounded-lg border border-gray-200">
+      ${editar ? `<div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
+        <span class="text-sm font-medium text-gray-700">Tabla ${indice + 1}</span>
+        <button type="button" class="btn-secondary" data-quitar-tabla="${indice}">${icon('delete', 16)} Quitar tabla</button>
+      </div>` : ''}
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-sm" aria-label="Tabla ${indice + 1} de antecedentes">
+          <tbody>${filas.map((fila, f) => `
+            <tr class="${f === 0 ? 'bg-gray-50 font-semibold' : ''}">
+              ${fila.map((valor, c) => {
+                const tag = f === 0 ? 'th' : 'td';
+                return `<${tag} ${f === 0 ? 'scope="col"' : ''} class="border border-gray-200 p-2 text-left align-top whitespace-pre-wrap">${editar
+                  ? `<textarea rows="2" class="input min-w-32 resize-y" data-celda="${indice}:${f}:${c}" aria-label="Tabla ${indice + 1}, fila ${f + 1}, columna ${c + 1}">${esc(valor)}</textarea>`
+                  : esc(valor)}</${tag}>`;
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`).join('');
 }
 
 // -- Tab: Componentes --------------------------------------------------------
@@ -943,6 +972,7 @@ function wirePortada() {
     if (!el) return;
     el.addEventListener('input', () => scheduleAutosave());
   });
+  wireTablasAntecedentes();
   const firmas = document.getElementById('firmas-areas');
   firmas.addEventListener('input', event => {
     const { areaFirma } = event.target.dataset;
@@ -960,6 +990,87 @@ function wirePortada() {
   });
   const boton = document.getElementById('f-calcular-lineas');
   boton.addEventListener('click', () => abrirSelectorRepositorio(boton));
+}
+
+function leerTablaPortapapeles(portapapeles) {
+  const html = portapapeles.getData('text/html');
+  if (html) {
+    const plantilla = document.createElement('template');
+    plantilla.innerHTML = html;
+    const tabla = plantilla.content.querySelector('table');
+    if (tabla?.rows.length) {
+      const filas = Array.from(tabla.rows, fila => Array.from(fila.cells, celda => celda.textContent.trim()));
+      if (filas.some(fila => fila.length)) return filas;
+    }
+  }
+
+  const texto = portapapeles.getData('text/plain');
+  if (!texto.includes('\t')) return null;
+  return texto.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map(fila => fila.split('\t'));
+}
+
+function wireTablasAntecedentes() {
+  const contenedor = document.getElementById('antecedentes-tablas');
+  const texto = document.getElementById('f-antecedentes');
+  const datos = _currentInforme.datos;
+  const tablas = datos.antecedentes_tablas || [];
+
+  const actualizar = () => {
+    datos.antecedentes_tablas = tablas;
+    contenedor.innerHTML = renderTablasAntecedentes(tablas, true);
+    scheduleAutosave();
+  };
+  const agregar = filas => {
+    const ancho = filas.reduce((max, fila) => Math.max(max, fila.length), 0);
+    tablas.push(filas.map(fila => Array.from({ length: ancho }, (_, c) => fila[c] ?? '')));
+    actualizar();
+    contenedor.querySelector(`[data-celda="${tablas.length - 1}:0:0"]`)?.focus();
+  };
+
+  texto.addEventListener('paste', event => {
+    if (!event.clipboardData) return;
+    const filas = leerTablaPortapapeles(event.clipboardData);
+    if (!filas) return;
+    event.preventDefault();
+    agregar(filas);
+  });
+  contenedor.addEventListener('input', event => {
+    const celda = event.target.dataset.celda;
+    if (!celda) return;
+    const [t, f, c] = celda.split(':').map(Number);
+    tablas[t][f][c] = event.target.value;
+    scheduleAutosave();
+  });
+  contenedor.addEventListener('click', async event => {
+    const boton = event.target.closest('[data-quitar-tabla]');
+    if (!boton) return;
+    const ok = await confirmModal('Se quitar\u00e1 la tabla de Antecedentes y Alcance.', {
+      title: 'Quitar tabla', confirmLabel: 'Quitar tabla', danger: true,
+    });
+    if (!ok || !boton.isConnected) return;
+    tablas.splice(Number(boton.dataset.quitarTabla), 1);
+    actualizar();
+  });
+  document.getElementById('antecedentes-insertar-tabla').addEventListener('click', () => {
+    showModal('Insertar tabla', `
+      <form id="antecedentes-dimensiones" class="grid grid-cols-2 gap-3">
+        <label class="label">Filas <input name="filas" class="input mt-1" type="number" min="1" max="30" value="3" required /></label>
+        <label class="label">Columnas <input name="columnas" class="input mt-1" type="number" min="1" max="12" value="3" required /></label>
+        <p class="col-span-2 text-sm text-gray-500">La primera fila se muestra como encabezado.</p>
+      </form>
+    `, 'sm', `<div class="flex justify-end">
+      <button type="submit" form="antecedentes-dimensiones" class="btn-primary">Insertar tabla</button>
+    </div>`);
+    const formulario = document.getElementById('antecedentes-dimensiones');
+    formulario.addEventListener('submit', event => {
+      event.preventDefault();
+      if (!formulario.reportValidity() || !contenedor.isConnected) return;
+      const filas = formulario.elements.namedItem('filas').valueAsNumber;
+      const columnas = formulario.elements.namedItem('columnas').valueAsNumber;
+      closeModal();
+      agregar(Array.from({ length: filas }, () => Array(columnas).fill('')));
+    });
+  });
 }
 
 const CARPETAS_OMITIDAS = new Set(['node_modules', 'vendor', 'dist', 'build', 'out', 'coverage', 'target', 'bin', 'obj', 'venv', '__pycache__']);
@@ -1598,10 +1709,11 @@ function buildPreviewHTML(inf, dat) {
         </div>` : ''}
 
       <!-- Antecedentes -->
-      ${dat.antecedentes ? `
+      ${dat.antecedentes || dat.antecedentes_tablas?.length ? `
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">2. Antecedentes y Alcance</h2>
-          <p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.antecedentes)}</p>
+          ${dat.antecedentes ? `<p class="text-sm leading-relaxed whitespace-pre-line">${esc(dat.antecedentes)}</p>` : ''}
+          <div class="mt-3 space-y-3">${renderTablasAntecedentes(dat.antecedentes_tablas || [])}</div>
         </div>` : ''}
 
       <!-- Componentes -->
