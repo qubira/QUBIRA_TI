@@ -311,7 +311,7 @@ async function leerProyectoParaInforme(id) {
     const codigo = `${funcional ? 'RF' : 'RNF'}-${String(indice + 1).padStart(2, '0')}`;
     const implementacion = Object.hasOwn(ESTADOS_RF, req.implementation_status) ? req.implementation_status : null;
     if (funcional) return { codigo, descripcion, estado_rf: implementacion || estado || 'pendiente' };
-    return { codigo, descripcion, categoria: '', evaluacion: estado || 'Pendiente', implementation_status: implementacion };
+    return { codigo, descripcion, evaluacion: estado || 'Pendiente', implementation_status: implementacion };
   };
   const requerimientos = requisitos.filter(req => req.type !== 'non_functional').map((req, i) => convertir(req, i, true));
   const req_no_funcionales = requisitos.filter(req => req.type === 'non_functional').map((req, i) => convertir(req, i, false));
@@ -900,7 +900,6 @@ function renderTabRNF(dat) {
       <table class="w-full text-sm">
         <thead>
           <tr class="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
-            <th class="px-3 py-2 text-left w-32">Categor\u00eda</th>
             <th class="px-3 py-2 text-left w-24">C\u00f3digo</th>
             <th class="px-3 py-2 text-left">Descripci\u00f3n</th>
             <th class="px-3 py-2 text-left w-48">Evaluaci\u00f3n</th>
@@ -918,7 +917,6 @@ function renderTabRNF(dat) {
 function rowRNF(r, i) {
   return `
     <tr data-rnfi="${i}" class="border-b border-gray-100">
-      <td class="px-3 py-2"><input class="input w-full text-sm rnf-cat" value="${esc(r.categoria || '')}" placeholder="Rendimiento" /></td>
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-codigo font-mono" value="${esc(r.codigo || '')}" placeholder="RNF-01" />
         ${r.implementation_status ? `<span class="mt-1 block text-xs text-gray-500">${ESTADOS_RF[r.implementation_status] || ''}</span>` : ''}</td>
       <td class="px-3 py-2"><input class="input w-full text-sm rnf-desc" value="${esc(r.descripcion || '')}" /></td>
@@ -1529,7 +1527,7 @@ function wireRNF() {
     const dat = _currentInforme.datos;
     if (!dat.req_no_funcionales) dat.req_no_funcionales = [];
     const n = dat.req_no_funcionales.length + 1;
-    dat.req_no_funcionales.push({ categoria: '', codigo: `RNF-${String(n).padStart(2,'0')}`, descripcion: '', evaluacion: 'Pendiente' });
+    dat.req_no_funcionales.push({ codigo: `RNF-${String(n).padStart(2,'0')}`, descripcion: '', evaluacion: 'Pendiente' });
     document.getElementById('tab-panel').innerHTML = renderTab('rnf', _currentInforme, dat);
     wireTab('rnf');
     scheduleAutosave();
@@ -1546,12 +1544,11 @@ function wireRNF() {
   });
 
   document.getElementById('tab-panel').addEventListener('input', e => {
-    if (!e.target.matches('.rnf-cat,.rnf-codigo,.rnf-desc')) return;
+    if (!e.target.matches('.rnf-codigo,.rnf-desc')) return;
     const row = e.target.closest('[data-rnfi]');
     if (!row) return;
     const i = parseInt(row.dataset.rnfi);
     const r = _currentInforme.datos.req_no_funcionales[i];
-    if (e.target.classList.contains('rnf-cat'))    r.categoria  = e.target.value;
     if (e.target.classList.contains('rnf-codigo')) r.codigo     = e.target.value;
     if (e.target.classList.contains('rnf-desc'))   r.descripcion = e.target.value;
     scheduleAutosave();
@@ -1927,8 +1924,8 @@ function buildPreviewHTML(inf, dat) {
         <div>
           <h2 class="font-bold text-sm uppercase border-b border-gray-300 pb-1 mb-2">5. Requerimientos No Funcionales</h2>
           <table class="w-full text-xs border border-gray-200">
-            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left">Categor\u00eda</th><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
-            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-medium">${esc(r.categoria)}</td><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
+            <thead><tr class="bg-gray-100 font-semibold"><th class="px-3 py-1.5 text-left w-20">C\u00f3digo</th><th class="px-3 py-1.5 text-left">Descripci\u00f3n</th><th class="px-3 py-1.5 text-left w-40">Evaluaci\u00f3n</th></tr></thead>
+            <tbody>${rnfs.map((r,i) => `<tr class="${i%2===0?'bg-white':'bg-gray-50'}"><td class="px-3 py-1.5 font-mono font-bold">${esc(r.codigo)}</td><td class="px-3 py-1.5">${esc(r.descripcion)}</td><td class="px-3 py-1.5"><span class="px-2 py-0.5 rounded text-xs font-semibold ${COLORES_RNF[r.evaluacion] || ''}">${esc(r.evaluacion)}</span></td></tr>`).join('')}</tbody>
           </table>
         </div>` : ''}
 
