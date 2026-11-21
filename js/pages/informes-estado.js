@@ -1967,30 +1967,119 @@ function renderTabAnexos() {
   return `
     <h2 class="mb-3 text-lg font-semibold">Anexos de im\u00e1genes</h2>
     <p class="mb-4 text-sm text-gray-600">Agrega im\u00e1genes y pega sus citas en el texto del informe. En la vista previa, cada cita lleva a su figura.</p>
-    <form id="figuras-form" class="mb-5 space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <label class="label">Im\u00e1genes PNG, JPEG o WebP (hasta 5 MB cada una)
-        <input type="file" name="imagenes" accept="image/png,image/jpeg,image/webp" multiple required class="input mt-1" />
-      </label>
+    <form id="figuras-form" class="mb-5 space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <div id="figuras-pegar" tabindex="0" class="rounded-xl border border-dashed border-primary-300 bg-primary-50 p-5 text-center focus:outline-none focus:ring-2 focus:ring-primary-500" aria-label="Pegar im\u00e1genes desde Word">
+        <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-white text-primary-700" aria-hidden="true">${icon('content_paste', 22)}</div>
+        <p class="font-semibold text-gray-900">Pega una imagen desde Word</p>
+        <p class="mt-1 text-sm text-gray-600">Copia la imagen en Word, haz clic en este recuadro y pulsa <kbd class="font-semibold">Ctrl+V</kbd>.</p>
+        <label class="btn-secondary mt-3 cursor-pointer focus-within:ring-2 focus-within:ring-primary-500">
+          ${icon('folder_open', 18)} Elegir archivos
+          <input type="file" name="imagenes" accept="image/png,image/jpeg,image/webp" multiple class="sr-only" />
+        </label>
+        <p class="mt-2 text-xs text-gray-500">PNG, JPEG o WebP. Hasta 5 MB por imagen.</p>
+      </div>
+      <div id="figuras-borradores" class="grid gap-3 sm:grid-cols-2"></div>
       <div class="flex flex-wrap items-center gap-3">
-        <button class="btn-primary" type="submit">${icon('add_photo_alternate', 18)} Agregar im\u00e1genes</button>
+        <button class="btn-primary" type="submit" disabled>${icon('add_photo_alternate', 18)} Guardar im\u00e1genes</button>
         <span role="status" class="text-sm text-gray-600"></span>
       </div>
     </form>
     <div id="figuras-lista" class="space-y-3">${spinner()}</div>`;
 }
 
+function imagenesPortapapeles(datos) {
+  const archivos = Array.from(datos?.items || [])
+    .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+    .map(item => item.getAsFile()).filter(Boolean);
+  if (archivos.length) return archivos;
+  const adjuntos = Array.from(datos?.files || []).filter(file => file.type.startsWith('image/'));
+  if (adjuntos.length) return adjuntos;
+
+  const html = datos?.getData('text/html');
+  if (!html) return [];
+  const plantilla = document.createElement('template');
+  plantilla.innerHTML = html;
+  return Array.from(plantilla.content.querySelectorAll('img')).flatMap((img, i) => {
+    const match = /^data:(image\/(?:png|jpeg|webp));base64,([a-z\d+/=\s]+)$/i.exec(img.getAttribute('src') || '');
+    if (!match || match[2].length > Math.ceil(5 * 1024 * 1024 / 3) * 4) return [];
+    try {
+      const tipo = match[1].toLowerCase();
+      const bytes = Uint8Array.from(atob(match[2]), ch => ch.charCodeAt(0));
+      return [new File([bytes], `Imagen-${i + 1}.${tipo.split('/')[1]}`, { type: tipo })];
+    } catch { return []; }
+  });
+}
+
 function wireAnexos() {
-  const ruta = rutaFiguras(_currentInforme);
+  const informe = _currentInforme;
+  const ruta = rutaFiguras(informe);
   const form = document.getElementById('figuras-form');
   const lista = document.getElementById('figuras-lista');
   const estado = form.querySelector('[role="status"]');
-  const subir = form.querySelector('button');
+  const subir = form.querySelector('button[type="submit"]');
+  const pegar = document.getElementById('figuras-pegar');
+  const borradores = document.getElementById('figuras-borradores');
+  const archivos = form.elements.namedItem('imagenes');
+  const pendientes = [];
+  let guardando = false;
+
+  function encolar(imagenes, desdeWord = false) {
+    let omitidas = 0;
+    for (const archivo of imagenes) {
+      if (!/^image\/(png|jpeg|webp)$/.test(archivo.type) || archivo.size > 5 * 1024 * 1024) {
+        omitidas++;
+        continue;
+      }
+      const card = document.createElement('div');
+      card.className = 'overflow-hidden rounded-xl border border-gray-200 bg-gray-50';
+      const leyenda = desdeWord ? '' : archivo.name.replace(/\.[^.]+$/, '').slice(0, 300);
+      card.innerHTML = `<div class="flex h-36 items-center justify-center bg-gray-100">
+        <img class="max-h-full max-w-full object-contain" alt="Vista previa de la imagen" />
+      </div>
+      <div class="space-y-2 p-3">
+        <label class="label">Leyenda
+          <input maxlength="300" class="input mt-1" value="${esc(leyenda)}" placeholder="Ej. Vista del panel de citas" />
+        </label>
+        <button type="button" class="btn-secondary text-xs">Quitar de la cola</button>
+      </div>`;
+      const item = { archivo, card };
+      pendientes.push(item);
+      borradores.append(card);
+      mostrarImagenFigura(card.querySelector('img'), archivo);
+      card.querySelector('button').addEventListener('click', () => {
+        if (guardando) return;
+        pendientes.splice(pendientes.indexOf(item), 1);
+        card.remove();
+        subir.disabled = !pendientes.length;
+        estado.textContent = '';
+      });
+    }
+    subir.disabled = !pendientes.length;
+    estado.textContent = omitidas ? 'Se omitieron im\u00e1genes con formato no compatible o de m\u00e1s de 5 MB.' : '';
+  }
+
+  archivos.addEventListener('change', () => {
+    if (!guardando) encolar(archivos.files);
+    archivos.value = '';
+  });
+  pegar.addEventListener('paste', event => {
+    event.preventDefault();
+    if (guardando) return;
+    const imagenes = imagenesPortapapeles(event.clipboardData);
+    if (imagenes.length) encolar(imagenes, true);
+    else estado.textContent = 'No se encontr\u00f3 una imagen. Copia solo la imagen en Word o selecci\u00f3nala desde un archivo.';
+  });
   async function listar() {
     try {
       const figuras = await api.get(ruta);
+      if (!lista.isConnected) return;
       lista.innerHTML = figuras.map(f => `
-        <form data-figura="${f.numero}" class="rounded-xl border border-gray-200 p-4">
-          <h3 class="mb-2 font-semibold">Figura ${f.numero}</h3>
+        <form data-figura="${f.numero}" class="grid gap-4 rounded-xl border border-gray-200 p-4 sm:grid-cols-[10rem_1fr]">
+          <div class="flex h-28 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
+            <img data-imagen-figura="${f.numero}" alt="${esc(f.leyenda)}" class="max-h-full max-w-full object-contain" />
+          </div>
+          <div>
+          <h3 class="mb-2 font-semibold text-gray-900">Figura ${f.numero}</h3>
           <label class="label">Leyenda
             <input name="leyenda" maxlength="300" required class="input mt-1" value="${esc(f.leyenda)}" />
           </label>
@@ -2000,31 +2089,43 @@ function wireAnexos() {
             <button type="submit" class="btn-secondary">Guardar leyenda</button>
             <button type="button" class="btn-secondary text-red-700" data-quitar-figura>Quitar</button>
           </div>
+          </div>
         </form>`).join('') || '<p class="text-sm text-gray-500">El informe a\u00fan no tiene figuras.</p>';
-    } catch (e) { lista.textContent = 'No se pudieron cargar los anexos. ' + e.message; }
+      cargarImagenesVistaPrevia(informe, lista);
+    } catch (e) {
+      lista.textContent = /^Ruta .* no encontrada/.test(e.message)
+        ? 'El servidor todav\u00eda no tiene disponible la ruta de anexos.'
+        : 'No se pudieron cargar los anexos. ' + e.message;
+    }
   }
   listar();
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const archivos = [...form.elements.namedItem('imagenes').files];
+    if (guardando || !pendientes.length) return;
+    guardando = true;
+    archivos.disabled = true;
     subir.disabled = true;
+    const total = pendientes.length;
     let cargadas = 0;
     try {
-      for (const archivo of archivos) {
-        estado.textContent = `Agregando imagen ${cargadas + 1} de ${archivos.length}\u2026`;
+      while (pendientes.length) {
+        const { archivo, card } = pendientes[0];
+        estado.textContent = `Guardando imagen ${cargadas + 1} de ${total}\u2026`;
         const contenido = new FormData();
         contenido.append('imagen', archivo);
-        contenido.append('leyenda', archivo.name);
+        contenido.append('leyenda', card.querySelector('input').value.trim() || `Imagen ${cargadas + 1}`);
         await api.post(ruta, contenido);
+        pendientes.shift();
+        card.remove();
         cargadas++;
       }
-      form.reset();
       estado.textContent = `Im\u00e1genes agregadas: ${cargadas}.`;
     } catch (e) {
-      if (cargadas) form.reset();
       estado.textContent = `Im\u00e1genes agregadas: ${cargadas}. ${e.message}`;
     } finally {
-      subir.disabled = false;
+      guardando = false;
+      archivos.disabled = false;
+      subir.disabled = !pendientes.length;
       if (lista.isConnected) await listar();
     }
   });
@@ -2092,16 +2193,20 @@ async function cargarImagenesVistaPrevia(inf, vista) {
     try {
       const blob = await api.getBlob(`${rutaFiguras(inf)}/${imagen.dataset.imagenFigura}`);
       if (!imagen.isConnected) return;
-      const url = URL.createObjectURL(blob);
-      const limpiar = () => URL.revokeObjectURL(url);
-      imagen.addEventListener('load', limpiar, { once: true });
-      imagen.addEventListener('error', limpiar, { once: true });
-      imagen.src = url;
+      mostrarImagenFigura(imagen, blob);
     } catch { imagen.alt = 'No se pudo cargar esta imagen.'; }
   }
   for (let i = 0; i < imagenes.length && vista.isConnected; i += 4) {
     await Promise.all(imagenes.slice(i, i + 4).map(cargar));
   }
+}
+
+function mostrarImagenFigura(imagen, blob) {
+  const url = URL.createObjectURL(blob);
+  const limpiar = () => URL.revokeObjectURL(url);
+  imagen.addEventListener('load', limpiar, { once: true });
+  imagen.addEventListener('error', limpiar, { once: true });
+  imagen.src = url;
 }
 
 function buildPreviewHTML(inf, dat, figuras = [], errorAnexos = false) {
